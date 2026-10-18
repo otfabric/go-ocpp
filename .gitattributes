@@ -1,0 +1,2 @@
+# Golden files compared byte for byte by TestAPI.
+testdata/api/*.txt text eol=lf

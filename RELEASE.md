@@ -125,6 +125,9 @@ Found by the hardening tests before release:
   response timeout instead of failing at once.
 - After a missed pong, the connection waited for a closing handshake the
   dead peer could not answer, delaying the detection by about 5 s.
+- Under `RejectNew`, connections of one identity that arrived together
+  could all be admitted, the later ones replacing the earlier; one is now
+  admitted and the others refused with 409.
 
 ## Verification
 

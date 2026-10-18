@@ -41,7 +41,8 @@ type Server struct {
 
 	mu        sync.Mutex
 	sessions  map[string]*Session
-	admitting int // connections past the checks, not yet registered
+	admitting int            // connections past the checks, not yet registered
+	inFlight  map[string]int // the same, by identity
 	closing   bool
 	listeners []*http.Server
 	active    sync.WaitGroup
@@ -97,7 +98,7 @@ func New(opts ...Option) (*Server, error) {
 	}
 	log = log.With("component", "ocpp.server")
 	o.logger = log // the engine's entries carry the component too
-	return &Server{o: o, log: log, sessions: map[string]*Session{}}, nil
+	return &Server{o: o, log: log, sessions: map[string]*Session{}, inFlight: map[string]int{}}, nil
 }
 
 // Versions returns the versions the server accepts, newest first.
@@ -188,22 +189,26 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.mu.Lock()
-	existing := s.sessions[id]
+	// A connection of the identity that is past the checks but not yet
+	// registered counts as connected: otherwise two connections racing in
+	// would both pass RejectNew, and the second would replace the first.
+	existing := s.sessions[id] != nil || s.inFlight[id] > 0
 	switch {
 	case s.closing:
 		s.mu.Unlock()
 		s.refuse(w, log, info, http.StatusServiceUnavailable, "shutting down", ocpp.ErrClosed)
 		return
-	case existing != nil && s.o.replace == RejectNew:
+	case existing && s.o.replace == RejectNew:
 		s.mu.Unlock()
 		s.refuse(w, log, info, http.StatusConflict, "station already connected", errors.New("station already connected"))
 		return
-	case existing == nil && len(s.sessions)+s.admitting >= s.o.maxStations:
+	case !existing && len(s.sessions)+s.admitting >= s.o.maxStations:
 		s.mu.Unlock()
 		s.refuse(w, log, info, http.StatusServiceUnavailable, "too many stations", errors.New("station limit reached"))
 		return
 	}
 	s.admitting++
+	s.inFlight[id]++
 	s.active.Add(1)
 	s.mu.Unlock()
 	defer s.active.Done()
@@ -214,7 +219,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		OriginPatterns: s.o.originPatterns})
 	if err != nil {
 		s.mu.Lock()
-		s.admitting--
+		s.admitted(id)
 		s.mu.Unlock()
 		s.o.metrics.OnConnectFailed(info, err)
 		log.Warn("WebSocket handshake failed", "error", err)
@@ -243,7 +248,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	})
 
 	s.mu.Lock()
-	s.admitting--
+	s.admitted(id)
 	if s.closing {
 		s.mu.Unlock()
 		sess.ep.CloseWith(ocpp.ErrClosed, transport.StatusGoingAway, "shutting down")
@@ -313,6 +318,14 @@ func stationID(u *url.URL) (string, bool) {
 		return "", false
 	}
 	return id, true
+}
+
+// admitted ends the admission of a connection of id. s.mu is held.
+func (s *Server) admitted(id string) {
+	s.admitting--
+	if s.inFlight[id]--; s.inFlight[id] <= 0 {
+		delete(s.inFlight, id)
+	}
 }
 
 // statusOf returns the status of a *StatusError in err, or 401 when its

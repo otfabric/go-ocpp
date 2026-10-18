@@ -198,3 +198,47 @@ func TestHandshakeStatus(t *testing.T) {
 		t.Fatal("StatusError text")
 	}
 }
+
+// Send on a client that is not connected, or closed; the options that only
+// pass values through; Session.Send to a 2.1 station; WithMaxBadMessages on
+// the server.
+func TestOptionsAndSendPaths(t *testing.T) {
+	noLeak(t)
+	idle := station(t, "ws://127.0.0.1:1/ocpp/IDLE", client.WithInsecureTransport(), client.WithVersions(ocpp.V21),
+		client.WithWriteTimeout(time.Second), client.WithIncomingRateLimit(100, 10))
+	if err := idle.Send(context.Background(), "NotifyPeriodicEventStream", nil); !errors.Is(err, ocpp.ErrNotConnected) {
+		t.Fatalf("Send before Connect: %v", err)
+	}
+	_ = idle.Close()
+	if err := idle.Send(context.Background(), "NotifyPeriodicEventStream", nil); !errors.Is(err, ocpp.ErrClosed) {
+		t.Fatalf("Send after Close: %v", err)
+	}
+
+	received := make(chan json.RawMessage, 1)
+	stationSide := &sendRecorder{echo: ocpp.DispatcherFunc(echo), onSend: func(p json.RawMessage) { received <- p }}
+	srv, base := csms(t, nil, server.WithHandler(ocpp.V21, ocpp.DispatcherFunc(echo)), server.WithoutAuthentication(),
+		server.WithMaxBadMessages(2))
+	c := station(t, base+"S21", client.WithInsecureTransport(), client.WithVersions(ocpp.V21), client.WithHandler(ocpp.V21, stationSide))
+	connect(t, c)
+	if err := waitStation(t, srv, "S21").Send(context.Background(), "VendorStream", json.RawMessage(`{"v":1}`)); err != nil {
+		t.Fatal(err)
+	}
+	if got := <-received; string(got) != `{"v":1}` {
+		t.Fatalf("station received %s", got)
+	}
+
+	ws := rawStation(t, base, "BAD", "ocpp2.1", false)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	for range 2 {
+		_ = ws.Write(ctx, websocket.MessageText, []byte(`not a frame`))
+	}
+	for {
+		if _, _, err := ws.Read(ctx); err != nil {
+			if websocket.CloseStatus(err) != websocket.StatusPolicyViolation {
+				t.Fatalf("closed with %v, want 1008", err)
+			}
+			break
+		}
+	}
+}

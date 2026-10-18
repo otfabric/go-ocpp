@@ -43,9 +43,10 @@ func TestAPI(t *testing.T) {
 			if err != nil {
 				t.Fatalf("%v (run go test -run TestAPI -update)", err)
 			}
-			if got != string(want) {
+			// A checkout may turn line endings into CRLF (Windows).
+			if got != strings.ReplaceAll(string(want), "\r\n", "\n") {
 				t.Errorf("the exported API of %s changed; if intended, run go test -run TestAPI -update and note it in RELEASE.md\n%s",
-					name, lineDiff(string(want), got))
+					name, lineDiff(strings.ReplaceAll(string(want), "\r\n", "\n"), got))
 			}
 		})
 	}

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"net/http"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -315,4 +316,42 @@ func (s *sendRecorder) Dispatch(ctx context.Context, p ocpp.Peer, action string,
 func (s *sendRecorder) DispatchSend(ctx context.Context, p ocpp.Peer, action string, payload json.RawMessage) error {
 	s.onSend(payload)
 	return nil
+}
+
+// Under RejectNew, connections of one identity that race in are all
+// refused with 409 but one, even before the first is registered; none
+// replaces another, and none is refused for the station limit.
+func TestRejectNewRace(t *testing.T) {
+	noLeak(t)
+	var replaced atomic.Int32
+	srv, base := csms(t, nil, server.WithHandler(ocpp.V16, ocpp.DispatcherFunc(echo)), server.WithoutAuthentication(),
+		server.WithReplacePolicy(server.RejectNew), server.WithMaxStations(5),
+		server.WithSessionHandler(nil, func(s *server.Session, err error) {
+			if errors.Is(err, server.ErrReplaced) {
+				replaced.Add(1)
+			}
+		}))
+	const n = 12
+	var wg sync.WaitGroup
+	var ok, conflict atomic.Int32
+	for range n {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c := station(t, base+"RACE", client.WithInsecureTransport(), client.WithVersions(ocpp.V16))
+			var he *client.HandshakeError
+			switch err := c.Connect(context.Background()); {
+			case err == nil:
+				ok.Add(1)
+			case errors.As(err, &he) && he.StatusCode == http.StatusConflict:
+				conflict.Add(1)
+			default:
+				t.Errorf("connect: %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+	if ok.Load() != 1 || conflict.Load() != n-1 || replaced.Load() != 0 || len(srv.Stations()) != 1 {
+		t.Fatalf("%d admitted, %d conflicts, %d replaced, %d sessions", ok.Load(), conflict.Load(), replaced.Load(), len(srv.Stations()))
+	}
 }

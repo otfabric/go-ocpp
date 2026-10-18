@@ -71,3 +71,12 @@ func TestHash(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestHashBadIssuerKey(t *testing.T) {
+	leaf, ca := certs(t)
+	broken := *ca
+	broken.RawSubjectPublicKeyInfo = []byte{0x30, 0x03, 0x01}
+	if _, err := Hash(leaf, &broken, crypto.SHA256); err == nil {
+		t.Fatal("a malformed issuer key was hashed")
+	}
+}

@@ -239,3 +239,18 @@ func TestCompression(t *testing.T) {
 		t.Fatalf("client: %v", err)
 	}
 }
+
+func TestPipePingAbort(t *testing.T) {
+	a, b := Pipe("ocpp2.1")
+	if err := a.Ping(context.Background()); err != nil {
+		t.Fatalf("ping on an open pipe: %v", err)
+	}
+	a.Abort()
+	if err := b.Ping(context.Background()); !errors.Is(err, ErrClosed) {
+		t.Fatalf("ping on an aborted pipe: %v", err)
+	}
+	var ce *CloseError
+	if _, err := b.ReadMessage(context.Background()); !errors.As(err, &ce) || ce.Code != StatusGoingAway {
+		t.Fatalf("read after abort: %v", err)
+	}
+}
