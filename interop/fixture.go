@@ -17,20 +17,25 @@ import (
 	"time"
 
 	"github.com/otfabric/go-ocpp"
+	"github.com/otfabric/go-ocpp/ocpp16"
+	"github.com/otfabric/go-ocpp/ocpp201"
 )
 
 // fixture is the part of an ocpp-interop fixture the tests use. It is read
 // from the image (print-fixture), so the expectations cannot drift from
 // what the image serves.
 type fixture struct {
+	version  ocpp.Version
 	Stations []struct {
 		ID       string `json:"id"`
 		Password string `json:"password"`
 	} `json:"stations"`
 	IDTokens []struct {
 		IDToken string `json:"idToken"`
+		Type    string `json:"type"`
 		Status  string `json:"status"`
 	} `json:"idTokens"`
+	Variables     []fixtureVariable `json:"variables"`
 	Configuration []struct {
 		Key      string `json:"key"`
 		Value    string `json:"value"`
@@ -58,22 +63,23 @@ type sample struct {
 	Payload json.RawMessage `json:"payload"`
 }
 
-var fixtures sync.Map // image -> *fixture
+var fixtures sync.Map // image + version -> *fixture
 
-func (a adapter) fixture(t testing.TB) *fixture {
+func (a adapter) fixture(t testing.TB, v ocpp.Version) *fixture {
 	t.Helper()
-	if f, ok := fixtures.Load(a.image); ok {
+	key := a.image + " " + v.String()
+	if f, ok := fixtures.Load(key); ok {
 		return f.(*fixture)
 	}
-	out, stderr, err := docker("run", "--rm", a.image, "print-fixture", "--version", "1.6")
+	out, stderr, err := docker("run", "--rm", a.image, "print-fixture", "--version", v.String())
 	if err != nil {
 		t.Fatalf("print-fixture of %s: %v\n%s", a.image, err, stderr)
 	}
-	f := &fixture{}
+	f := &fixture{version: v}
 	if err := json.Unmarshal([]byte(out), f); err != nil {
 		t.Fatalf("fixture of %s: %v", a.image, err)
 	}
-	fixtures.Store(a.image, f)
+	fixtures.Store(key, f)
 	return f
 }
 
@@ -105,7 +111,10 @@ const now = "${now}"
 // answer computes the fixture's answer to a CALL, as docs/FIXTURES.md of
 // ocpp-interop defines it. A nil payload with a nil error means the action
 // has no answer: it is answered with NotImplemented.
-func (f *fixture) answer(table map[string]answer, action string, req json.RawMessage) (map[string]any, *ocpp.CallError) {
+//
+// values holds the current value of each device model variable, by key;
+// SetVariables changes it. Nil uses the fixture's values and changes nothing.
+func (f *fixture) answer(table map[string]answer, action string, req json.RawMessage, values map[string]string) (map[string]any, *ocpp.CallError) {
 	a, ok := table[action]
 	if !ok {
 		return nil, nil
@@ -120,16 +129,28 @@ func (f *fixture) answer(table map[string]answer, action string, req json.RawMes
 	switch a.Derived {
 	case "idTokens":
 		var r struct {
-			IDTag string `json:"idTag"`
+			IDTag   string `json:"idTag"`
+			IDToken struct {
+				IDToken string `json:"idToken"`
+				Type    string `json:"type"`
+			} `json:"idToken"`
 		}
 		_ = json.Unmarshal(req, &r)
 		status := "Invalid"
 		for _, tok := range f.IDTokens {
-			if tok.IDToken == r.IDTag {
+			// In 2.x a token matches by value and type.
+			if f.version == ocpp.V16 && tok.IDToken == r.IDTag ||
+				f.version != ocpp.V16 && tok.IDToken == r.IDToken.IDToken && tok.Type == r.IDToken.Type {
 				status = tok.Status
 			}
 		}
-		out["idTagInfo"] = map[string]any{"status": status}
+		field := "idTagInfo"
+		if f.version != ocpp.V16 {
+			field = "idTokenInfo"
+		}
+		out[field] = map[string]any{"status": status}
+	case "variables":
+		f.variables(action, req, values, out)
 	case "configuration":
 		var r struct {
 			Key []string `json:"key"`
@@ -145,7 +166,7 @@ func (f *fixture) answer(table map[string]answer, action string, req json.RawMes
 		for _, k := range r.Key {
 			found := false
 			for _, c := range f.Configuration {
-				if c.Key == k {
+				if strings.EqualFold(c.Key, k) {
 					known = append(known, map[string]any{"key": c.Key, "value": c.Value, "readonly": c.Readonly})
 					found = true
 				}
@@ -166,23 +187,35 @@ func (f *fixture) answer(table map[string]answer, action string, req json.RawMes
 
 // dispatcher answers CALLs as the fixture's table for the receiving role
 // says, with "${now}" replaced by the current time, and records every CALL
-// it receives.
+// it receives, with what go-ocpp's typed validation says about it.
 type dispatcher struct {
-	f     *fixture
-	table map[string]answer
-	mu    sync.Mutex
-	got   map[string][]json.RawMessage // action -> payloads received
+	f       *fixture
+	table   map[string]answer
+	version ocpp.Version
+	mu      sync.Mutex
+	values  map[string]string            // device model values, changed by SetVariables
+	got     map[string][]json.RawMessage // action -> payloads received
+	invalid map[string][]error           // action -> validation errors
 }
 
-func newDispatcher(f *fixture, table map[string]answer) *dispatcher {
-	return &dispatcher{f: f, table: table, got: map[string][]json.RawMessage{}}
+func newDispatcher(f *fixture, table map[string]answer, v ocpp.Version) *dispatcher {
+	values := map[string]string{}
+	for _, fv := range f.Variables {
+		values[fv.key()] = fv.Value
+	}
+	return &dispatcher{f: f, table: table, version: v, values: values, got: map[string][]json.RawMessage{}, invalid: map[string][]error{}}
 }
 
 func (d *dispatcher) Dispatch(ctx context.Context, p ocpp.Peer, action string, payload json.RawMessage) (json.RawMessage, error) {
 	d.mu.Lock()
 	d.got[action] = append(d.got[action], append(json.RawMessage(nil), payload...))
+	if err := validateRequest(d.version, action, payload); err != nil {
+		d.invalid[action] = append(d.invalid[action], err)
+	}
 	d.mu.Unlock()
-	out, cerr := d.f.answer(d.table, action, payload)
+	d.mu.Lock()
+	out, cerr := d.f.answer(d.table, action, payload, d.values)
+	d.mu.Unlock()
 	if cerr != nil {
 		return nil, cerr
 	}
@@ -191,6 +224,22 @@ func (d *dispatcher) Dispatch(ctx context.Context, p ocpp.Peer, action string, p
 	}
 	b, err := json.Marshal(replaceNow(out))
 	return b, err
+}
+
+// validateRequest and validateResponse are go-ocpp's typed validation of a
+// version: what a reference sends must pass it.
+func validateRequest(v ocpp.Version, action string, payload json.RawMessage) error {
+	if v == ocpp.V201 {
+		return ocpp201.ValidateRequest(action, payload)
+	}
+	return ocpp16.ValidateRequest(action, payload)
+}
+
+func validateResponse(v ocpp.Version, action string, payload json.RawMessage) error {
+	if v == ocpp.V201 {
+		return ocpp201.ValidateResponse(action, payload)
+	}
+	return ocpp16.ValidateResponse(action, payload)
 }
 
 // received returns the payloads of action that arrived.
@@ -314,7 +363,7 @@ func decode(t testing.TB, raw json.RawMessage) any {
 // values for contains, or ok=false when the sample's action has no answer.
 func (f *fixture) expected(t testing.TB, s sample) (want any, callErr *ocpp.CallError, ok bool) {
 	t.Helper()
-	out, cerr := f.answer(f.answerTable(s.From), s.Action, s.Payload)
+	out, cerr := f.answer(f.answerTable(s.From), s.Action, s.Payload, nil)
 	if cerr != nil {
 		return nil, cerr, true
 	}
@@ -323,4 +372,102 @@ func (f *fixture) expected(t testing.TB, s sample) (want any, callErr *ocpp.Call
 	}
 	b, _ := json.Marshal(out)
 	return decode(t, b), nil, true
+}
+
+// fixtureVariable is a device model variable of a 2.x fixture.
+type fixtureVariable struct {
+	Component  named  `json:"component"`
+	Variable   named  `json:"variable"`
+	Value      string `json:"value"`
+	Mutability string `json:"mutability"`
+}
+
+type named struct {
+	Name     string  `json:"name"`
+	Instance *string `json:"instance"`
+}
+
+func (n named) key() string {
+	k := strings.ToLower(n.Name)
+	if n.Instance != nil {
+		k += "/" + strings.ToLower(*n.Instance)
+	}
+	return k
+}
+
+func (v fixtureVariable) key() string { return v.Component.key() + "|" + v.Variable.key() }
+
+// variables answers GetVariables and SetVariables as ocpp-interop's
+// docs/FIXTURES.md defines: one result per requested item, in order, with
+// the component, variable and attributeType of the request, and a status
+// checked in this order: UnknownComponent, UnknownVariable,
+// NotSupportedAttributeType (anything but Actual), Rejected (reading
+// WriteOnly, writing ReadOnly), Accepted. Names compare case-insensitively.
+func (f *fixture) variables(action string, req json.RawMessage, values map[string]string, out map[string]any) {
+	type item struct {
+		Component      json.RawMessage `json:"component"`
+		Variable       json.RawMessage `json:"variable"`
+		AttributeType  *string         `json:"attributeType"`
+		AttributeValue string          `json:"attributeValue"`
+	}
+	var r struct {
+		Get []item `json:"getVariableData"`
+		Set []item `json:"setVariableData"`
+	}
+	_ = json.Unmarshal(req, &r)
+	items, resultKey := r.Get, "getVariableResult"
+	if action == "SetVariables" {
+		items, resultKey = r.Set, "setVariableResult"
+	}
+	results := []any{}
+	for _, it := range items {
+		var c, v named
+		_ = json.Unmarshal(it.Component, &c)
+		_ = json.Unmarshal(it.Variable, &v)
+		res := map[string]any{"component": rawValue(it.Component), "variable": rawValue(it.Variable)}
+		if it.AttributeType != nil {
+			res["attributeType"] = *it.AttributeType
+		}
+		var match *fixtureVariable
+		componentKnown := false
+		for i := range f.Variables {
+			fv := &f.Variables[i]
+			if fv.Component.key() == c.key() {
+				componentKnown = true
+				if fv.Variable.key() == v.key() {
+					match = fv
+				}
+			}
+		}
+		switch {
+		case !componentKnown:
+			res["attributeStatus"] = "UnknownComponent"
+		case match == nil:
+			res["attributeStatus"] = "UnknownVariable"
+		case it.AttributeType != nil && *it.AttributeType != "Actual":
+			res["attributeStatus"] = "NotSupportedAttributeType"
+		case action == "GetVariables" && match.Mutability == "WriteOnly",
+			action == "SetVariables" && match.Mutability == "ReadOnly":
+			res["attributeStatus"] = "Rejected"
+		default:
+			res["attributeStatus"] = "Accepted"
+			value := match.Value
+			if values != nil {
+				value = values[match.key()]
+			}
+			if action == "GetVariables" {
+				res["attributeValue"] = value
+			} else if values != nil {
+				values[match.key()] = it.AttributeValue
+			}
+		}
+		results = append(results, res)
+	}
+	out[resultKey] = results
+}
+
+func rawValue(b json.RawMessage) any {
+	var v any
+	_ = json.Unmarshal(b, &v)
+	return v
 }

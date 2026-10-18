@@ -4,7 +4,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help all build examples fmt fmt-check lint lint-ci vet vuln test coverage cover fuzz check cross clean interop test-interop e2e deps
+.PHONY: help all build examples fmt fmt-check lint lint-ci vet vuln test test-min coverage cover fuzz check cross clean interop test-interop e2e deps gen gen-check schemas-check schemas-sync
 help: ## This help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_-]+:.*?## / {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
@@ -22,7 +22,7 @@ BIN_DIR := bin
 # Library packages: tests and coverage (exclude examples and the interop suite)
 TEST_PKGS := $(shell go list ./... | grep -v '/examples' | grep -v '/interop$$' | grep -v '/interop/')
 # Coverage is measured over the library packages, whichever package's tests exercise them.
-COVER_PKGS := $(shell go list ./... | grep -v '/examples' | grep -v '/e2e$$' | grep -v '/internal/gen' | grep -v '/interop$$' | grep -v '/interop/' | paste -sd, -)
+COVER_PKGS := $(shell go list ./... | grep -v '/examples' | grep -v '/e2e$$' | grep -v '/internal/gen' | grep -v '/internal/specsync' | grep -v '/internal/schematest' | grep -v '/interop$$' | grep -v '/interop/' | paste -sd, -)
 
 # Platforms the library must build on, pure Go (CGO_ENABLED=0).
 CROSS_PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64
@@ -40,8 +40,7 @@ build: ## Build the library and the examples into ./bin
 	done
 
 # The self-contained examples: each starts both sides and exits by itself.
-# Empty until Phase 3 adds station16 and csms16.
-RUN_EXAMPLES :=
+RUN_EXAMPLES := ocpp16 ocpp201
 
 examples: ## Run the self-contained examples (each must exit successfully)
 	@for e in $(RUN_EXAMPLES); do \
@@ -85,17 +84,25 @@ vuln: ## Run govulncheck
 	@echo "Running govulncheck"
 	@govulncheck ./...
 
-# ADR 0002 allows exactly one production dependency, github.com/coder/websocket,
-# from Phase 2 on. Anything else needs an ADR first.
-ALLOWED_DEPS := github.com/coder/websocket
-deps: ## Fail if go.mod requires anything not allowed by an ADR
+# ADR 0002 allows exactly one production dependency, github.com/coder/websocket.
+# ADR 0003 allows a reference JSON Schema validator for tests only (imported
+# by internal/schematest, which only the version packages' tests import),
+# with what it requires. Anything else needs an ADR first.
+ALLOWED_DEPS := github.com/coder/websocket github.com/santhosh-tekuri/jsonschema/v6 golang.org/x/text
+deps: ## Fail if go.mod directly requires anything not allowed by an ADR
 	@echo "Checking dependencies"
-	@deps="$$(go list -m -f '{{if not .Main}}{{.Path}}{{end}}' all | grep -v -x -F $(foreach d,$(ALLOWED_DEPS),-e $(d)) || true)"; \
+	@deps="$$(go list -m -f '{{if and (not .Main) (not .Indirect)}}{{.Path}}{{end}}' all | grep -v -x -F $(foreach d,$(ALLOWED_DEPS),-e $(d)) || true)"; \
 	if [ -n "$$deps" ]; then echo "go.mod requires modules no ADR allows:"; echo "$$deps"; exit 1; fi
 
 test: ## Run the library tests with the race detector
 	@echo "Running tests"
 	@go test -count=1 -race $(TEST_PKGS)
+
+# CI also tests with the oldest Go that go.mod allows, and the standard
+# library's behaviour differs between releases (error types, for one).
+test-min: ## Run the library tests with the Go version of go.mod (what CI's oldest job uses)
+	@echo "Running tests with go$(GO_MOD_VERSION).0"
+	@GOTOOLCHAIN=go$(GO_MOD_VERSION).0 go test -count=1 $(TEST_PKGS)
 
 e2e: ## Run the end-to-end tests of this module's client against this module's server
 	@echo "Running end-to-end tests"
@@ -114,34 +121,59 @@ cover: coverage ## Open coverage report in browser
 # Each entry is <package dir>:<fuzz target>. The dispatchers of the version
 # packages are added in Phases 3, 5 and 6.
 FUZZTIME ?= 30s
-FUZZ_TARGETS := ocppj:FuzzDecode
+FUZZ_TARGETS := ocppj:FuzzDecode ocpp16:FuzzDispatch ocpp201:FuzzDispatch
 fuzz: ## Run the fuzz targets for FUZZTIME each (default 30s)
 	@echo "Fuzzing (FUZZTIME=$(FUZZTIME))"
 	@for t in $(FUZZ_TARGETS); do \
 		go test -run='^$$' -fuzz="^$${t#*:}$$" -fuzztime=$(FUZZTIME) "./$${t%%:*}" || exit 1; \
 	done
 
-# Reference implementations for 'make interop': otfabric/ocpp-interop v0.0.1
-# (The Mobility House ocpp 2.1.0, ChargeTimeEU Java-OCA-OCPP v2.0), pinned by
-# multi-arch index digest. Keep in step with interop/harness.go and
+# Reference implementations for 'make interop': otfabric/ocpp-interop v0.1.0
+# (The Mobility House ocpp 2.1.0, ChargeTimeEU Java-OCA-OCPP v2.0,
+# lorenzodonini/ocpp-go v0.19.0; OCPP 1.6J and 2.0.1), pinned by multi-arch
+# index digest. Keep in step with interop/harness.go and
 # .github/workflows/interop.yml.
 # A reference image that cannot be had fails the run: asked to test against
 # it, passing by skipping would say nothing.
 # Override to test other builds, e.g. the local ones of an ocpp-interop checkout:
 #   make interop OCPP_INTEROP_MOBILITYHOUSE_IMAGE=ghcr.io/otfabric/ocpp-interop-mobilityhouse:dev
-OCPP_INTEROP_MOBILITYHOUSE_IMAGE ?= ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:6243da691f8682398a8cd420fb91b68a4d0f6aa42267961f8d04d097d172fd00
-OCPP_INTEROP_CHARGETIME_IMAGE    ?= ghcr.io/otfabric/ocpp-interop-chargetime@sha256:beeb0e2b34d3c56b5835ed280b38e52ab4d1eba86251552e72e33bf12b7e3b2e
+OCPP_INTEROP_MOBILITYHOUSE_IMAGE ?= ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:fff81e3cfd67a135acf63994f1622a141a9150a6973ee668e4a06a4e0aeb65ec
+OCPP_INTEROP_CHARGETIME_IMAGE    ?= ghcr.io/otfabric/ocpp-interop-chargetime@sha256:01b3d8d3fa12de8acbd170434fc6a04fa0e0ec11f7d5a53c93d84e512a892cc7
+OCPP_INTEROP_LORENZODONINI_IMAGE ?= ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:27801a6ae636cfa78833b75bd193f57a27aba42bfab083262841afb1047ee7ce
 
 test-interop: ## Run the interop suite against the ocpp-interop reference images (needs Docker)
-	@echo "Running interop tests against $(OCPP_INTEROP_MOBILITYHOUSE_IMAGE) and $(OCPP_INTEROP_CHARGETIME_IMAGE)"
+	@echo "Running interop tests against $(OCPP_INTEROP_MOBILITYHOUSE_IMAGE), $(OCPP_INTEROP_CHARGETIME_IMAGE) and $(OCPP_INTEROP_LORENZODONINI_IMAGE)"
 	@OCPP_INTEROP_MOBILITYHOUSE_IMAGE="$(OCPP_INTEROP_MOBILITYHOUSE_IMAGE)" \
 		OCPP_INTEROP_CHARGETIME_IMAGE="$(OCPP_INTEROP_CHARGETIME_IMAGE)" \
+		OCPP_INTEROP_LORENZODONINI_IMAGE="$(OCPP_INTEROP_LORENZODONINI_IMAGE)" \
 		OCPP_INTEROP_REQUIRE=1 \
 		go test -tags=interop -count=1 -timeout=20m ./interop/...
 
 interop: test-interop ## Alias for test-interop
 
-check: fmt fmt-check deps lint lint-ci vet vuln test coverage cross examples ## Run format + lint + vet + vuln + test + cross-build
+gen: ## Generate the version packages from the OCA schemas (internal/gen)
+	@echo "Generating ocpp16 and ocpp201"
+	@go generate ./ocpp16 ./ocpp201
+
+GENERATED := ocpp16/zz_generated_types.go ocpp16/zz_generated_actions.go ocpp16/coverage.json \
+	ocpp201/zz_generated_types.go ocpp201/zz_generated_actions.go ocpp201/coverage.json
+
+gen-check: ## Fail if regenerating changes the generated files (they are then updated)
+	@echo "Checking the generated code"
+	@tmp="$$(mktemp -d)"; \
+	for f in $(GENERATED); do mkdir -p "$$tmp/$$(dirname $$f)"; cp "$$f" "$$tmp/$$f"; done; \
+	go generate ./ocpp16 ./ocpp201 || exit 1; \
+	stale=""; for f in $(GENERATED); do cmp -s "$$f" "$$tmp/$$f" || stale="$$stale $$f"; done; \
+	rm -rf "$$tmp"; \
+	if [ -n "$$stale" ]; then echo "Generated code was out of date:$$stale (now regenerated: review and commit)"; exit 1; fi
+
+schemas-sync: ## Refresh schemas/ from the OCA download page (review the diff; see schemas/README.md)
+	@go run ./internal/specsync
+
+schemas-check: ## Check the vendored OCA schemas against their recorded SHA-256 sums
+	@cd schemas && shasum -a 256 -c --quiet SHA256SUMS && echo "schemas: OK"
+
+check: fmt fmt-check deps gen-check schemas-check lint lint-ci vet vuln test test-min coverage cross examples ## Run format + generate + lint + vet + vuln + test + cross-build
 
 clean: ## Remove generated binaries and coverage artifacts
 	@echo "Cleaning up"

@@ -127,8 +127,10 @@ func (s *Server) Stations() []*Session {
 }
 
 // ServeHTTP accepts one station's WebSocket connection and serves it until
-// it ends. Before the upgrade it selects the subprotocol, authenticates and
-// applies the limits; a refusal is an HTTP error response.
+// it ends. Before the upgrade it authenticates and applies the limits; a
+// refusal is an HTTP error response. A station that offers no supported
+// subprotocol gets a completed handshake without one, and the connection
+// is closed at once (OCPP-J 1.6 §3.1.2; 2.x Part 4 §3.2).
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	id, ok := stationID(r.URL)
 	if !ok {
@@ -138,12 +140,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	log := s.log.With("station_id", id, "remote", r.RemoteAddr)
 	info := ocpp.ConnInfo{StationID: id, Role: ocpp.CSMS}
 
-	v, ok := s.selectVersion(r.Header)
-	if !ok {
-		err := fmt.Errorf("%w: offered %q", ocpp.ErrUnsupportedVersion, r.Header.Values("Sec-WebSocket-Protocol"))
-		s.refuse(w, log, info, http.StatusBadRequest, "no supported OCPP subprotocol", err)
-		return
-	}
+	v, supported := s.selectVersion(r.Header)
 	info.Version = v
 	if s.o.auth != nil {
 		user, pass, hasBasic := r.BasicAuth()
@@ -151,11 +148,26 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			StationID: id, Username: user, Password: Secret(pass), HasBasicAuth: hasBasic,
 			TLS: r.TLS, RemoteAddr: r.RemoteAddr, Request: r,
 		})
-		if err != nil {
+		switch {
+		case errors.Is(err, ErrUnknownStation):
+			// OCPP-J 1.6 §3.1.2, 2.x Part 4 §3.2: an identity the CSMS
+			// does not recognise SHOULD get 404.
+			s.refuse(w, log, info, http.StatusNotFound, "unknown station", fmt.Errorf("authentication: %w", err))
+			return
+		case err != nil:
 			w.Header().Set("WWW-Authenticate", `Basic realm="OCPP", charset="UTF-8"`)
 			s.refuse(w, log, info, http.StatusUnauthorized, "unauthorized", fmt.Errorf("authentication: %w", err))
 			return
 		}
+	}
+	if !supported {
+		err := fmt.Errorf("%w: offered %q", ocpp.ErrUnsupportedVersion, r.Header.Values("Sec-WebSocket-Protocol"))
+		s.o.metrics.OnConnectFailed(info, err)
+		log.Warn("connection refused", "error", err)
+		if conn, aerr := transport.Accept(w, r, transport.AcceptOptions{}); aerr == nil {
+			_ = conn.Close(transport.StatusPolicy, "no supported OCPP subprotocol")
+		}
+		return
 	}
 
 	s.mu.Lock()
@@ -179,7 +191,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 	defer s.active.Done()
 
-	conn, err := transport.Accept(w, r, transport.AcceptOptions{Subprotocol: v.Subprotocol(), ReadLimit: int64(s.o.maxMessageSize)})
+	// A CSMS SHALL support RFC 7692 compression (2.0.1 Part 4 §3.3, 2.1
+	// §3.4); it is used when the station offers it.
+	conn, err := transport.Accept(w, r, transport.AcceptOptions{Subprotocol: v.Subprotocol(), ReadLimit: int64(s.o.maxMessageSize), Compression: true})
 	if err != nil {
 		s.mu.Lock()
 		s.admitting--
@@ -362,6 +376,11 @@ type Session struct {
 
 // ID returns the station identity.
 func (s *Session) ID() string { return s.id }
+
+// Role returns ocpp.CSMS, the role of this end of the session. The call
+// functions of the version packages use it to refuse an action a station
+// sends.
+func (s *Session) Role() ocpp.Role { return ocpp.CSMS }
 
 // Version returns the version negotiated for this connection.
 func (s *Session) Version() ocpp.Version { return s.version }

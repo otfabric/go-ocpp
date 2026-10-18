@@ -18,17 +18,20 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/otfabric/go-ocpp"
 )
 
 // The reference images this version of go-ocpp is qualified against:
-// otfabric/ocpp-interop v0.0.1 (The Mobility House ocpp 2.1.0, ChargeTimeEU
-// Java-OCA-OCPP v2.0), pinned by multi-arch index digest so that a run is
-// reproducible. Moving to another release of ocpp-interop means changing
+// otfabric/ocpp-interop v0.1.0 (The Mobility House ocpp 2.1.0, ChargeTimeEU
+// Java-OCA-OCPP v2.0, lorenzodonini/ocpp-go v0.19.0; OCPP 1.6J and 2.0.1),
+// pinned by multi-arch index digest so that a run is reproducible. Moving to another release of ocpp-interop means changing
 // these constants; the Makefile and .github/workflows/interop.yml follow.
 const (
-	interopRelease            = "v0.0.1"
-	defaultMobilityHouseImage = "ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:6243da691f8682398a8cd420fb91b68a4d0f6aa42267961f8d04d097d172fd00"
-	defaultChargeTimeImage    = "ghcr.io/otfabric/ocpp-interop-chargetime@sha256:beeb0e2b34d3c56b5835ed280b38e52ab4d1eba86251552e72e33bf12b7e3b2e"
+	interopRelease            = "v0.1.0"
+	defaultMobilityHouseImage = "ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:fff81e3cfd67a135acf63994f1622a141a9150a6973ee668e4a06a4e0aeb65ec"
+	defaultChargeTimeImage    = "ghcr.io/otfabric/ocpp-interop-chargetime@sha256:01b3d8d3fa12de8acbd170434fc6a04fa0e0ec11f7d5a53c93d84e512a892cc7"
+	defaultLorenzodoniniImage = "ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:27801a6ae636cfa78833b75bd193f57a27aba42bfab083262841afb1047ee7ce"
 )
 
 // adapter is one reference implementation: a container image that follows
@@ -41,7 +44,8 @@ type adapter struct {
 // adapters returns the references to test against. The image of each can be
 // overridden, for example to try a local build or a candidate:
 //
-//	OCPP_INTEROP_MOBILITYHOUSE_IMAGE, OCPP_INTEROP_CHARGETIME_IMAGE
+//	OCPP_INTEROP_MOBILITYHOUSE_IMAGE, OCPP_INTEROP_CHARGETIME_IMAGE,
+//	OCPP_INTEROP_LORENZODONINI_IMAGE
 //
 // OCPP_INTEROP_ADAPTERS restricts the run to a comma-separated subset.
 // Without Docker the tests skip, unless OCPP_INTEROP_REQUIRE=1, which
@@ -55,9 +59,15 @@ func adapters(t testing.TB) []adapter {
 		}
 		t.Skipf("Docker is not available: %v", err)
 	}
-	all := []adapter{
+	var all []adapter
+	for _, a := range []adapter{
 		image("mobilityhouse", "OCPP_INTEROP_MOBILITYHOUSE_IMAGE", defaultMobilityHouseImage),
 		image("chargetime", "OCPP_INTEROP_CHARGETIME_IMAGE", defaultChargeTimeImage),
+		image("lorenzodonini", "OCPP_INTEROP_LORENZODONINI_IMAGE", defaultLorenzodoniniImage),
+	} {
+		if a.image != "" {
+			all = append(all, a)
+		}
 	}
 	only := os.Getenv("OCPP_INTEROP_ADAPTERS")
 	if only == "" {
@@ -128,12 +138,13 @@ func (a adapter) caps(t testing.TB) *capabilities {
 
 // role returns what the reference declares for one role of a version, and
 // skips the test if it does not support that role.
-func (a adapter) role(t testing.TB, version, role string) roleCaps {
+func (a adapter) role(t testing.TB, v ocpp.Version, role string) roleCaps {
 	t.Helper()
-	v, ok := a.caps(t).Versions[version]
-	r := v.Client
+	version := v.String()
+	vc, ok := a.caps(t).Versions[version]
+	r := vc.Client
 	if role == "server" {
-		r = v.Server
+		r = vc.Server
 	}
 	if !ok || !r.Supported {
 		t.Skipf("%s does not declare the %s role for OCPP %s", a.name, role, version)
@@ -141,12 +152,15 @@ func (a adapter) role(t testing.TB, version, role string) roleCaps {
 	return r
 }
 
-func (a adapter) securityProfile(t testing.TB, version string, profile int) {
+func (a adapter) securityProfile(t testing.TB, v ocpp.Version, profile int) {
 	t.Helper()
-	if !slices.Contains(a.caps(t).Versions[version].Features.SecurityProfiles, profile) {
-		t.Skipf("%s does not declare security profile %d for OCPP %s", a.name, profile, version)
+	if !slices.Contains(a.caps(t).Versions[v.String()].Features.SecurityProfiles, profile) {
+		t.Skipf("%s does not declare security profile %d for OCPP %s", a.name, profile, v)
 	}
 }
+
+// versions are the OCPP versions the interop suite runs.
+var versions = []ocpp.Version{ocpp.V16, ocpp.V201}
 
 // knownIssues are upstream defects of a reference, by adapter and fixture
 // sample, with the evidence. Such a scenario is skipped with the link; it
@@ -154,7 +168,14 @@ func (a adapter) securityProfile(t testing.TB, version string, profile int) {
 var knownIssues = map[string]string{
 	// ocpp.v16.call.SecurityEventNotification.tech_info has no default, so the
 	// upstream cannot send the optional techInfo left out.
-	"mobilityhouse/securityEventMinimal": "https://github.com/mobilityhouse/ocpp/blob/91f4f89140a2198dc5a300cfea88d947ac91ae28/ocpp/v16/call.py#L232-L236",
+	// ocpp-go v0.19.0: ResetResponse.StatusInfo has no omitempty, so the
+	// station answers "statusInfo": null, which the schema does not allow
+	// and go-ocpp's validation refuses.
+	"lorenzodonini/2.0.1/resetImmediate": "https://github.com/lorenzodonini/ocpp-go/blob/a1eec917af884db0585752f909a61893aa667480/ocpp2.0.1/provisioning/reset.go#L61-L64",
+	// ocpp-go v0.19.0: NotifyReportRequest.Tbc is a bool with omitempty, so
+	// "tbc": false is dropped from the request.
+	"lorenzodonini/2.0.1/notifyReport":       "https://github.com/lorenzodonini/ocpp-go/blob/a1eec917af884db0585752f909a61893aa667480/ocpp2.0.1/provisioning/notify_report.go#L98-L104",
+	"mobilityhouse/1.6/securityEventMinimal": "https://github.com/mobilityhouse/ocpp/blob/91f4f89140a2198dc5a300cfea88d947ac91ae28/ocpp/v16/call.py#L232-L236",
 }
 
 var seq atomic.Int64
@@ -175,14 +196,14 @@ type container struct {
 	port    int // the CSMS's port on the host's loopback; 0 for a station
 }
 
-// startServer runs the reference CSMS of a for OCPP 1.6 with its baseline
+// startServer runs the reference CSMS of a for version v with its baseline
 // fixture, published on a free loopback port, and waits until it is ready.
-func startServer(t testing.TB, a adapter, extra ...string) *container {
+func startServer(t testing.TB, a adapter, v ocpp.Version, extra ...string) *container {
 	t.Helper()
 	port := freePort(t)
 	c := &container{adapter: a, name: containerName(a), port: port}
 	args := append([]string{"run", "-d", "--name", c.name, "-p", fmt.Sprintf("127.0.0.1:%d:9000", port),
-		a.image, "server", "--version", "1.6"}, extra...)
+		a.image, "server", "--version", v.String()}, extra...)
 	c.start(t, args)
 	return c
 }
@@ -192,11 +213,11 @@ func startServer(t testing.TB, a adapter, extra ...string) *container {
 // The container reaches the host through the gateway alias, on Docker
 // Desktop and on Linux alike; the server must listen on all interfaces for
 // that, because on Linux the alias is the bridge address.
-func startStation(t testing.TB, a adapter, port int, extra ...string) *container {
+func startStation(t testing.TB, a adapter, v ocpp.Version, port int, extra ...string) *container {
 	t.Helper()
 	c := &container{adapter: a, name: containerName(a)}
 	args := append([]string{"run", "-d", "--name", c.name, "--add-host=host.docker.internal:host-gateway",
-		a.image, "client", "run", "--version", "1.6", "--url", fmt.Sprintf("ws://host.docker.internal:%d/ocpp", port)}, extra...)
+		a.image, "client", "run", "--version", v.String(), "--url", fmt.Sprintf("ws://host.docker.internal:%d/ocpp", port)}, extra...)
 	c.start(t, args)
 	return c
 }
@@ -304,18 +325,5 @@ func eventually(t testing.TB, timeout time.Duration, what string, cond func() bo
 			t.Fatalf("timed out waiting for %s", what)
 		}
 		time.Sleep(20 * time.Millisecond)
-	}
-}
-
-// TestReferences checks that the pinned images are the ocpp-interop release
-// the documentation says this version is qualified against.
-func TestReferences(t *testing.T) {
-	for _, a := range adapters(t) {
-		c := a.caps(t)
-		t.Logf("%s: ocpp-interop %s (contract %s), %s %s, %s", a.name, c.AdapterVersion, c.ContractVersion,
-			c.Upstream.Name, c.Upstream.Version, a.image)
-		if a.pinned && c.AdapterVersion != interopRelease {
-			t.Errorf("%s is pinned as ocpp-interop %s but reports %s", a.name, interopRelease, c.AdapterVersion)
-		}
 	}
 }

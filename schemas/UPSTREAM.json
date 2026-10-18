@@ -1,0 +1,49 @@
+{
+  "source": "https://openchargealliance.org/my-oca/ocpp/",
+  "documents": {
+    "ocpp16": {
+      "label": "OCPP 1.6 (all files \u0026 errata)",
+      "url": "https://openchargealliance.org/download/7b06ab293c68fb6b4f4ae0960e502579c1c5516aa2b7acf0fdcedba585b9ea7f",
+      "sha256": "2a1d80284ca60449e85951fc55bc0538b5d45bd6f97c6d9228745acacb52c11b",
+      "schemaFiles": 56
+    },
+    "ocpp16-security-whitepaper": {
+      "label": "OCPP 1.6 Security Whitepaper Edition 4",
+      "url": "https://openchargealliance.org/download/cd0eabc67e9b6ef5b6df2367f94bb3dd88b4898c5a2b90de5a1f794e077eaac9",
+      "sha256": "158b883e8ee712fd80fad3610b69fad355f7831d7a0ccdd996ce6b5452ce6859",
+      "schemaFiles": 22
+    },
+    "ocpp201": {
+      "label": "OCPP 2.0.1 Edition 4 (all files)",
+      "url": "https://openchargealliance.org/download/caaab79c63336ff203104d9940c8eba29adb7d324c384e0578f7f3b7265e03ac",
+      "sha256": "9e025b7d0ef45deb221a7b0bb24b6eb0d199dce8927e1512a8aa75419f511a64",
+      "schemaFiles": 128
+    },
+    "ocpp201-appendices": {
+      "label": "OCPP 2.0.1 Edition 4 Part 2 appendices v1.5",
+      "url": "https://openchargealliance.org/download/cdb814eddc8bfe738b80cb1a49fbea4fe491bb8a752611ec0974d28a9416db9d",
+      "sha256": "2a2f49b6138bc09d7467580639656bd738be0693e572d4c6a96313053df90780"
+    },
+    "ocpp201-errata": {
+      "label": "OCPP 2.0.1 Edition 4 Errata 2026-09",
+      "url": "https://openchargealliance.org/download/46b1a248048c0221159baf9f5947af523110728e8666795a4c757bb868dd38ac",
+      "sha256": "3f80639b8570575d551211b503dcba88c1583a73702be43f6a0866eb5a685007"
+    },
+    "ocpp21": {
+      "label": "OCPP 2.1 Edition 2 (all files)",
+      "url": "https://openchargealliance.org/download/f6531d9fc45e3603186edb68e78b11c281b260f71af967330aaa611bda4888da",
+      "sha256": "2774ada26a709e3bf8680ee6721b3b215b8bc345dc6d8979b4c6b3d77f3a1f69",
+      "schemaFiles": 181
+    },
+    "ocpp21-appendices": {
+      "label": "OCPP 2.1 Edition 2 Part 2 appendices v2.1",
+      "url": "https://openchargealliance.org/download/df7ff6282fb8223aac2ecddf479ec3f5e10008a409c19bfed88d760ce562462a",
+      "sha256": "3c14586d3da83a238587d6b45997a06c374675854ebf6b6f2603b0cf2883e681"
+    },
+    "ocpp21-errata": {
+      "label": "OCPP 2.1 Edition 2 Errata 2026-09",
+      "url": "https://openchargealliance.org/download/a164930cec4d71ccc0801617091a291fd833fdebfb682ec65c659b23e085d749",
+      "sha256": "c9279e5e9cbb6373951b666d22263b2ee79865387a987a7374a44c38e9915872"
+    }
+  }
+}

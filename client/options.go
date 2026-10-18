@@ -17,8 +17,6 @@ const (
 	DefaultResponseTimeout  = 30 * time.Second
 	DefaultMaxQueuedCalls   = 64
 	DefaultMaxMessageSize   = 64 << 10
-	DefaultReconnectMin     = time.Second
-	DefaultReconnectMax     = 2 * time.Minute
 )
 
 // Option configures a Client.
@@ -32,6 +30,7 @@ type options struct {
 	tlsConfig          *tls.Config
 	httpClient         *http.Client
 	insecure           bool
+	compression        bool
 	reconnect          *Reconnect
 	stateHandler       func(ocpp.State, error)
 	logger             *slog.Logger
@@ -94,15 +93,35 @@ func WithInsecureTransport() Option {
 	return func(o *options) { o.insecure = true }
 }
 
-// Reconnect configures automatic reconnection. The delay before attempt n
-// is chosen at random between MinDelay and min(MaxDelay, MinDelay·2ⁿ)
-// (exponential backoff with jitter).
+// WithCompression offers WebSocket compression (RFC 7692 permessage-deflate)
+// in the handshake. OCPP 2.x makes it optional for a charging station and
+// recommends it, to reduce mobile data; a CSMS must support it. The message
+// size limit applies after decompression.
+func WithCompression() Option { return func(o *options) { o.compression = true } }
+
+// Reconnect configures automatic reconnection, with the back-off that OCPP
+// 2.x Part 4 §5.4 requires of a charging station, configured by the device
+// model variables of OCPPCommCtrlr that its fields are named after. The
+// delay before reconnection attempt n (1, 2, …) is
+//
+//	WaitMinimum · 2^min(n-1, RepeatTimes) + a random value in [0, RandomRange]
+//
+// OCPP 1.6 defines no such variables; the same algorithm is used.
 type Reconnect struct {
-	MinDelay time.Duration // zero: DefaultReconnectMin
-	MaxDelay time.Duration // zero: DefaultReconnectMax
+	WaitMinimum time.Duration // RetryBackOffWaitMinimum; must be positive
+	RandomRange time.Duration // RetryBackOffRandomRange; zero: no randomness
+	RepeatTimes int           // RetryBackOffRepeatTimes; zero: the delay never doubles
 }
 
-// WithReconnect makes the client redial after an open connection is lost,
+// DefaultReconnect are reconnection settings for when the CSMS has not
+// configured any: 5 s, plus up to 10 s at random, doubled up to 5 times
+// (at most 160 s plus the random part). The specifications give no
+// defaults; these are an implementation choice.
+var DefaultReconnect = Reconnect{WaitMinimum: 5 * time.Second, RandomRange: 10 * time.Second, RepeatTimes: 5}
+
+// WithReconnect makes the client redial after an open connection is lost
+// (OCPP 2.x Part 4 §5.4: a station SHALL reconnect), with the back-off r;
+// DefaultReconnect when the CSMS has configured none. It redials
 // until Close. Nothing is resent: requests that were pending fail with
 // ErrConnectionLost, and the application decides what to send again.
 func WithReconnect(r Reconnect) Option {

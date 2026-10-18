@@ -24,7 +24,7 @@ archive at <https://openchargealliance.org/protocols/archive/>.
 
 | Version | Documents | Errata | Status in go-ocpp |
 |---|---|---|---|
-| OCPP 1.6 | OCPP 1.6 specification and OCPP-J 1.6 (JSON over WebSocket), "OCPP 1.6 (all files & errata)" bundle | The errata sheets inside that bundle (OCA added sheets on 2025-04-30) | P0 |
+| OCPP 1.6 | OCPP 1.6 specification and OCPP-J 1.6 (2015-10-08), "OCPP 1.6 (all files & errata)" bundle | OCPP 1.6 and OCPP-J 1.6 errata sheets 2025-04 | P0 |
 | OCPP 1.6 security | Improved security for OCPP 1.6-J, Security Whitepaper **Edition 4** (2026-02-05) | — | P0 |
 | OCPP 2.0.1 | OCPP 2.0.1 **Edition 4**, Parts 0–6, Part 2 appendices v1.5 | **Edition 4 Errata 2026-09** | P0 |
 | OCPP 2.1 | OCPP 2.1 **Edition 2**, Parts 0–6, Part 2 appendices v2.1 | **Edition 2 Errata 2026-09** | P1 |
@@ -34,9 +34,12 @@ Excluded: OCPP 1.6 SOAP, OCPP 1.5 and older.
 OCPP 2.0.1 Edition 3 is also published as IEC 63584. go-ocpp follows the OCA
 edition, which is newer.
 
-When a document is downloaded, record its file name and SHA-256 in the table
-under [JSON schemas](#json-schemas), so that a build can show what it was
-generated from.
+What the repository is built from is recorded in
+[schemas/UPSTREAM.json](schemas/UPSTREAM.json) (archive labels, URLs and
+SHA-256). A weekly workflow (`spec-check.yml`) compares it with the newest
+documents on the OCA download page and opens an issue when the OCA has
+published new editions, errata or appendices; see
+[schemas/README.md](schemas/README.md#staying-current).
 
 ## Source rules
 
@@ -65,13 +68,13 @@ go-ocpp generates its message types and validators from the OCA JSON schemas
 
 | Version | Schema draft | Actions | Schema files | Source archive | SHA-256 |
 |---|---|---|---|---|---|
-| 1.6J core | draft-04 | 28 | 56 | OCPP 1.6 bundle | *to record* |
-| 1.6J security extensions | draft-04 | 11 | 22 | Security Whitepaper Ed. 4 bundle | *to record* |
-| 2.0.1 | draft-06 | 64 | 128 | 2.0.1 Edition 4 bundle | *to record* |
-| 2.1 | draft-06 | 91 | 181 | 2.1 Edition 2 bundle | *to record* |
+| 1.6J core | draft-04 | 28 | 56 | OCPP 1.6 bundle | see `schemas/README.md` |
+| 1.6J security extensions | draft-06 | 11 | 22 | Security Whitepaper Ed. 4 bundle | see `schemas/README.md` |
+| 2.0.1 | draft-06 | 64 | 128 | 2.0.1 Edition 4 bundle | see `schemas/README.md` |
+| 2.1 | draft-06 | 91 | 181 | 2.1 Edition 2 bundle | see `schemas/README.md` |
 
-The counts come from the schema sets as distributed in 2026 and must be
-re-checked against the downloaded archives:
+The counts are those of the OCA archives, whose schemas are committed
+unmodified under [schemas/](schemas/README.md):
 
 - 1.6J security extensions: SignCertificate, CertificateSigned,
   InstallCertificate, GetInstalledCertificateIds, DeleteCertificate, GetLog,
@@ -128,30 +131,37 @@ What this repository does, as decided by the maintainers on 2026-10-18
 
 ## Transport facts the engine depends on
 
-These are the rules the shared engine is designed around. Each is marked with
-how it has been established so far. "Secondary" means it is taken from
-another implementation's documentation and still has to be checked against
-the OCA text before the code that depends on it is merged.
+Checked on 2026-10-18 against the OCA texts: OCPP-J 1.6 (2015-10-08) with
+the OCPP-J 1.6 errata sheet 2025-04, OCPP 2.0.1 Edition 4 Part 4
+(2025-12-03), OCPP 2.1 Edition 2 Part 4 (2025-12-03), and the 2026-09
+errata of both.
 
-| # | Rule | Versions | Source | Verified |
+| # | Rule | Versions | Source | Code |
 |---|---|---|---|---|
-| T1 | WebSocket subprotocols `ocpp1.6`, `ocpp2.0.1`, `ocpp2.1`, negotiated with `Sec-WebSocket-Protocol`. The station offers in order of preference, the CSMS selects one | all | OCPP-J 1.6 §3; 2.x Part 4 §3 | Secondary |
-| T2 | The station identity is the last path segment of the connection URL | all | OCPP-J 1.6 §3.1; 2.x Part 4 §3.1 | Secondary |
-| T3 | Frames: CALL `[2, id, action, payload]`, CALLRESULT `[3, id, payload]`, CALLERROR `[4, id, code, description, details]` | all | OCPP-J 1.6 §4; 2.x Part 4 §4 | Secondary |
-| T4 | CALLRESULTERROR `[5, id, code, description, details]`: the receiver of a CALLRESULT reports that it cannot process it | 2.1 only | 2.1 Part 4 §4 | Secondary |
-| T5 | SEND `[6, id, action, payload]`: one way, no response of any kind, exempt from T6 | 2.1 only | 2.1 Part 4 §4.2.4 | Secondary |
-| T6 | At most one outstanding CALL per direction; the next CALL waits for the response or a timeout | all | OCPP-J 1.6 §4.1.1; 2.x Part 4 §4.1.1 | Secondary |
-| T7 | Message IDs are strings of at most 36 characters, unique per sender within a connection | all | OCPP-J 1.6 §4.1.3; 2.x Part 4 §4.1.4 | Secondary |
-| T8 | `permessage-deflate` (RFC 7692) is required for a CSMS and a Local Controller, optional for a Charging Station | 2.0.1, 2.1 | 2.x Part 4 §3.4 | Secondary |
-| T9 | An unknown message type ID is ignored rather than answered with `MessageTypeNotSupported` (errata reported as 2026-04, entries 1161 and 1163) | 2.0.1, 2.1 | Errata | **Unconfirmed** |
-| T10 | Security profiles 1–3 (Basic auth over plain WebSocket; TLS with Basic auth; TLS with client certificates) | 1.6 (whitepaper), 2.x | 1.6 Security Whitepaper; 2.x Part 2 §A | Secondary |
+| T1 | Subprotocols `ocpp1.6`, `ocpp2.0.1`, `ocpp2.1` in `Sec-WebSocket-Protocol`; the station lists the versions it supports, the CSMS selects one. A CSMS that agrees to none MUST complete the handshake without a `Sec-WebSocket-Protocol` header and then immediately close | all | OCPP-J 1.6 §3.1.2; 2.x Part 4 §3.1.2, §3.2 | `server.ServeHTTP` |
+| T2 | The station identity is the last path segment of the URL; at most 48 characters in 2.x. A CSMS that does not recognise it SHOULD answer HTTP 404 | all | OCPP-J 1.6 §3.1.1, §3.1.2; 2.x Part 4 §3.1.1, §3.2 | `server.ErrUnknownStation` |
+| T3 | Frames: CALL `[2, id, action, payload]`, CALLRESULT `[3, id, payload]`, CALLERROR `[4, id, code, description, details]`. A corrupt message gets a CALLERROR; when its message ID cannot be read, with ID `"-1"` (2.x) | all | OCPP-J 1.6 §4; 2.x Part 4 §4.2.3 | `ocppj`, `engine.malformed` |
+| T4 | CALLRESULTERROR `[5, id, code, description, details]`, with the ID of the CALLRESULT it answers | 2.1 | 2.1 Part 4 §4.1.4, §4.2.3 | Phase 6 |
+| T5 | SEND `[6, id, action, payload]`: never answered with CALLRESULT or CALLERROR, and may be sent at any time, also while a CALL is outstanding | 2.1 | 2.1 Part 4 §4.1.1, §4.2.4 | Phase 6 |
+| T6 | A CALL is not sent until the previous CALL has been answered or has timed out, per connection. 1.6 says SHOULD NOT, 2.x SHALL NOT. The timeout is the implementation's choice | all | OCPP-J 1.6 §4.1.1; 2.x Part 4 §4.1.1 | `engine` (ADR 0004) |
+| T7 | Message IDs: at most 36 characters; a CALL's ID differs from every earlier CALL ID of the same sender on any connection of the same identity; a response carries the ID of its CALL | all | OCPP-J 1.6 §4.1.3; 2.x Part 4 §4.1.4 | random UUIDs |
+| T8 | RFC 7692 compression: required for a CSMS (and a Local Controller), optional for a Charging Station | 2.0.1, 2.1 | 2.0.1 Part 4 §3.3; 2.1 Part 4 §3.4 | Phase 5 |
+| T9 | A message with an unknown message type number is ignored. `MessageTypeNotSupported` is deprecated, and the "extension fallback mechanism" of §4.4 is removed | 2.0.1, 2.1 | errata 1161 and 1163 (2026-02) to Part 4 §4.1.3, §4.3, §4.4 | `engine.malformed` |
+| T10 | Security profiles 1–3: Basic authentication over plain WebSocket; TLS with Basic authentication; TLS with client certificates. The user name is the identity, the CSMS SHALL check both user name and password | 1.6 (whitepaper), 2.x | 1.6 Security Whitepaper Ed. 4 A00.FR.204, .207, .324; 2.x Part 2 A00 | `client`, `server.BasicAuth` |
+| T11 | A station reconnects with a back-off of RetryBackOffWaitMinimum plus up to RetryBackOffRandomRange, doubling up to RetryBackOffRepeatTimes times | 2.0.1, 2.1 | 2.x Part 4 §5.4, §8 | `client.Reconnect` |
+
+Checking against the text changed three Phase 2 behaviours: a CSMS without a
+common subprotocol now completes the handshake and closes instead of
+answering HTTP 400 (T1); a corrupt frame on a 2.x connection whose ID cannot
+be read is answered with ID `"-1"` instead of being dropped (T3); and the
+client's reconnect back-off follows T11.
 
 ## Open verification items
 
-| ID | Item | Blocks |
+| ID | Item | Status |
 |---|---|---|
-| ~~S1~~ | ~~Licensing status of generated Go types, and whether to vendor the schemas verbatim~~ Settled 2026-10-18: generated code is MIT; schemas are vendored verbatim (ADR 0007) | — |
-| S2 | Version of the errata inside the current OCPP 1.6 bundle, and the OCPP-J 1.6 document edition | Phase 3 |
-| S3 | Changes in Security Whitepaper Edition 4 relative to Edition 3, in particular any new messages | Phase 3 (security) |
-| S4 | T1–T10 against the 2.0.1 Edition 4 and 2.1 Edition 2 Part 4 text and the 2026-09 errata. Phase 2 implements T1–T3, T6, T7 and T9 as listed; the OCA documents were not available while it was written, so the rules remain "secondary" until this check is done | Before Phase 3 is merged (T1–T3, T6, T7, T9); Phase 5 (T8); Phase 6 (T4, T5) |
-| S5 | Diff of the 2.1 Edition 1 schemas (as shipped by third parties) against the Edition 2 / 2026-09 schemas | Phase 6 |
+| S1 | Licensing of generated Go types, and vendoring the schemas | Settled 2026-10-18: generated code is MIT; schemas vendored verbatim (ADR 0007) |
+| S2 | Errata of the OCPP 1.6 bundle; OCPP-J 1.6 edition | Settled: OCPP-J 1.6 of 2015-10-08 with errata sheet 2025-04 (StopTransaction schema updated, `urn:OCPP:1.6:2025:04`, included in `schemas/ocpp16/core`) |
+| S3 | Changes in Security Whitepaper Edition 4 | Settled: no new or changed messages (the schemas are those of 2022); new requirements (TLS 1.0/1.1 removed, Central System Basic-auth checks, certificate renewal, firmware and log flows) are listed in its chapter 11 |
+| S4 | T1–T10 against the OCA text | Settled: see the table above |
+| S5 | 2.1 schemas of third parties against Edition 2 | Settled for go-ocpp: it uses the Edition 2 schemas from the OCA archive directly; the errata 2026-09 change no schema |

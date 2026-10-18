@@ -58,65 +58,70 @@ func waitSession(t *testing.T, srv *server.Server, id string) *server.Session {
 // reference, and every CSMS sample by go-ocpp, on one connection.
 func TestReferenceStationAgainstCSMS(t *testing.T) {
 	for _, a := range adapters(t) {
-		t.Run(a.name, func(t *testing.T) {
-			refCaps := a.role(t, "1.6", "client")
-			f := a.fixture(t)
-			id, _ := f.station()
-			d := newDispatcher(f, f.Answers.CSMS)
-			srv, port := newCSMS(t, server.WithHandler(ocpp.V16, d), server.WithoutAuthentication())
-			ref := startStation(t, a, port)
-			sess := waitSession(t, srv, id)
-			if sess.Version() != ocpp.V16 {
-				t.Fatalf("negotiated %v", sess.Version())
-			}
-			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-			defer cancel()
-
-			t.Run("from-station", func(t *testing.T) {
-				for _, name := range f.samplesFrom("station") {
-					s := f.Samples[name]
-					t.Run(name, func(t *testing.T) {
-						if evidence, ok := knownIssues[a.name+"/"+name]; ok {
-							t.Skipf("known upstream defect of %s: %s", a.name, evidence)
-						}
-						if !slices.Contains(refCaps.Sends, s.Action) {
-							t.Skipf("%s does not declare sending %s", a.name, s.Action)
-						}
-						r := ref.call(t, "", s.Action, s.Payload)
-						checkRefCall(t, f, s, r)
-						checkReceived(t, d, s)
-					})
+		for _, v := range versions {
+			t.Run(a.name+"/"+v.String(), func(t *testing.T) {
+				refCaps := a.role(t, v, "client")
+				f := a.fixture(t, v)
+				id, _ := f.station()
+				d := newDispatcher(f, f.Answers.CSMS, v)
+				srv, port := newCSMS(t, server.WithHandler(v, d), server.WithoutAuthentication())
+				ref := startStation(t, a, v, port)
+				sess := waitSession(t, srv, id)
+				if sess.Version() != v {
+					t.Fatalf("negotiated %v", sess.Version())
 				}
-			})
+				ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+				defer cancel()
 
-			t.Run("from-csms", func(t *testing.T) {
-				for _, name := range f.samplesFrom("csms") {
-					s := f.Samples[name]
-					t.Run(name, func(t *testing.T) {
-						var resp json.RawMessage
-						err := sess.Call(ctx, s.Action, s.Payload, &resp)
-						checkGoCall(t, f, s, resp, err)
-					})
-				}
-			})
+				t.Run("from-station", func(t *testing.T) {
+					for _, name := range f.samplesFrom("station") {
+						s := f.Samples[name]
+						t.Run(name, func(t *testing.T) {
+							if evidence, ok := knownIssues[a.name+"/"+v.String()+"/"+name]; ok {
+								t.Skipf("known upstream defect of %s: %s", a.name, evidence)
+							}
+							if !slices.Contains(refCaps.Sends, s.Action) {
+								t.Skipf("%s does not declare sending %s", a.name, s.Action)
+							}
+							r := ref.call(t, "", s.Action, s.Payload)
+							checkRefCall(t, f, s, r)
+							checkReceived(t, d, s)
+						})
+					}
+				})
 
-			t.Run("unknown-action", func(t *testing.T) {
-				err := sess.Call(ctx, "NoSuchAction", nil, nil)
-				var ce *ocpp.CallError
-				if !errors.As(err, &ce) || !noAnswerCodes[ce.Code] {
-					t.Fatalf("want CALLERROR NotImplemented or NotSupported, got %v", err)
-				}
-			})
+				t.Run("from-csms", func(t *testing.T) {
+					for _, name := range f.samplesFrom("csms") {
+						s := f.Samples[name]
+						t.Run(name, func(t *testing.T) {
+							if evidence, ok := knownIssues[a.name+"/"+v.String()+"/"+name]; ok {
+								t.Skipf("known upstream defect of %s: %s", a.name, evidence)
+							}
+							var resp json.RawMessage
+							err := sess.Call(ctx, s.Action, s.Payload, &resp)
+							checkGoCall(t, f, s, resp, err)
+						})
+					}
+				})
 
-			t.Run("close", func(t *testing.T) {
-				ref.stop(t)
-				select {
-				case <-sess.Done():
-				case <-time.After(15 * time.Second):
-					t.Fatal("the session did not end when the station closed")
-				}
+				t.Run("unknown-action", func(t *testing.T) {
+					err := sess.Call(ctx, "NoSuchAction", nil, nil)
+					var ce *ocpp.CallError
+					if !errors.As(err, &ce) || !noAnswerCodes[ce.Code] {
+						t.Fatalf("want CALLERROR NotImplemented or NotSupported, got %v", err)
+					}
+				})
+
+				t.Run("close", func(t *testing.T) {
+					ref.stop(t)
+					select {
+					case <-sess.Done():
+					case <-time.After(15 * time.Second):
+						t.Fatal("the session did not end when the station closed")
+					}
+				})
 			})
-		})
+		}
 	}
 }
 
@@ -124,22 +129,24 @@ func TestReferenceStationAgainstCSMS(t *testing.T) {
 // security profile 1 to a go-ocpp server that checks the fixture's password.
 func TestReferenceStationBasicAuth(t *testing.T) {
 	for _, a := range adapters(t) {
-		t.Run(a.name, func(t *testing.T) {
-			a.role(t, "1.6", "client")
-			a.securityProfile(t, "1.6", 1)
-			f := a.fixture(t)
-			id, password := f.station()
-			d := newDispatcher(f, f.Answers.CSMS)
-			auth := server.BasicAuth(func(ctx context.Context, station string) (string, bool) {
-				return password, station == id
+		for _, v := range versions {
+			t.Run(a.name+"/"+v.String(), func(t *testing.T) {
+				a.role(t, v, "client")
+				a.securityProfile(t, v, 1)
+				f := a.fixture(t, v)
+				id, password := f.station()
+				d := newDispatcher(f, f.Answers.CSMS, v)
+				auth := server.BasicAuth(func(ctx context.Context, station string) (string, bool) {
+					return password, station == id
+				})
+				srv, port := newCSMS(t, server.WithHandler(v, d), server.WithAuthenticator(auth))
+				startStation(t, a, v, port, "--security-profile", "1")
+				sess := waitSession(t, srv, id)
+				var resp json.RawMessage
+				if err := sess.Call(context.Background(), "ClearCache", json.RawMessage(`{}`), &resp); err != nil {
+					t.Fatalf("call over the authenticated connection: %v", err)
+				}
 			})
-			srv, port := newCSMS(t, server.WithHandler(ocpp.V16, d), server.WithAuthenticator(auth))
-			startStation(t, a, port, "--security-profile", "1")
-			sess := waitSession(t, srv, id)
-			var resp json.RawMessage
-			if err := sess.Call(context.Background(), "ClearCache", json.RawMessage(`{}`), &resp); err != nil {
-				t.Fatalf("call over the authenticated connection: %v", err)
-			}
-		})
+		}
 	}
 }

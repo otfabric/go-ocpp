@@ -12,9 +12,9 @@ Order: go-ocpp foundations → OCPP 1.6J → two interop adapters → OCPP 2.0.1
 | 0 | Research and architecture | **Done** (2026-10-18) |
 | 1 | Repository foundations | **Done** (2026-10-18). CI has not run on GitHub yet |
 | 2 | Shared OCPP-J engine | **Done**, except the check against the OCA text (S4) |
-| 3 | OCPP 1.6J | Open |
-| 4 | Initial interoperability (1.6J) | Open |
-| 5 | OCPP 2.0.1 | Open |
+| 3 | OCPP 1.6J | **Done** |
+| 4 | Initial interoperability (1.6J) | **Done** (ocpp-interop v0.0.1) |
+| 5 | OCPP 2.0.1 | **Done** (ocpp-interop v0.1.0) |
 | 6 | OCPP 2.1 | Open |
 | 7 | Production hardening | Open |
 | 8 | ocppctl | Open |
@@ -80,18 +80,23 @@ WebSockets, under `-race`, with no leaked goroutines.
 
 ## Phase 3 - OCPP 1.6J
 
-- [ ] Settle S2 and S3. Vendor the schemas under `schemas/` with their
-      LICENSE (ADR 0007) and record their checksums
-- [ ] `internal/gen` for draft-04: types, `Validate`, call functions,
-      handler interfaces, dispatchers, `coverage.json`
-- [ ] All 28 core and 11 security-extension actions
-- [ ] Hand-written rules that the schemas cannot express, each citing its
-      section
-- [ ] Round-trip and invalid-payload tests per message. Cross-check of
-      `Validate` against a reference validator
-- [ ] Security profiles 1–3 in client and server
-- [ ] Examples `station16` and `csms16`, run by `make examples`
-- [ ] e2e for every 1.6 action in its own direction
+- [x] Settle S2–S5 against the OCA archives; T1–T11 checked against the
+      text (three Phase 2 behaviours corrected). Schemas vendored under
+      `schemas/` with their LICENSE (ADR 0007) and SHA-256 sums
+- [x] `internal/gen` for draft-04 and draft-06: types, strict decoding,
+      `Validate`, call functions, handler interfaces, dispatchers,
+      `coverage.json`
+- [x] All 28 core and 11 security-extension actions
+- [ ] Hand-written rules that the schemas cannot express. None so far: the
+      rules found in the 1.6 text concern behaviour (what to answer, when to
+      send), which belongs to the application's handlers
+- [x] Round-trip and invalid-payload tests per message, cross-checked against
+      a reference validator (`internal/schematest`)
+- [x] Security profiles 1–3 in client and server (Phase 2)
+- [x] Example `examples/ocpp16` (both roles in one process, TLS + Basic),
+      run by `make examples`
+- [x] Every action through its call function and both dispatchers (package
+      tests); typed e2e over WebSocket in both directions
 
 Gate: every official 1.6J action is represented, validated and
 dispatchable. The behaviour an application must decide is left to its
@@ -126,16 +131,20 @@ implementations.
 
 ## Phase 5 - OCPP 2.0.1
 
-- [ ] S4 for T8 and T9. Generator for draft-06
-- [ ] All 64 actions. Device model types (component, variable, attributes)
-      without reducing them to strings
-- [ ] TransactionEvent semantics kept as in 2.0.1, with no mapping to 1.6
-- [ ] permessage-deflate on the server; decompressed-size limit
-- [ ] Certificate and security messages; security events
-- [ ] Examples `station201` and `csms201`
-- [ ] ocpp-interop: `lorenzodonini` adapter (Go, ocpp-go). Its documented
-      2.0.1 limitations are respected and recorded as capabilities
-- [ ] Interop matrix extended to 2.0.1 in both roles
+- [x] T8 and T9 confirmed; generator for draft-06
+- [x] All 64 actions. Device model types (`ComponentType`, `VariableType`,
+      `VariableAttributeType`, `VariableCharacteristicsType`, …) as the
+      schemas define them, not reduced to strings
+- [x] TransactionEvent as defined by 2.0.1, with no mapping to 1.6
+- [x] permessage-deflate on the server (always), optional on the client;
+      size limit after decompression
+- [x] Certificate and security messages, security events (as messages; key
+      and certificate storage stay with the application)
+- [x] Example `examples/ocpp201` (compression, device model, TransactionEvent)
+- [x] ocpp-interop: `lorenzodonini` adapter (Go, ocpp-go) and 2.0.1 in all
+      adapters (its Phase 5), released as ocpp-interop v0.1.0
+- [x] Interop matrix extended to 2.0.1 in both roles, with the third
+      reference, pinned to ocpp-interop v0.1.0 (INTEROPERABILITY.md)
 
 Gate: 2.0.1 message coverage is complete, and interop passes in both
 directions for the features the adapters support.

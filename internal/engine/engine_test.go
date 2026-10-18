@@ -367,10 +367,20 @@ func TestMalformedFrames(t *testing.T) {
 	}{{ocpp.V16, ocpp.FormationViolation}, {ocpp.V201, ocpp.RpcFrameworkError}} {
 		m := &countingMetrics{}
 		_, raw := rawPeer(t, tt.v, ocpp.DispatcherFunc(echo), func(c *Config) { c.Metrics = m })
-		// Dropped: no ID, unknown message type, a type the version lacks,
-		// a response to nothing.
+		// Frames whose message ID cannot be read: answered with ID "-1" in
+		// OCPP 2.x (Part 4 §4.2.3), dropped in 1.6, which defines no ID for
+		// them.
 		writeRaw(t, raw, `nonsense`)
 		writeRaw(t, raw, `[2,7,"Heartbeat",{}]`)
+		if tt.v != ocpp.V16 {
+			for range 2 {
+				if f := readFrame(t, raw, tt.v); f.Type != ocppj.CallError || f.ID != "-1" || f.ErrorCode != tt.code {
+					t.Fatalf("%s: got %+v, want CALLERROR %s with ID -1", tt.v, f, tt.code)
+				}
+			}
+		}
+		// Dropped: an unknown message type (errata 1161, 1163), a type the
+		// version lacks, a response to nothing.
 		writeRaw(t, raw, `[9,"a","Heartbeat",{}]`)
 		writeRaw(t, raw, `[6,"b","Heartbeat",{}]`)
 		writeRaw(t, raw, `[3,"c",{}]`)

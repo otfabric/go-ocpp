@@ -1,0 +1,164 @@
+name: Upstream specification check
+run-name: "Upstream specification check (${{ github.event_name }}) by @${{ github.actor }}"
+
+# Downloads the newest OCPP editions, errata and appendices from the Open
+# Charge Alliance with internal/specsync and compares them with what this
+# repository is built from (schemas/, schemas/UPSTREAM.json). When the OCA has
+# published something new, it opens (or refreshes) a tracking issue; nothing
+# is committed. The update itself stays manual: make schemas-sync gen, review,
+# and re-check SPECIFICATIONS.md against new errata.
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: spec-check
+  cancel-in-progress: false
+
+env:
+  ISSUE_LABEL: spec-update
+
+jobs:
+  check:
+    name: Compare vendored specifications with the OCA
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Download the newest OCA documents
+        run: make schemas-sync
+
+      - name: Regenerate the version packages
+        run: make gen
+
+      - name: Compare with the committed copies
+        id: diff
+        run: |
+          set -euo pipefail
+
+          # Record intent-to-add so files that are new upstream show up too.
+          git add --intent-to-add schemas ocpp16 ocpp201
+
+          changed=$(git diff --name-only -- schemas ocpp16 ocpp201)
+          if [ -z "${changed}" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "The vendored OCA documents match the newest published ones." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # Identifies this exact upstream state, so the same change is
+          # reported once even if the tracking issue is closed unresolved.
+          fingerprint=$(git diff -- schemas | sha256sum | cut -c1-16)
+
+          {
+            echo "### Documents"
+            echo
+            echo "| Document | Committed | Newest published |"
+            echo "|---|---|---|"
+            jq -r --slurpfile new schemas/UPSTREAM.json \
+              '.documents | to_entries[] | select(.value.sha256 != $new[0].documents[.key].sha256)
+               | "| \(.key) | \(.value.label) | \($new[0].documents[.key].label) |"' \
+              <(git show HEAD:schemas/UPSTREAM.json)
+            echo
+            echo "### Files"
+            echo
+            echo "| File | Lines added | Lines removed |"
+            echo "|---|---:|---:|"
+            git diff --numstat -- schemas ocpp16 ocpp201 \
+              | awk -F'\t' '{ printf "| `%s` | %s | %s |\n", $3, $1, $2 }'
+          } > "$RUNNER_TEMP/spec-table.md"
+
+          if git diff --quiet -- schemas/ocpp16 schemas/ocpp201 schemas/ocpp21; then
+            schemas_changed=false
+          else
+            schemas_changed=true
+          fi
+
+          {
+            echo "changed=true"
+            echo "fingerprint=${fingerprint}"
+            echo "schemas_changed=${schemas_changed}"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## The OCA has published documents newer than the vendored ones"
+            echo
+            cat "$RUNNER_TEMP/spec-table.md"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open or refresh tracking issue
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FINGERPRINT: ${{ steps.diff.outputs.fingerprint }}
+          SCHEMAS_CHANGED: ${{ steps.diff.outputs.schemas_changed }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          marker="<!-- spec-fingerprint:${FINGERPRINT} -->"
+
+          {
+            echo "${marker}"
+            echo "The Open Charge Alliance has published OCPP documents newer than the ones this repository is built from ([download page](https://openchargealliance.org/my-oca/ocpp/))."
+            echo
+            cat "$RUNNER_TEMP/spec-table.md"
+            echo
+            if [ "${SCHEMAS_CHANGED}" = "true" ]; then
+              echo "**JSON schemas changed.** The generated message types change with them."
+              echo
+            else
+              echo "**No JSON schema changed**: new errata or appendices only. Errata can change normative requirements without touching a schema."
+              echo
+            fi
+            echo "### Update manually"
+            echo
+            echo '```sh'
+            echo "make schemas-sync gen"
+            echo "make check"
+            echo '```'
+            echo
+            echo "- Review the schema and generated-code diff: new or removed fields, enumeration values, constraints."
+            echo "- Read the new errata and re-check the transport rules (T1–T11) and the implementation choices in \`SPECIFICATIONS.md\` and \`ARCHITECTURE.md\`."
+            echo "- Update the baseline table in \`SPECIFICATIONS.md\` and \`schemas/README.md\`."
+            echo
+            echo "Detected by [this workflow run](${RUN_URL}). Closing this issue without updating silences it until the OCA publishes again."
+          } > "$RUNNER_TEMP/issue-body.md"
+
+          gh label create "${ISSUE_LABEL}" --color 0E8A16 \
+            --description "The OCA published newer OCPP documents; the vendored copies need a manual update" \
+            --force
+
+          # Already reported (open, or closed as "not now")? Then stay quiet.
+          reported=$(gh issue list --label "${ISSUE_LABEL}" --state all --limit 100 \
+            --search "\"spec-fingerprint:${FINGERPRINT}\" in:body" --json number --jq '.[0].number // empty')
+          if [ -n "${reported}" ]; then
+            echo "This upstream state (${FINGERPRINT}) is already tracked in #${reported}; nothing to do." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # Upstream moved again while an issue is still open: refresh it
+          # instead of opening a second one.
+          open=$(gh issue list --label "${ISSUE_LABEL}" --state open --limit 1 --json number --jq '.[0].number // empty')
+          if [ -n "${open}" ]; then
+            gh issue edit "${open}" --body-file "$RUNNER_TEMP/issue-body.md"
+            gh issue comment "${open}" --body "The OCA published again; the description above now reflects the current difference (${RUN_URL})."
+            echo "Refreshed tracking issue #${open}." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          url=$(gh issue create \
+            --title "Newer OCPP specification documents published by the OCA" \
+            --label "${ISSUE_LABEL}" \
+            --body-file "$RUNNER_TEMP/issue-body.md")
+          echo "Opened ${url}." | tee -a "$GITHUB_STEP_SUMMARY"

@@ -36,7 +36,7 @@ are added.
 | `OnConnectFailed(info, err)` | A client's connect fails, or the server refuses a connection (subprotocol, authentication, limits, handshake) |
 | `OnDisconnect(info, err)` | An open connection ends; `err` is nil after a local close |
 | `OnReconnectAttempt(info, n)` | Before a client's n-th redial |
-| `OnCallDone(info, action, d, err)` | An outgoing CALL ends: nil, `*CallError`, `ErrTimeout`, or a connection error |
+| `OnCallDone(info, action, d, err)` | An outgoing CALL ends: nil, `*CallError`, `ErrTimeout`, a connection error, or a response that failed validation |
 | `OnCallHandled(info, action, d, err)` | An incoming CALL has been answered |
 | `OnProtocolError(info, err)` | A malformed frame, or a response matching no pending CALL (`ErrUnexpectedResponse`) |
 
