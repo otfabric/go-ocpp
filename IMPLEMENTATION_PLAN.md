@@ -15,7 +15,7 @@ Order: go-ocpp foundations → OCPP 1.6J → two interop adapters → OCPP 2.0.1
 | 3 | OCPP 1.6J | **Done** |
 | 4 | Initial interoperability (1.6J) | **Done** (ocpp-interop v0.0.1) |
 | 5 | OCPP 2.0.1 | **Done** (ocpp-interop v0.1.0) |
-| 6 | OCPP 2.1 | Open |
+| 6 | OCPP 2.1 | In progress |
 | 7 | Production hardening | Open |
 | 8 | ocppctl | Open |
 
@@ -151,14 +151,18 @@ directions for the features the adapters support.
 
 ## Phase 6 - OCPP 2.1
 
-- [ ] S5: diff the schemas against Edition 2 and the 2026-09 errata
-- [ ] CALLRESULTERROR and SEND in `ocppj` and the engine (T4, T5)
-- [ ] All 91 actions; periodic event streams, DER, tariffs, battery swap,
-      bidirectional charging
-- [ ] Interop against the 2.1-capable adapters (ChargeTimeEU and, after
-      verification, Mobility House 2.1.0). A feature with only one
+- [x] S5: the schemas are the Edition 2 archive's; the 2026-09 errata change
+      none (SPECIFICATIONS.md)
+- [x] CALLRESULTERROR and SEND in `ocppj` and the engine (T4, T5);
+      `ocpp.Sender`, `ocpp.SendDispatcher`, `Client.Send`, `Session.Send`
+- [x] All 91 actions generated (`ocpp21`), with the 27 new directions taken
+      from Part 2; NotifyPeriodicEventStream as a SEND-only action
+- [x] e2e: typed 2.1 in both roles, a SEND while a CALL is outstanding, a
+      CALLRESULTERROR for an invalid response
+- [x] Example `examples/ocpp21` (version negotiation, periodic event stream)
+- [ ] Interop against the 2.1-capable adapters (ocpp-interop v0.2.0:
+      Mobility House 2.1.0 and ChargeTimeEU). A feature with only one
       independent implementation is reported as such
-- [ ] Examples `station21` and `csms21`
 
 Gate: 2.1 coverage is documented, and every claimed feature has been
 verified against an independent implementation.

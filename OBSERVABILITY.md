@@ -36,9 +36,9 @@ are added.
 | `OnConnectFailed(info, err)` | A client's connect fails, or the server refuses a connection (subprotocol, authentication, limits, handshake) |
 | `OnDisconnect(info, err)` | An open connection ends; `err` is nil after a local close |
 | `OnReconnectAttempt(info, n)` | Before a client's n-th redial |
-| `OnCallDone(info, action, d, err)` | An outgoing CALL ends: nil, `*CallError`, `ErrTimeout`, a connection error, or a response that failed validation |
-| `OnCallHandled(info, action, d, err)` | An incoming CALL has been answered |
-| `OnProtocolError(info, err)` | A malformed frame, or a response matching no pending CALL (`ErrUnexpectedResponse`) |
+| `OnCallDone(info, action, d, err)` | An outgoing CALL ends: nil, `*CallError`, `ErrTimeout`, a connection error, or a response that failed validation. An outgoing SEND (2.1) ends when it is queued |
+| `OnCallHandled(info, action, d, err)` | An incoming CALL has been answered, or an incoming SEND (2.1) handled |
+| `OnProtocolError(info, err)` | A malformed frame, a response matching no pending CALL (`ErrUnexpectedResponse`), or a CALLRESULTERROR received (2.1) |
 
 Every callback receives the station identity in `ConnInfo`. Labelling by it
 gives one series per station: the cardinality is the application's choice.

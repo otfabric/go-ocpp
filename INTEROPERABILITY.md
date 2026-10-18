@@ -91,6 +91,7 @@ passed.
 
 ### Not covered yet
 
-- OCPP 2.1: Phase 6.
+- OCPP 2.1: the library implements it (Phase 6); the matrix gains it with
+  ocpp-interop v0.2.0, whose adapters add 2.1.
 - Compression against the references.
 - TLS (security profiles 2 and 3): not yet in ocpp-interop.

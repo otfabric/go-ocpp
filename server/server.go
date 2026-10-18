@@ -400,6 +400,11 @@ func (s *Session) Call(ctx context.Context, action string, req, resp any) error 
 	return s.ep.Call(ctx, action, req, resp)
 }
 
+// Send sends a SEND to the station (OCPP 2.1; see ocpp.Sender).
+func (s *Session) Send(ctx context.Context, action string, req any) error {
+	return s.ep.Send(ctx, action, req)
+}
+
 // Close closes the connection to the station.
 func (s *Session) Close() error { return s.ep.Close() }
 
@@ -411,4 +416,7 @@ func (s *Session) Done() <-chan struct{} { return s.ep.Done() }
 // is nil while the session runs.
 func (s *Session) Err() error { return s.ep.Err() }
 
-var _ ocpp.Peer = (*Session)(nil)
+var (
+	_ ocpp.Peer   = (*Session)(nil)
+	_ ocpp.Sender = (*Session)(nil)
+)

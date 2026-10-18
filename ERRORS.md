@@ -26,10 +26,10 @@ Errors are wrapped with detail. Test for them with `errors.Is` and
 | `ErrTimeout` | No response to a CALL arrived within the response timeout |
 | `ErrBusy` | The queue of calls waiting for the single outgoing slot is full |
 | `ErrWrongDirection` | A call function is used for an action the connection's role does not send |
-| `ErrUnsupportedVersion` | No common version could be negotiated |
+| `ErrUnsupportedVersion` | No common version could be negotiated; a call function of another version's package was used on the connection; `Send` on a connection that is not OCPP 2.1 |
 | `ErrProtocol` | A response could not be decoded into `resp`; also reported through metrics for frames that violate OCPP-J |
 | `ErrUnexpectedResponse` | Reported through `Metrics.OnProtocolError` for late, duplicate or unknown responses; never returned by a call |
-| `ErrInvalidMessage` | A request (before sending) or a response (on arrival) does not conform to its schema; wrapped by every `*ValidationError`. A response failing validation is also wrapped in `ErrProtocol` |
+| `ErrInvalidMessage` | A request (before sending) or a response (on arrival) does not conform to its schema; wrapped by every `*ValidationError`. A response failing validation is also wrapped in `ErrProtocol`; on OCPP 2.1 it is also answered with a CALLRESULTERROR |
 | `ErrInvalidOption` | A constructor was given an invalid option |
 
 Package `server` adds:

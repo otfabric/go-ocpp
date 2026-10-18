@@ -80,7 +80,21 @@ Changed after checking the OCA text (SPECIFICATIONS.md, T1–T11):
   back-off of 2.x Part 4 §5.4, with `client.DefaultReconnect`
 - `client.Client.Role` and `server.Session.Role`
 
+Phase 6 (OCPP 2.1):
+
+- Package `ocpp21`: all 91 actions of OCPP 2.1 Edition 2, typed and
+  validated, with call functions, handler interfaces and dispatchers for
+  both roles, a coverage manifest and a fuzz target
+- SEND: `ocpp.Sender` (`Client.Send`, `Session.Send`) and
+  `ocpp.SendDispatcher`; NotifyPeriodicEventStream is sent with a call
+  function returning only an error, and is never answered. A SEND does not
+  wait for the outgoing CALL slot
+- CALLRESULTERROR: on 2.1 a response that fails decoding or validation is
+  answered with one; one received is logged and counted
+- CALLERROR descriptions are cut to 255 characters on 2.x
+- Example `examples/ocpp21`; end-to-end tests for 2.1
+
 ### Known limitations
 
-- CALLRESULTERROR and SEND (OCPP 2.1) are dropped (Phase 6).
-- OCPP 2.1 messages (Phase 6).
+- OCPP 2.1 has not yet been tested against independent implementations
+  (ocpp-interop v0.2.0).

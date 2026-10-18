@@ -81,6 +81,7 @@ type Endpoint struct {
 
 	results  chan []byte      // CALLRESULT and CALLERROR frames to write
 	calls    chan []byte      // CALL frames to write
+	sends    chan []byte      // SEND frames to write (2.1); they do not wait for the CALL slot
 	incoming chan ocppj.Frame // CALLs to dispatch
 
 	startOnce    sync.Once
@@ -138,6 +139,7 @@ func New(conn transport.Conn, cfg Config) *Endpoint {
 		slot:     make(chan struct{}, 1),
 		results:  make(chan []byte, 8),
 		calls:    make(chan []byte, 1),
+		sends:    make(chan []byte, 16),
 		incoming: make(chan ocppj.Frame, 16),
 		ioDone:   make(chan struct{}),
 		done:     make(chan struct{}),

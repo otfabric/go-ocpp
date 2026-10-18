@@ -40,7 +40,7 @@ build: ## Build the library and the examples into ./bin
 	done
 
 # The self-contained examples: each starts both sides and exits by itself.
-RUN_EXAMPLES := ocpp16 ocpp201
+RUN_EXAMPLES := ocpp16 ocpp201 ocpp21
 
 examples: ## Run the self-contained examples (each must exit successfully)
 	@for e in $(RUN_EXAMPLES); do \
@@ -121,7 +121,7 @@ cover: coverage ## Open coverage report in browser
 # Each entry is <package dir>:<fuzz target>. The dispatchers of the version
 # packages are added in Phases 3, 5 and 6.
 FUZZTIME ?= 30s
-FUZZ_TARGETS := ocppj:FuzzDecode ocpp16:FuzzDispatch ocpp201:FuzzDispatch
+FUZZ_TARGETS := ocppj:FuzzDecode ocpp16:FuzzDispatch ocpp201:FuzzDispatch ocpp21:FuzzDispatch
 fuzz: ## Run the fuzz targets for FUZZTIME each (default 30s)
 	@echo "Fuzzing (FUZZTIME=$(FUZZTIME))"
 	@for t in $(FUZZ_TARGETS); do \
@@ -152,17 +152,18 @@ test-interop: ## Run the interop suite against the ocpp-interop reference images
 interop: test-interop ## Alias for test-interop
 
 gen: ## Generate the version packages from the OCA schemas (internal/gen)
-	@echo "Generating ocpp16 and ocpp201"
-	@go generate ./ocpp16 ./ocpp201
+	@echo "Generating ocpp16, ocpp201 and ocpp21"
+	@go generate ./ocpp16 ./ocpp201 ./ocpp21
 
 GENERATED := ocpp16/zz_generated_types.go ocpp16/zz_generated_actions.go ocpp16/coverage.json \
-	ocpp201/zz_generated_types.go ocpp201/zz_generated_actions.go ocpp201/coverage.json
+	ocpp201/zz_generated_types.go ocpp201/zz_generated_actions.go ocpp201/coverage.json \
+	ocpp21/zz_generated_types.go ocpp21/zz_generated_actions.go ocpp21/coverage.json
 
 gen-check: ## Fail if regenerating changes the generated files (they are then updated)
 	@echo "Checking the generated code"
 	@tmp="$$(mktemp -d)"; \
 	for f in $(GENERATED); do mkdir -p "$$tmp/$$(dirname $$f)"; cp "$$f" "$$tmp/$$f"; done; \
-	go generate ./ocpp16 ./ocpp201 || exit 1; \
+	go generate ./ocpp16 ./ocpp201 ./ocpp21 || exit 1; \
 	stale=""; for f in $(GENERATED); do cmp -s "$$f" "$$tmp/$$f" || stale="$$stale $$f"; done; \
 	rm -rf "$$tmp"; \
 	if [ -n "$$stale" ]; then echo "Generated code was out of date:$$stale (now regenerated: review and commit)"; exit 1; fi

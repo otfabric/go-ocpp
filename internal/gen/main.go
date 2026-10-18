@@ -41,7 +41,10 @@ func run(version, pkg string, dirs []string, out string) error {
 		typeNames[name] = true
 	}
 	for _, msg := range m.Messages {
-		typeNames[msg.Request.Name], typeNames[msg.Response.Name] = true, true
+		typeNames[msg.Request.Name] = true
+		if msg.Response != nil {
+			typeNames[msg.Response.Name] = true
+		}
 	}
 	if err := checkNames(m); err != nil {
 		return err
@@ -89,7 +92,11 @@ func checkNames(m *model) error {
 		return nil
 	}
 	for _, msg := range m.Messages {
-		for id, what := range map[string]string{msg.Action: "a call function", msg.Request.Name: "a request type", msg.Response.Name: "a response type"} {
+		ids := map[string]string{msg.Action: "a call function", msg.Request.Name: "a request type"}
+		if msg.Response != nil {
+			ids[msg.Response.Name] = "a response type"
+		}
+		for id, what := range ids {
 			if err := add(id, what); err != nil {
 				return err
 			}

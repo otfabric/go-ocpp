@@ -221,20 +221,156 @@ func TestFinishOnce(t *testing.T) {
 	}
 }
 
-// CALLRESULTERROR and SEND (OCPP 2.1) are dropped until Phase 6, and the
-// connection stays usable.
-func TestOCPP21FramesDropped(t *testing.T) {
+// sendDispatcher handles CALLs with echo and records SENDs.
+type sendDispatcher struct {
+	got chan string
+	err error
+}
+
+func (d sendDispatcher) Dispatch(ctx context.Context, p ocpp.Peer, action string, payload json.RawMessage) (json.RawMessage, error) {
+	return echo(ctx, p, action, payload)
+}
+
+func (d sendDispatcher) DispatchSend(ctx context.Context, p ocpp.Peer, action string, payload json.RawMessage) error {
+	d.got <- action + " " + string(payload)
+	return d.err
+}
+
+// An incoming SEND (2.1) goes to DispatchSend and is never answered, also
+// when it fails or there is no SEND handler.
+func TestIncomingSend(t *testing.T) {
+	checkNoLeak(t)
+	m := &countingMetrics{}
+	d := sendDispatcher{got: make(chan string, 4), err: errors.New("not now")}
+	_, raw := rawPeer(t, ocpp.V21, d, func(c *Config) { c.Metrics = m })
+	writeRaw(t, raw, `[6,"s1","NotifyPeriodicEventStream",{"id":1}]`)
+	if got := <-d.got; got != `NotifyPeriodicEventStream {"id":1}` {
+		t.Fatalf("dispatched %q", got)
+	}
+	expectNone(t, raw, 50*time.Millisecond)
+	// Without a SendDispatcher.
+	_, raw2 := rawPeer(t, ocpp.V21, ocpp.DispatcherFunc(echo), nil)
+	writeRaw(t, raw2, `[6,"s2","NotifyPeriodicEventStream",{}]`)
+	writeRaw(t, raw2, `[2,"c","Heartbeat",{}]`)
+	if f := readFrame(t, raw2, ocpp.V21); f.ID != "c" {
+		t.Fatalf("a SEND was answered: %+v", f)
+	}
+}
+
+// An incoming CALLRESULTERROR is reported, not answered.
+func TestIncomingCallResultError(t *testing.T) {
 	checkNoLeak(t)
 	m := &countingMetrics{}
 	_, raw := rawPeer(t, ocpp.V21, ocpp.DispatcherFunc(echo), func(c *Config) { c.Metrics = m })
-	writeRaw(t, raw, `[6,"a","NotifyPeriodicEventStream",{}]`)
-	writeRaw(t, raw, `[5,"b","GenericError","",{}]`)
+	writeRaw(t, raw, `[5,"r1","FormatViolation","bad response",{}]`)
 	writeRaw(t, raw, `[2,"c","Heartbeat",{}]`)
-	if f := readFrame(t, raw, ocpp.V21); f.Type != ocppj.CallResult || f.ID != "c" {
+	if f := readFrame(t, raw, ocpp.V21); f.ID != "c" {
 		t.Fatalf("got %+v", f)
 	}
-	if m.protocolErrors.Load() != 2 {
-		t.Fatalf("protocol errors %d, want 2", m.protocolErrors.Load())
+	if m.protocolErrors.Load() != 1 {
+		t.Fatalf("protocol errors %d, want 1", m.protocolErrors.Load())
+	}
+}
+
+// Send writes a SEND frame without waiting for an outstanding CALL.
+func TestOutgoingSend(t *testing.T) {
+	checkNoLeak(t)
+	e, raw := rawPeer(t, ocpp.V21, nil, func(c *Config) {
+		c.CanSend = func(action string) bool { return action != "Reset" }
+	})
+	ctx := context.Background()
+	pending := make(chan error, 1)
+	go func() { pending <- e.Call(ctx, "Heartbeat", nil, nil) }()
+	call := readFrame(t, raw, ocpp.V21)
+	if err := e.Send(ctx, "NotifyPeriodicEventStream", map[string]int{"id": 7}); err != nil {
+		t.Fatal(err)
+	}
+	if f := readFrame(t, raw, ocpp.V21); f.Type != ocppj.Send || f.Action != "NotifyPeriodicEventStream" || string(f.Payload) != `{"id":7}` {
+		t.Fatalf("got %+v", f)
+	}
+	writeRaw(t, raw, `[3,"`+call.ID+`",{}]`)
+	if err := <-pending; err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Send(ctx, "Reset", nil); !errors.Is(err, ocpp.ErrWrongDirection) {
+		t.Fatalf("direction: %v", err)
+	}
+	if err := e.Send(ctx, "X", make(chan int)); err == nil {
+		t.Fatal("an unmarshallable SEND was accepted")
+	}
+	done, cancel := context.WithCancel(ctx)
+	cancel()
+	for range 20 { // fill the queue: nobody reads any more
+		_ = e.Send(ctx, "NotifyPeriodicEventStream", nil)
+	}
+	_ = e.Send(done, "NotifyPeriodicEventStream", nil)
+	_ = e.Close()
+	if err := e.Send(ctx, "NotifyPeriodicEventStream", nil); !errors.Is(err, ocpp.ErrClosed) {
+		t.Fatalf("after close: %v", err)
+	}
+
+	old, _ := rawPeer(t, ocpp.V201, nil, nil)
+	if err := old.Send(ctx, "NotifyPeriodicEventStream", nil); !errors.Is(err, ocpp.ErrUnsupportedVersion) {
+		t.Fatalf("SEND on 2.0.1: %v", err)
+	}
+}
+
+type validated struct {
+	N int `json:"n"`
+}
+
+func (v *validated) Validate() error {
+	if v.N < 0 {
+		return &ocpp.ValidationError{Code: ocpp.PropertyConstraintViolation, Field: "n", Reason: "below the minimum 0"}
+	}
+	return nil
+}
+
+// A CALLRESULT that cannot be processed is answered with a CALLRESULTERROR
+// on 2.1, and only reported to the caller on earlier versions.
+func TestCallResultErrorSent(t *testing.T) {
+	checkNoLeak(t)
+	for _, tt := range []struct {
+		v      ocpp.Version
+		answer string
+		code   ocpp.ErrorCode
+	}{
+		{ocpp.V21, `{"n":-1}`, ocpp.PropertyConstraintViolation},
+		{ocpp.V21, `{"n":"x"}`, ocpp.FormatViolation},
+		{ocpp.V201, `{"n":-1}`, ""},
+	} {
+		e, raw := rawPeer(t, tt.v, nil, nil)
+		done := make(chan error, 1)
+		go func() { done <- e.Call(context.Background(), "GetThing", nil, &validated{}) }()
+		f := readFrame(t, raw, tt.v)
+		writeRaw(t, raw, `[3,"`+f.ID+`",`+tt.answer+`]`)
+		if err := <-done; !errors.Is(err, ocpp.ErrProtocol) {
+			t.Fatalf("%s %s: %v", tt.v, tt.answer, err)
+		}
+		if tt.code == "" {
+			expectNone(t, raw, 50*time.Millisecond)
+			continue
+		}
+		r := readFrame(t, raw, tt.v)
+		if r.Type != ocppj.CallResultError || r.ID != f.ID || r.ErrorCode != tt.code {
+			t.Fatalf("%s %s: got %+v", tt.v, tt.answer, r)
+		}
+	}
+}
+
+// Error descriptions are cut to 255 characters on 2.x, not on 1.6.
+func TestDescriptionLimit(t *testing.T) {
+	checkNoLeak(t)
+	long := strings.Repeat("é", 300)
+	d := ocpp.DispatcherFunc(func(context.Context, ocpp.Peer, string, json.RawMessage) (json.RawMessage, error) {
+		return nil, ocpp.NewCallError(ocpp.GenericError, long)
+	})
+	for v, want := range map[ocpp.Version]int{ocpp.V201: 255, ocpp.V16: 300} {
+		_, raw := rawPeer(t, v, d, nil)
+		writeRaw(t, raw, `[2,"x","Anything",{}]`)
+		if f := readFrame(t, raw, v); len([]rune(f.Description)) != want {
+			t.Errorf("%s: description of %d characters, want %d", v, len([]rune(f.Description)), want)
+		}
 	}
 }
 

@@ -8,6 +8,8 @@ package main
 // cases of OCPP 2.0.1 Edition 4 Part 2. Part 2 once says CustomerInformation
 // is "sent by the Charging Station to the CSMS"; its use case (N09) and the
 // response sent back by the Charging Station make it a CSMS request, as here.
+// OCPP 2.1 Edition 2 keeps every 2.0.1 action and adds the ones in
+// directions21, taken from its Part 2 in the same way.
 const (
 	fromStation = "station"
 	fromCSMS    = "csms"
@@ -61,4 +63,32 @@ var directions = map[string]map[string]string{
 		"SetVariableMonitoring": fromCSMS, "SetVariables": fromCSMS, "TriggerMessage": fromCSMS,
 		"UnlockConnector": fromCSMS, "UnpublishFirmware": fromCSMS, "UpdateFirmware": fromCSMS,
 	},
+}
+
+// directions21 holds the actions OCPP 2.1 adds to 2.0.1.
+// NotifyPeriodicEventStream is a SEND (Part 4 §4.2.4): it has no response.
+var directions21 = map[string]string{
+	"BatterySwap": fromStation, "ClosePeriodicEventStream": fromStation,
+	"GetCertificateChainStatus": fromStation, "NotifyDERAlarm": fromStation,
+	"NotifyDERStartStop": fromStation, "NotifyPeriodicEventStream": fromStation,
+	"NotifyPriorityCharging": fromStation, "NotifySettlement": fromStation,
+	"OpenPeriodicEventStream": fromStation, "PullDynamicScheduleUpdate": fromStation,
+	"ReportDERControl": fromStation, "VatNumberValidation": fromStation,
+
+	"AFRRSignal": fromCSMS, "AdjustPeriodicEventStream": fromCSMS, "ChangeTransactionTariff": fromCSMS,
+	"ClearDERControl": fromCSMS, "ClearTariffs": fromCSMS, "GetDERControl": fromCSMS,
+	"GetPeriodicEventStream": fromCSMS, "GetTariffs": fromCSMS, "NotifyAllowedEnergyTransfer": fromCSMS,
+	"NotifyWebPaymentStarted": fromCSMS, "RequestBatterySwap": fromCSMS, "SetDERControl": fromCSMS,
+	"SetDefaultTariff": fromCSMS, "UpdateDynamicSchedule": fromCSMS, "UsePriorityCharging": fromCSMS,
+}
+
+func init() {
+	d := map[string]string{}
+	for a, from := range directions["2.0.1"] {
+		d[a] = from
+	}
+	for a, from := range directions21 {
+		d[a] = from
+	}
+	directions["2.1"] = d
 }

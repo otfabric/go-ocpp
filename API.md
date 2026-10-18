@@ -49,6 +49,15 @@ type Dispatcher interface {
     Dispatch(ctx context.Context, p Peer, action string, payload json.RawMessage) (json.RawMessage, error)
 }
 type DispatcherFunc func(ctx context.Context, p Peer, action string, payload json.RawMessage) (json.RawMessage, error)
+
+// OCPP 2.1 SEND: implemented by *client.Client and *server.Session.
+type Sender interface {
+    Send(ctx context.Context, action string, req any) error
+}
+// Implemented by a Dispatcher that also receives SENDs (the ocpp21 dispatchers do).
+type SendDispatcher interface {
+    DispatchSend(ctx context.Context, p Peer, action string, payload json.RawMessage) error
+}
 ```
 
 - `req` is marshalled with `encoding/json`. A `json.RawMessage` is sent as is,
@@ -61,6 +70,12 @@ type DispatcherFunc func(ctx context.Context, p Peer, action string, payload jso
   is sent as is. Anything else is sent as `InternalError` without its text.
 - A handler's context ends when the connection closes. A handler may call
   the peer (`p.Call`) while it handles a CALL.
+- `Send` (OCPP 2.1 only; `ErrUnsupportedVersion` otherwise) queues a SEND
+  and returns: nothing comes back. It does not wait for the outgoing CALL
+  slot. `DispatchSend` is called for incoming SENDs, in arrival order with
+  the CALLs; its error is logged and counted, never sent.
+- On 2.1 a CALLRESULT that fails decoding or `Validate` is answered with a
+  CALLRESULTERROR, and the call returns the error.
 
 ### CALLERROR
 

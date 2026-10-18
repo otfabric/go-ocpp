@@ -35,7 +35,8 @@ func (e *Endpoint) readLoop() {
 			continue
 		}
 		switch f.Type {
-		case ocppj.Call:
+		case ocppj.Call, ocppj.Send:
+			// SENDs are handled in order with the CALLs, and never answered.
 			select {
 			case e.incoming <- f:
 			case <-e.ctx.Done():
@@ -43,11 +44,13 @@ func (e *Endpoint) readLoop() {
 			}
 		case ocppj.CallResult, ocppj.CallError:
 			e.respond(f)
-		default:
-			// CALLRESULTERROR and SEND (OCPP 2.1) are handled from Phase 6.
-			err := fmt.Errorf("%w: %s frames are not supported yet", ocpp.ErrProtocol, f.Type)
+		case ocppj.CallResultError:
+			// The peer could not process a CALLRESULT of ours (2.1 Part 4
+			// §4.2.3). There is nothing to answer; it is reported.
+			ce := &ocpp.CallError{Code: f.ErrorCode, Description: f.Description, Details: f.Details}
+			err := fmt.Errorf("%w: the peer could not process the response to message %q: %w", ocpp.ErrProtocol, f.ID, ce)
 			e.cfg.Metrics.OnProtocolError(e.cfg.Info, err)
-			e.log.Warn("frame dropped", "message_id", f.ID, "error", err)
+			e.log.Warn("response refused by the peer", "message_id", f.ID, "error_code", string(f.ErrorCode), "error", err)
 		}
 	}
 }
@@ -81,7 +84,7 @@ func (e *Endpoint) malformed(err error) {
 	}
 	e.log.Warn("malformed frame answered with CALLERROR", "message_id", id, "error", err)
 	e.sendResult(ocppj.Frame{Type: ocppj.CallError, ID: id,
-		ErrorCode: ocppj.RPCErrorCode(e.cfg.Info.Version), Description: de.Reason})
+		ErrorCode: ocppj.RPCErrorCode(e.cfg.Info.Version), Description: e.limit(de.Reason)})
 }
 
 func (e *Endpoint) writeLoop() {
@@ -94,6 +97,7 @@ func (e *Endpoint) writeLoop() {
 			select {
 			case data = <-e.results:
 			case data = <-e.calls:
+			case data = <-e.sends:
 			case <-e.ctx.Done():
 				return
 			}
@@ -128,12 +132,47 @@ func (e *Endpoint) dispatchLoop() {
 		select {
 		case f := <-e.incoming:
 			e.inHandler.Store(true)
-			e.handle(f)
+			if f.Type == ocppj.Send {
+				e.handleSend(f)
+			} else {
+				e.handle(f)
+			}
 			e.inHandler.Store(false)
 		case <-e.ctx.Done():
 			return
 		}
 	}
+}
+
+// handleSend runs the dispatcher for one incoming SEND (2.1). A SEND is
+// never answered (2.1 Part 4 §4.2.4): errors are logged and counted only.
+func (e *Endpoint) handleSend(f ocppj.Frame) {
+	start := time.Now()
+	info := ocpp.CallInfo{ConnInfo: e.cfg.Info, Action: f.Action, MessageID: f.ID, Direction: ocpp.Incoming}
+	run := func(ctx context.Context) (err error) {
+		defer func() {
+			if r := recover(); r != nil {
+				err = fmt.Errorf("handler panic: %v", r)
+			}
+		}()
+		sd, ok := e.cfg.Dispatcher.(ocpp.SendDispatcher)
+		if !ok {
+			return fmt.Errorf("no handler for SEND messages")
+		}
+		return sd.DispatchSend(ctx, e.cfg.Peer, f.Action, f.Payload)
+	}
+	var err error
+	if e.cfg.HandlerInterceptor != nil {
+		err = e.cfg.HandlerInterceptor(e.ctx, info, run)
+	} else {
+		err = run(e.ctx)
+	}
+	e.cfg.Metrics.OnCallHandled(e.cfg.Info, f.Action, time.Since(start), err)
+	if err != nil {
+		e.log.Warn("SEND not processed", "action", f.Action, "message_id", f.ID, "error", err)
+		return
+	}
+	e.log.Debug("SEND handled", "action", f.Action, "message_id", f.ID, "direction", "incoming", "duration", time.Since(start))
 }
 
 // handle runs the dispatcher for one incoming CALL and sends its answer.
@@ -168,7 +207,19 @@ func (e *Endpoint) handle(f ocppj.Frame) {
 		e.sendResult(ocppj.Frame{Type: ocppj.CallResult, ID: f.ID, Payload: result})
 		return
 	}
-	e.sendResult(ocppj.Frame{Type: ocppj.CallError, ID: f.ID, ErrorCode: e.errorCode(err, f), Description: e.description(err)})
+	e.sendResult(ocppj.Frame{Type: ocppj.CallError, ID: f.ID, ErrorCode: e.errorCode(err, f), Description: e.limit(e.description(err))})
+}
+
+// limit cuts an error description to the 255 characters OCPP 2.x allows
+// (Part 4 §4.2.3, ErrorDescription string[255]). OCPP-J 1.6 sets no limit.
+func (e *Endpoint) limit(desc string) string {
+	if e.cfg.Info.Version == ocpp.V16 {
+		return desc
+	}
+	if r := []rune(desc); len(r) > 255 {
+		return string(r[:255])
+	}
+	return desc
 }
 
 // errorCode chooses the CALLERROR code for a handler error. Only a

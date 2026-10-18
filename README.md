@@ -13,12 +13,12 @@ the Charging Station (OCPP 1.6: Charge Point) and the CSMS (OCPP 1.6: Central
 System). Both share one RPC engine, and either side can send requests once
 connected.
 
-> **Status: Phase 5 of 8.** OCPP 1.6J (with the Security Whitepaper
-> extensions) and OCPP 2.0.1 are complete at the message level: every action
-> is typed, validated against the OCA schemas, and dispatchable in both
-> roles. Both versions pass against three independent implementations in
-> both roles (ocpp-interop v0.1.0). OCPP 2.1 is next (Phase 6). No release
-> yet. See
+> **Status: Phase 6 of 8.** OCPP 1.6J (with the Security Whitepaper
+> extensions), OCPP 2.0.1 and OCPP 2.1 are complete at the message level:
+> every action is typed, validated against the OCA schemas, and dispatchable
+> in both roles; 2.1 adds the SEND and CALLRESULTERROR message types. 1.6J
+> and 2.0.1 pass against three independent implementations in both roles
+> (ocpp-interop v0.1.0); 2.1 interop is not done yet. No release yet. See
 > [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
 
 Docs: [Architecture](ARCHITECTURE.md) · [Requirements](REQUIREMENTS.md) ·
@@ -43,7 +43,7 @@ Docs: [Architecture](ARCHITECTURE.md) · [Requirements](REQUIREMENTS.md) ·
 |---|---|---|
 | OCPP 1.6J, with the Security Whitepaper (Edition 4) extensions | P0 | 39 actions, both roles (`ocpp16`) |
 | OCPP 2.0.1 Edition 4, errata 2026-09 | P0 | 64 actions, both roles (`ocpp201`) |
-| OCPP 2.1 Edition 2, errata 2026-09 | P1 | Phase 6 |
+| OCPP 2.1 Edition 2, errata 2026-09 | P1 | 91 actions, both roles, SEND and CALLRESULTERROR (`ocpp21`); interop pending |
 | OCPP 1.6 SOAP, OCPP 1.5 and older | — | out of scope |
 
 ## Install

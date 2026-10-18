@@ -371,6 +371,22 @@ func (c *Client) Call(ctx context.Context, action string, req, resp any) error {
 	return ep.Call(ctx, action, req, resp)
 }
 
+// Send sends a SEND to the CSMS (OCPP 2.1; see ocpp.Sender). It is never
+// answered and does not wait for an outstanding CALL. While the client is
+// not connected it fails at once with ocpp.ErrNotConnected.
+func (c *Client) Send(ctx context.Context, action string, req any) error {
+	c.mu.Lock()
+	ep, closed := c.ep, c.closed
+	c.mu.Unlock()
+	if closed {
+		return ocpp.ErrClosed
+	}
+	if ep == nil {
+		return ocpp.ErrNotConnected
+	}
+	return ep.Send(ctx, action, req)
+}
+
 // Close closes the connection and stops reconnecting. Pending calls fail
 // with ocpp.ErrClosed. Close is idempotent. Called from a handler, it
 // returns without waiting for that handler.
@@ -402,4 +418,7 @@ func (c *Client) Close() error {
 	return nil
 }
 
-var _ ocpp.Peer = (*Client)(nil)
+var (
+	_ ocpp.Peer   = (*Client)(nil)
+	_ ocpp.Sender = (*Client)(nil)
+)

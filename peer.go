@@ -61,6 +61,20 @@ type Dispatcher interface {
 	Dispatch(ctx context.Context, p Peer, action string, payload json.RawMessage) (json.RawMessage, error)
 }
 
+// Sender sends a SEND (OCPP 2.1): a message that is never answered and may
+// be sent while a CALL is outstanding (2.1 Part 4 §4.1.1, §4.2.4). The
+// client and server sessions implement it.
+type Sender interface {
+	Send(ctx context.Context, action string, req any) error
+}
+
+// SendDispatcher is implemented by a Dispatcher that also handles incoming
+// SEND messages (OCPP 2.1). They are never answered, so DispatchSend
+// returns only an error, which is logged.
+type SendDispatcher interface {
+	DispatchSend(ctx context.Context, p Peer, action string, payload json.RawMessage) error
+}
+
 // DispatcherFunc adapts a function to a Dispatcher.
 type DispatcherFunc func(ctx context.Context, p Peer, action string, payload json.RawMessage) (json.RawMessage, error)
 
