@@ -27,25 +27,28 @@ Both are required. In each, CALLs are sent from both ends of the connection.
 
 ## Status
 
-Qualified against **otfabric/ocpp-interop v0.2.0** (contract 0.4), pinned
+Qualified against **otfabric/ocpp-interop v0.3.1** (contract 0.5), pinned
 by digest in `interop/harness.go`, the Makefile and
 `.github/workflows/interop.yml`:
 
-| Reference | Upstream | OCPP | Image |
-|---|---|---|---|
-| `mobilityhouse` | The Mobility House ocpp 2.1.0 (Python) | 1.6J, 2.0.1, 2.1 | `ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:9b5449c6…` |
-| `chargetime` | ChargeTimeEU Java-OCA-OCPP v2.0 (Java) | 1.6J, 2.0.1 | `ghcr.io/otfabric/ocpp-interop-chargetime@sha256:1dbe44f9…` |
-| `lorenzodonini` | lorenzodonini/ocpp-go v0.19.0 (Go) | 1.6J, 2.0.1 | `ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:6adb1e6b…` |
+| Reference | Upstream | OCPP | Roles | TLS (profiles 2, 3) | Compression | Image |
+|---|---|---|---|---|---|---|
+| `mobilityhouse` | The Mobility House ocpp 2.1.0 (Python) | 1.6J, 2.0.1, 2.1 | station, CSMS | yes | yes | `ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:e8289633…` |
+| `chargetime` | ChargeTimeEU Java-OCA-OCPP v2.0 (Java) | 1.6J, 2.0.1 | station, CSMS | yes | 2.0.1, with upstream defects | `ghcr.io/otfabric/ocpp-interop-chargetime@sha256:a46c0db2…` |
+| `lorenzodonini` | lorenzodonini/ocpp-go v0.19.0 (Go) | 1.6J, 2.0.1 | station, CSMS | yes | no (its CSMS cannot accept it) | `ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:8328f5bf…` |
+| `everest` | EVerest libocpp, everest-core 2026.02.1 (C++) | 1.6J, 2.0.1, 2.1 | station only (libocpp has no CSMS) | yes | no (libocpp cannot offer it) | `ghcr.io/otfabric/ocpp-interop-everest@sha256:990c3ea9…` |
 
-`TestReferences` checks that each pinned image reports this release.
+`TestReferences` checks that each pinned image reports this release. The
+per-version action matrices against these references are in
+[docs/compatibility](docs/compatibility) (`make compat`).
 
 ### What runs
 
-For each reference, OCPP version it declares (1.6J, 2.0.1, 2.1) and
-direction, on one connection:
+For each reference, OCPP version and role it declares, on one connection:
 
 - every station sample of the image's fixture, sent by the station;
-- every CSMS sample, sent by the CSMS;
+- every CSMS sample, sent by the CSMS (the fixtures have a sample of every
+  action);
 - an action that does not exist, which must be answered with
   `NotImplemented` or `NotSupported`;
 - a close, which the other end must notice.
@@ -54,59 +57,51 @@ Each answer is compared with the one the fixture defines, read from the
 image (`print-fixture`), including the derived answers: authorization by
 id token and the device model of GetVariables and SetVariables. Every
 request a reference sends to go-ocpp, and every response go-ocpp receives,
-must also pass go-ocpp's typed validation (`ocpp16`, `ocpp201`, `ocpp21`); for CALLs
-the reference sends, the request must also keep every field of the sample.
-Security profile 1 (HTTP Basic) is tested in both roles.
+must also pass go-ocpp's typed validation (`ocpp16`, `ocpp201`, `ocpp21`);
+for CALLs the reference sends, the request must also keep every field of
+the sample. A CALL go-ocpp sends with an action the reference does not
+declare handling is a pass if it is answered as the fixture says, and is
+skipped otherwise.
 
-### Results (v0.2.0 images, 2026-10-18, linux/arm64; CI runs amd64 and arm64)
+Transport, in both roles: security profile 1 (HTTP Basic); profile 2 (TLS
+and Basic) and profile 3 (mutual TLS, the client certificate's CommonName
+is the identity), with a CA generated per run, including the refusals of a
+wrong password, another station's certificate and an untrusted server
+(`TestStationTLS`, `TestReferenceStationTLS`); compression, with the
+negotiation checked on the wire (`TestStationCompression`,
+`TestReferenceStationCompression`).
 
-All three versions, all three references, both roles: 465 scenarios pass,
-13 are skipped (known upstream defects, a SEND the reference cannot
-receive, an action it does not declare), 0 fail. By version: 1.6J 196
-pass / 2 skipped, 2.0.1 182 / 4, 2.1 87 / 7.
+### Results (v0.3.1 images, 2026-10-18, linux/arm64; CI runs amd64 and arm64)
 
-| Test | Reference | 1.6J station / CSMS | 2.0.1 station / CSMS |
-|---|---|---|---|
-| go-ocpp client → reference CSMS | mobilityhouse | 13 / 20 pass | 16 / 15 pass |
-| go-ocpp client → reference CSMS | chargetime | 13 / 20 pass | 16 / 15 pass |
-| go-ocpp client → reference CSMS | lorenzodonini | 13 / 20 pass | 16 / 15 pass |
-| reference station → go-ocpp server | mobilityhouse | 12 pass + 1 known / 20 pass | 16 / 15 pass |
-| reference station → go-ocpp server | chargetime | 13 / 20 pass | 16 / 15 pass |
-| reference station → go-ocpp server | lorenzodonini | 13 / 20 pass | 15 pass + 1 known / 14 pass + 1 known |
+All versions, all four references, both roles: **1237 scenarios pass, 0
+fail**; 98 are skipped, each with its reason (a documented upstream defect,
+a role, version, profile or feature a reference does not declare, a SEND no
+reference supports). By version: 1.6J 289 pass / 5 skipped, 2.0.1 456 / 20,
+2.1 261 / 24.
 
-"Station" counts the CALLs the station sends, "CSMS" those the CSMS sends.
-Unknown action, close and security profile 1 pass in every combination.
-
-### OCPP 2.1
-
-The harness runs 2.1 wherever a reference declares it. Of the v0.2.0
-references only The Mobility House does:
-
-| Test | Reference | 2.1 station / CSMS |
-|---|---|---|
-| go-ocpp client → reference CSMS | mobilityhouse | 21 pass + 1 known + 1 SEND skipped / 23 pass + 1 known |
-| reference station → go-ocpp server | mobilityhouse | 20 pass + 1 known + 1 SEND skipped + 1 not declared / 23 pass + 1 known |
-
-Security profile 1 passes in both roles. The known issue is Mobility House
-2.1.0 not answering 2.1 CALLs it has no handler for (below), which also
-skips the unknown-action scenario. Neither chargetime (2.1 on its master
-branch only) nor lorenzodonini supports 2.1. No reference release sends or
-receives SEND or CALLRESULTERROR, so go-ocpp's are verified against go-ocpp
-only (e2e) — not against an independent implementation.
+- **TLS**: profiles 2 and 3 pass with every reference CSMS (go-ocpp as the
+  station: The Mobility House 1.6J, 2.0.1, 2.1; ChargeTimeEU and ocpp-go
+  1.6J, 2.0.1) and with every reference station (go-ocpp as the CSMS: the
+  same, and EVerest libocpp in 1.6J, 2.0.1 and 2.1).
+- **Compression**: passes with The Mobility House in both roles, 1.6J,
+  2.0.1 and 2.1. ChargeTimeEU 2.0.1 is a known upstream defect in both
+  roles; ocpp-go and EVerest do not support it.
+- **OCPP 2.1** against two independent implementations: The Mobility House
+  in both roles, and EVerest libocpp as a station against the go-ocpp CSMS.
+  No released reference sends or receives SEND or CALLRESULTERROR, so
+  go-ocpp's are verified against go-ocpp only (e2e).
 
 ### Known issues
 
 | Reference | Scenario | Evidence |
 |---|---|---|
 | mobilityhouse 2.1.0 | The station cannot send SecurityEventNotification without the optional `techInfo` (`securityEventMinimal`) | [`ocpp/v16/call.py`](https://github.com/mobilityhouse/ocpp/blob/91f4f89140a2198dc5a300cfea88d947ac91ae28/ocpp/v16/call.py#L232-L236) |
-| ocpp-go v0.19.0 | The 2.0.1 station answers Reset with `"statusInfo": null`, which the schema does not allow and go-ocpp refuses (`resetImmediate`) | [`provisioning/reset.go`](https://github.com/lorenzodonini/ocpp-go/blob/a1eec917af884db0585752f909a61893aa667480/ocpp2.0.1/provisioning/reset.go#L61-L64) |
+| mobilityhouse 2.1.0 | A 2.1 CALL without a handler is never answered, in either role (`unknown-action`); fixed on master (ae716a1), not released | [`ocpp/charge_point.py`](https://github.com/mobilityhouse/ocpp/blob/91f4f89140a2198dc5a300cfea88d947ac91ae28/ocpp/charge_point.py#L161-L193) |
+| ocpp-go v0.19.0 | The 2.0.1 station answers Reset and SetNetworkProfile with `"statusInfo": null`, which the schema does not allow and go-ocpp refuses (`resetImmediate`, `setNetworkProfile`) | [`provisioning/reset.go`](https://github.com/lorenzodonini/ocpp-go/blob/a1eec917af884db0585752f909a61893aa667480/ocpp2.0.1/provisioning/reset.go#L61-L64), [`set_network_profile.go`](https://github.com/lorenzodonini/ocpp-go/blob/a1eec917af884db0585752f909a61893aa667480/ocpp2.0.1/provisioning/set_network_profile.go#L170-L172) |
 | ocpp-go v0.19.0 | The 2.0.1 station drops `"tbc": false` from NotifyReport (`notifyReport`) | [`provisioning/notify_report.go`](https://github.com/lorenzodonini/ocpp-go/blob/a1eec917af884db0585752f909a61893aa667480/ocpp2.0.1/provisioning/notify_report.go#L98-L104) |
-| mobilityhouse 2.1.0 | A 2.1 CALL without a handler is never answered, in either role (`reservationStatusUpdate`, `cancelReservation`, `unknown-action`); fixed on master (ae716a1), not released | [`ocpp/charge_point.py`](https://github.com/mobilityhouse/ocpp/blob/91f4f89140a2198dc5a300cfea88d947ac91ae28/ocpp/charge_point.py#L161-L193) |
-
-ocpp-interop also records a ChargeTimeEU defect that go-ocpp's tests do not
-reach: its 2.0.1 CSMS breaks permessage-deflate with a station that offers
-it (Java-WebSocket 1.6.0). go-ocpp's client offers compression only with
-`WithCompression`, which the interop suite does not set.
+| ocpp-go v0.19.0 | GetCompositeScheduleResponse does not have the OCA structure (`getCompositeSchedule`) | [`smartcharging/get_composite_schedule.go`](https://github.com/lorenzodonini/ocpp-go/blob/a1eec917af884db0585752f909a61893aa667480/ocpp2.0.1/smartcharging/get_composite_schedule.go#L31-L50) |
+| chargetime v2.0 | Compression, 2.0.1: the CSMS announces `server_no_context_takeover` but keeps its context; the station offers `client_no_context_takeover` but keeps its context (Java-WebSocket 1.6.0) | [`PerMessageDeflateExtension.java`](https://github.com/TooTallNate/Java-WebSocket/blob/da3cf2a777aed862f2f5b5cf060cae7969958667/src/main/java/org/java_websocket/extensions/permessage_deflate/PerMessageDeflateExtension.java#L326-L340) |
+| everest 2026.02.1 | libocpp's `ocpp::v2::MessageType` has no ReportDERControl (nor NotifyWebPaymentStarted, which the station does not declare): the station cannot send it (`reportDERControl`) | [`ocpp/v2/types.hpp`](https://github.com/EVerest/everest-core/blob/b61bb12b8cb89ee9d0fab037b05c3bb8cea9b13e/lib/everest/ocpp/include/ocpp/v2/types.hpp#L15-L195) |
 
 A scenario that a reference does not declare in its capabilities, or that
 hits a known issue, is skipped with the reason. It is never counted as
@@ -114,12 +109,13 @@ passed.
 
 ### Not covered yet
 
-- OCPP 2.1 against a second independent implementation: ChargeTimeEU has
-  2.1 on its master branch only, ocpp-go not at all.
-- SEND and CALLRESULTERROR against any independent implementation.
-- Actions no reference adapter declares: per version, the matrices in
-  [docs/compatibility](docs/compatibility) list which actions are
-  exchanged with a reference (30/39 in 1.6J, 27/64 in 2.0.1, 43/91 in
-  2.1) and which are verified against go-ocpp only.
-- Compression against the references.
-- TLS (security profiles 2 and 3): not yet in ocpp-interop.
+- OCPP 2.1 with go-ocpp as the station against a second independent CSMS:
+  EVerest libocpp has no CSMS. CitrineOS (TypeScript) is the candidate.
+- SEND and CALLRESULTERROR against any independent implementation: no
+  released reference implements them.
+- Compression against a second independent stack in 2.0.1 (ChargeTimeEU's
+  is defective, ocpp-go's CSMS and EVerest cannot).
+- One action with no independent peer: NotifyPeriodicEventStream (2.1), a
+  SEND. 2.1 BatterySwap is exchanged in one direction only: The Mobility
+  House's CSMS receives it from go-ocpp, but no reference station can send
+  it.

@@ -121,8 +121,10 @@ func compatibilityDoc(t *testing.T, v ocpp.Version, refs []adapter) string {
 	b.WriteString(header + " Interop scenarios |\n" + sep + "---|\n")
 
 	var fixtures []*fixture
+	var capsOf []*capabilities
 	for _, ri := range infos {
 		fixtures = append(fixtures, ri.f)
+		capsOf = append(capsOf, ri.caps)
 	}
 	actions := actionsOf(v)
 	sort.Slice(actions, func(i, j int) bool { return actions[i].name < actions[j].name })
@@ -155,7 +157,10 @@ func compatibilityDoc(t *testing.T, v ocpp.Version, refs []adapter) string {
 			row += " " + st + " | " + cs + " |"
 		}
 		sc := scenarios(fixtures, act.name)
-		if sc != "—" {
+		if act.send && !anySend(capsOf, v) && sc != "—" {
+			// A SEND sample runs only where a reference declares SEND.
+			sc += " (no reference supports SEND: skipped)"
+		} else if sc != "—" {
 			withScenario++
 		}
 		row += " " + sc + " |"
@@ -197,6 +202,15 @@ func compatibilityDoc(t *testing.T, v ocpp.Version, refs []adapter) string {
 		b.WriteString("\n## Known upstream defects\n\nScenarios skipped because of a defect of the reference, with the evidence:\n\n" + strings.Join(issues, "\n") + "\n")
 	}
 	return b.String()
+}
+
+func anySend(caps []*capabilities, v ocpp.Version) bool {
+	for _, c := range caps {
+		if c != nil && c.Versions[v.String()].Features.Send {
+			return true
+		}
+	}
+	return false
 }
 
 func yes(b bool) string {

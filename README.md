@@ -17,9 +17,9 @@ connected.
 > extensions), OCPP 2.0.1 and OCPP 2.1 are complete at the message level:
 > every action is typed, validated against the OCA schemas, and dispatchable
 > in both roles; 2.1 adds the SEND and CALLRESULTERROR message types. 1.6J
-> and 2.0.1 pass against three independent implementations in both roles,
-> 2.1 against The Mobility House (ocpp-interop v0.2.0). v0.1.0 is being
-> prepared. See
+> and 2.0.1 pass against four independent implementations, 2.1 against two
+> (The Mobility House and EVerest libocpp), including TLS and compression
+> (ocpp-interop v0.3.1). See
 > [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
 
 Docs: [Architecture](ARCHITECTURE.md) · [Requirements](REQUIREMENTS.md) ·
@@ -107,14 +107,17 @@ belong to the application's handlers.
 
 ## Interoperability
 
-go-ocpp is tested in both roles, for OCPP 1.6J and 2.0.1, against The
-Mobility House ocpp 2.1.0, ChargeTimeEU Java-OCA-OCPP v2.0 and
-lorenzodonini/ocpp-go v0.19.0, and for OCPP 2.1 against The Mobility House,
-as packaged by
-[otfabric/ocpp-interop v0.2.0](https://github.com/otfabric/ocpp-interop/releases/tag/v0.2.0).
-Every fixture sample passes in both directions, apart from three known
-upstream defects, and every payload the references send passes go-ocpp's
-schema validation. See [INTEROPERABILITY.md](INTEROPERABILITY.md).
+go-ocpp is tested in both roles against The Mobility House ocpp 2.1.0
+(1.6J, 2.0.1, 2.1), ChargeTimeEU Java-OCA-OCPP v2.0 and lorenzodonini/ocpp-go
+v0.19.0 (1.6J, 2.0.1), and as a CSMS against EVerest libocpp (1.6J, 2.0.1,
+2.1), as packaged by
+[otfabric/ocpp-interop v0.3.1](https://github.com/otfabric/ocpp-interop/releases/tag/v0.3.1):
+every action, security profiles 1 to 3 and compression. 1237 scenarios
+pass and none fails; the skipped ones are documented upstream defects and
+capabilities a reference does not have, and every payload the references
+send passes go-ocpp's schema validation. See
+[INTEROPERABILITY.md](INTEROPERABILITY.md) and the per-version matrices in
+[docs/compatibility](docs/compatibility).
 
 ```bash
 make interop   # needs Docker

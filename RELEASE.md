@@ -5,6 +5,61 @@ tag, GitHub release); the section of the version below is the release's
 notes. Before v1.0.0 a minor release may change the API: every change is
 listed here, and COMPATIBILITY.md has the stability rules.
 
+## v0.1.1
+
+**Date:** 2026-10-18
+**Previous release:** v0.1.0
+
+## Summary
+
+Interoperability qualified against **otfabric/ocpp-interop v0.3.1**: four
+independent implementations, now with TLS (security profiles 2 and 3),
+compression, every OCPP action, and OCPP 2.1 against two independent
+implementations (The Mobility House, and EVerest libocpp as a station). No
+change to the library or its API.
+
+**Upgrade notes:** none.
+
+## Changes
+
+### Added
+
+- **Interop against EVerest libocpp** (everest-core 2026.02.1, a station for
+  1.6J, 2.0.1 and 2.1), the second independent OCPP 2.1 implementation.
+- **TLS interop** (`TestStationTLS`, `TestReferenceStationTLS`): security
+  profiles 2 and 3 in both roles with a CA generated per run, and the
+  refusals of a wrong password, another station's certificate and an
+  untrusted server.
+- **Compression interop** (`TestStationCompression`,
+  `TestReferenceStationCompression`), with the negotiation checked on the
+  wire.
+- **Every action against the references**: the ocpp-interop fixtures have a
+  sample of every action, so 39/39 (1.6J), 64/64 (2.0.1) and 90/91 (2.1)
+  are exchanged with an independent stack (docs/compatibility; the 2.1
+  exception is NotifyPeriodicEventStream, a SEND no reference supports).
+- **e2e**: `TestMatrix` exchanges every action of every version over plain
+  WebSocket, compression and security profiles 1, 2 and 3;
+  `TestCompressionNegotiated` checks that compression is negotiated.
+
+### Changed
+
+- The interop harness runs a CALL whose action a reference does not declare
+  handling and counts it as passed when it is answered as the fixture says;
+  otherwise it is skipped. Known upstream defects added: ocpp-go's
+  GetCompositeSchedule and SetNetworkProfile, ChargeTimeEU's 2.0.1
+  compression, libocpp's ReportDERControl.
+- Pinned images: ocpp-interop v0.3.1 (was v0.2.0), four references.
+
+## Verification
+
+- Interop against the pinned v0.3.1 images (linux/arm64): 1237 scenarios
+  pass, 0 fail, 98 skipped with their reasons (1.6J 289/5, 2.0.1 456/20, 2.1
+  261/24). TLS profiles 2 and 3 pass with every reference in both roles;
+  compression with The Mobility House in both roles and all versions.
+- `make check`, as for v0.1.0.
+
+---
+
 ## v0.1.0
 
 **Date:** 2026-10-18

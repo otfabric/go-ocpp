@@ -216,7 +216,9 @@ func TestReferenceStationTLS(t *testing.T) {
 					a.skipKnownIssue(t, v, fmt.Sprintf("tls-profile%d-station", profile))
 					f := a.fixture(t, v)
 					id, password := f.station()
-					_, _, srvPair := ca.issue(t, "go-ocpp CSMS", []string{"host.docker.internal", "localhost", "127.0.0.1"})
+					// The CommonName is the host stations connect to as well:
+					// libocpp (everest) checks it against the URL's host.
+					_, _, srvPair := ca.issue(t, "host.docker.internal", []string{"host.docker.internal", "localhost", "127.0.0.1"})
 					cfg := &tls.Config{Certificates: []tls.Certificate{srvPair}, ClientCAs: ca.pool, ClientAuth: tls.VerifyClientCertIfGiven}
 					auth := server.BasicAuth(func(ctx context.Context, station string) (string, bool) { return password, station == id })
 					if profile == 3 {

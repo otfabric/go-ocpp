@@ -24,21 +24,20 @@ import (
 )
 
 // The reference images this version of go-ocpp is qualified against:
-// otfabric/ocpp-interop v0.2.0 (The Mobility House ocpp 2.1.0, ChargeTimeEU
-// Java-OCA-OCPP v2.0, lorenzodonini/ocpp-go v0.19.0; OCPP 1.6J and 2.0.1 in
-// all three, 2.1 in The Mobility House), pinned by multi-arch index digest
+// otfabric/ocpp-interop v0.3.1 (The Mobility House ocpp 2.1.0, ChargeTimeEU
+// Java-OCA-OCPP v2.0, lorenzodonini/ocpp-go v0.19.0: OCPP 1.6J and 2.0.1 in
+// all three, 2.1 in The Mobility House; EVerest libocpp of everest-core
+// 2026.02.1, a station for 1.6J, 2.0.1 and 2.1), pinned by multi-arch index
+// digest
 // so that a run is reproducible. Moving to another release of ocpp-interop
 // means changing these constants; the Makefile and
 // .github/workflows/interop.yml follow.
 const (
-	interopRelease            = "v0.2.0"
-	defaultMobilityHouseImage = "ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:9b5449c6fdeeb9809348f772b9967676cc1831d3c0a664b357cbdc1b9b53b979"
-	defaultChargeTimeImage    = "ghcr.io/otfabric/ocpp-interop-chargetime@sha256:1dbe44f9a04d6afced3740485dc2a8429b3c5eb2f274392a32b7e1094996681c"
-	defaultLorenzodoniniImage = "ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:6adb1e6b39ee0a35bfdb85ac37e5cfed61f614231097b0ad4edda1fc0376e38e"
-	// EVerest libocpp (stations only) joins with ocpp-interop v0.3.0; until
-	// it is released and pinned here, it runs only when
-	// OCPP_INTEROP_EVEREST_IMAGE names an image.
-	defaultEverestImage = ""
+	interopRelease            = "v0.3.1"
+	defaultMobilityHouseImage = "ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:e82896331789e7a1d5ac678994e8a0b5ed29e48ba16a8beb994c16fb7a2f5dd6"
+	defaultChargeTimeImage    = "ghcr.io/otfabric/ocpp-interop-chargetime@sha256:a46c0db29e154e96f8779aebb585fd7c10db1b23be9401442881be21504d2247"
+	defaultLorenzodoniniImage = "ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:8328f5bf6e66281bec10ff35b812eb957c59fd4778f9984c09c28248a0aa9d91"
+	defaultEverestImage       = "ghcr.io/otfabric/ocpp-interop-everest@sha256:990c3ea95c7caa98449663bb7f48d5be7df0144241750e72adbbec2022c3321c"
 )
 
 // adapter is one reference implementation: a container image that follows
@@ -215,6 +214,10 @@ var knownIssues = map[string]string{
 	// on master in ae716a1, #744, not released). The fixtures answer every
 	// action; only an unknown action is left unanswered.
 	"mobilityhouse/2.1/unknown-action": mobilityhouse21NoAnswer,
+	// EVerest libocpp (everest-core 2026.02.1): ocpp::v2::MessageType has no
+	// ReportDERControl, so libocpp's message queue cannot send it, although
+	// the adapter declares it (libocpp has its request and response types).
+	"everest/2.1/reportDERControl": "https://github.com/EVerest/everest-core/blob/b61bb12b8cb89ee9d0fab037b05c3bb8cea9b13e/lib/everest/ocpp/include/ocpp/v2/types.hpp#L15-L195",
 	// ocpp-go v0.19.0: GetCompositeScheduleResponse does not have the OCA
 	// structure: a top-level evseId the schema does not allow, no
 	// statusInfo, and a schedule of {startDateTime, chargingSchedule}

@@ -107,6 +107,10 @@ func TestReferenceStationAgainstCSMS(t *testing.T) {
 							}
 							var resp json.RawMessage
 							err := sess.Call(ctx, s.Action, s.Payload, &resp)
+							if !slices.Contains(refCaps.Handles, s.Action) {
+								checkUndeclaredGoCall(t, a, f, s, resp, err)
+								return
+							}
 							checkGoCall(t, f, s, resp, err)
 						})
 					}
