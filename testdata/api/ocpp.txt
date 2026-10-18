@@ -32,6 +32,8 @@ func (NopMetrics) OnProtocolError(ConnInfo, error)
 func (NopMetrics) OnReconnectAttempt(ConnInfo, int)
 func (d Direction) String() string
 func (e *CallError) Error() string
+func (e *CloseError) Error() string
+func (e *CloseError) Normal() bool
 func (e *ValidationError) CallError() *CallError
 func (e *ValidationError) Error() string
 func (e *ValidationError) Unwrap() error
@@ -41,6 +43,7 @@ func (s State) String() string
 func (v Version) String() string
 func (v Version) Subprotocol() string
 func (v Version) Valid() bool
+func AfterResponse(ctx context.Context, f func()) bool
 func NewCallError(code ErrorCode, description string) *CallError
 func ParseSubprotocol(s string) (Version, bool)
 func ParseVersion(s string) (Version, bool)
@@ -49,6 +52,7 @@ func Versions() []Version
 type CallError struct { Code ErrorCode Description string Details json.RawMessage }
 type CallInfo struct { ConnInfo Action string MessageID string Direction Direction }
 type Caller interface { Call(ctx context.Context, action string, req, resp any) error }
+type CloseError struct { Code int Reason string }
 type ConnInfo struct { StationID string Version Version Role Role SessionID string }
 type Direction uint8
 type Dispatcher interface { Dispatch(ctx context.Context, p Peer, action string, payload json.RawMessage) (json.RawMessage, error) }

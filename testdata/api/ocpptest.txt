@@ -1,0 +1,12 @@
+const Timeout = 10 * time.Second
+func (r *Recorder) Answer(action, payload string) *Recorder
+func (r *Recorder) AnswerError(action string, err *ocpp.CallError) *Recorder
+func (r *Recorder) Dispatch(ctx context.Context, p ocpp.Peer, action string, payload json.RawMessage) (json.RawMessage, error)
+func (r *Recorder) DispatchSend(ctx context.Context, p ocpp.Peer, action string, payload json.RawMessage) error
+func (r *Recorder) Received(action string) []json.RawMessage
+func (r *Recorder) Wait(t testing.TB, action string) json.RawMessage
+func CSMS(t testing.TB, opts ...server.Option) (*server.Server, string)
+func NewRecorder() *Recorder
+func Session(t testing.TB, srv *server.Server, id string) *server.Session
+func Station(t testing.TB, url string, opts ...client.Option) *client.Client
+type Recorder struct { }

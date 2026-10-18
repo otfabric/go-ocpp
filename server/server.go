@@ -85,8 +85,8 @@ func New(opts ...Option) (*Server, error) {
 	if o.maxMessageSize <= 0 {
 		o.maxMessageSize = DefaultMaxMessageSize
 	}
-	if o.pingInterval < 0 || o.maxBadMessages < 0 {
-		return nil, fmt.Errorf("%w: ping interval and bad message limit must not be negative", ocpp.ErrInvalidOption)
+	if o.pingInterval < 0 || o.maxBadMessages < 0 || o.incomingRate < 0 || o.incomingBurst < 0 {
+		return nil, fmt.Errorf("%w: ping interval, bad message limit and rate limit must not be negative", ocpp.ErrInvalidOption)
 	}
 	if o.metrics == nil {
 		o.metrics = ocpp.NopMetrics{}
@@ -167,6 +167,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// does not recognise SHOULD get 404.
 			s.refuse(w, log, info, http.StatusNotFound, "unknown station", fmt.Errorf("authentication: %w", err))
 			return
+		case errors.As(err, new(*StatusError)) && statusOf(err) != http.StatusUnauthorized:
+			code := statusOf(err)
+			s.refuse(w, log, info, code, http.StatusText(code), fmt.Errorf("authentication: %w", err))
+			return
 		case err != nil:
 			w.Header().Set("WWW-Authenticate", `Basic realm="OCPP", charset="UTF-8"`)
 			s.refuse(w, log, info, http.StatusUnauthorized, "unauthorized", fmt.Errorf("authentication: %w", err))
@@ -206,7 +210,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// A CSMS SHALL support RFC 7692 compression (2.0.1 Part 4 §3.3, 2.1
 	// §3.4); it is used when the station offers it.
-	conn, err := transport.Accept(w, r, transport.AcceptOptions{Subprotocol: v.Subprotocol(), ReadLimit: int64(s.o.maxMessageSize), Compression: true})
+	conn, err := transport.Accept(w, r, transport.AcceptOptions{Subprotocol: v.Subprotocol(), ReadLimit: int64(s.o.maxMessageSize), Compression: true,
+		OriginPatterns: s.o.originPatterns})
 	if err != nil {
 		s.mu.Lock()
 		s.admitting--
@@ -216,7 +221,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sess := &Session{srv: s, id: id, version: v, remote: r.RemoteAddr, sessionID: engine.NewUUID(), connectedAt: time.Now()}
+	sess := &Session{srv: s, id: id, version: v, remote: r.RemoteAddr, sessionID: engine.NewUUID(), connectedAt: time.Now(), tls: r.TLS}
 	info.SessionID = sess.sessionID
 	sess.ep = engine.New(conn, engine.Config{
 		Info:               info,
@@ -228,6 +233,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		WriteTimeout:       s.o.writeTimeout,
 		PingInterval:       s.o.pingInterval,
 		MaxBadMessages:     s.o.maxBadMessages,
+		IncomingRate:       s.o.incomingRate,
+		IncomingBurst:      s.o.incomingBurst,
 		Logger:             s.o.logger,
 		Metrics:            s.o.metrics,
 		CallInterceptor:    s.o.callInterceptor,
@@ -306,6 +313,16 @@ func stationID(u *url.URL) (string, bool) {
 		return "", false
 	}
 	return id, true
+}
+
+// statusOf returns the status of a *StatusError in err, or 401 when its
+// code is not a 4xx or 5xx status.
+func statusOf(err error) int {
+	var se *StatusError
+	if errors.As(err, &se) && se.Code >= 400 && se.Code <= 599 {
+		return se.Code
+	}
+	return http.StatusUnauthorized
 }
 
 // validIdentity reports whether id is a valid OCPP 2.x Charging Station
@@ -408,8 +425,14 @@ type Session struct {
 	remote      string
 	sessionID   string
 	connectedAt time.Time
+	tls         *tls.ConnectionState
 	ep          *engine.Endpoint
 }
+
+// TLS returns the TLS state of the station's connection (its client
+// certificate for security profile 3), or nil without TLS. Handlers reach
+// it by asserting their ocpp.Peer to *server.Session.
+func (s *Session) TLS() *tls.ConnectionState { return s.tls }
 
 // ID returns the station identity.
 func (s *Session) ID() string { return s.id }

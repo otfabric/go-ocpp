@@ -54,6 +54,9 @@ type AcceptOptions struct {
 	// Compression accepts permessage-deflate (RFC 7692) when the client
 	// offers it, without context takeover.
 	Compression bool
+	// OriginPatterns are the hosts, besides the request's own, that a
+	// request's Origin header may name (path.Match patterns).
+	OriginPatterns []string
 }
 
 func compression(on bool) websocket.CompressionMode {
@@ -72,7 +75,8 @@ func Accept(w http.ResponseWriter, r *http.Request, o AcceptOptions) (Conn, erro
 	if o.Subprotocol != "" {
 		subprotocols = []string{o.Subprotocol}
 	}
-	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{Subprotocols: subprotocols, CompressionMode: compression(o.Compression)})
+	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{Subprotocols: subprotocols, CompressionMode: compression(o.Compression),
+		OriginPatterns: o.OriginPatterns})
 	if err != nil {
 		return nil, err
 	}

@@ -30,7 +30,7 @@ GO go-ocpp.
 | Validation against the OCA schemas, both directions | P (struct tags) | Y | P (hand-written) | U | Y | opt-in | Y | U | Y (generated, always on) |
 | Security profiles 1–3 | Y | n/a | P | Y | Y | Y | Y | P | Y |
 | WebSocket compression (RFC 7692) | U | n/a | Y | N | Y | U | U | N | Y |
-| Ping/pong keepalive | Y | n/a | Y | Y | Y | Y | Y | U | Y (Phase 7) |
+| Ping/pong keepalive | Y | n/a | Y | Y | Y | Y | Y | U | Y |
 | Reconnect with the 2.x back-off | Y | n/a | U | Y | n/a | Y | Y | Y | Y |
 | Offline queue, TransactionMessageAttempts retry | P | N | P | Y (SQLite) | n/a | P | Y (SQLite) | Y | N |
 | One outstanding CALL, response timeouts | Y | Y | U | Y | Y | Y | Y | Y | Y |
@@ -40,11 +40,11 @@ GO go-ocpp.
 | Raw calls and vendor actions | P | Y | P | P | Y | Y | U | P | Y |
 | Authentication before the upgrade, fail-closed | Y | n/a | U | n/a | Y | Y | Y | n/a | Y |
 | Session replacement policy | U | n/a | U | n/a | U | U | U | n/a | Y |
-| Limits: stations, message size, queues, bad messages | P | N | P | U | U | P | U | U | Y |
-| Graceful shutdown | Y | n/a | U | U | Y | Y | U | n/a | Y (server) |
-| Public test kit / mocks | Y | P | P | P | P | N | U | Y | P (internal) |
+| Limits: stations, message size, queues, bad messages, rate | P | N | P | U | U | P | U | U | Y |
+| Graceful shutdown | Y | n/a | U | U | Y | Y | U | n/a | Y (server and client) |
+| Public test kit / mocks | Y | P | P | P | P | N | U | Y | Y (`ocpptest`) |
 | Device model / configuration key helpers | N | N | N | Y | Y | N | Y | Y | N |
-| Certificate helpers (hash data, CSR, OCSP) | N | N | N | Y | Y | N | Y | P | N |
+| Certificate helpers (hash data, CSR, OCSP) | N | N | N | Y | Y | N | Y | P | P (`ocppcert` hash data) |
 | Code generated from the OCA schemas | N | N | N | Y | Y | bundled | N | N | Y |
 | Tested against independent implementations | U | U | U | OCA cert. | OCA cert. | U | U | U | Y (ocpp-interop) |
 
@@ -63,41 +63,69 @@ against three independent stacks; chaos, soak and fuzz testing.
 
 ## Gaps
 
+Every gap found has a status: **done** (in v0.1.0), **by design** (covered
+another way, with the reason), or **planned** (with its priority). Nothing
+is left without one.
+
 Library scope: belongs in go-ocpp.
 
 | # | Feature | Priority | Status |
 |---|---|---|---|
-| 1 | WebSocket ping/pong keepalive and dead-peer detection | P0 | Done (Phase 7): `WithPingInterval`, abort without the closing handshake |
-| 2 | Close a peer after repeated malformed frames | P0 | Done (Phase 7): `WithMaxBadMessages` |
-| 3 | Configurable write timeout (a peer that stops reading) | P0 | Done (Phase 7): `WithWriteTimeout` |
-| 4 | Per-station rate limit of incoming CALLs | P1 | Open. Possible today with a `HandlerInterceptor`; a built-in limiter would make it one option |
-| 5 | Runtime reconfiguration of the client: back-off, URL, network profile fallback (NetworkConfigurationPriority), security profile upgrade | P1 | Open |
-| 6 | Per-action validation exemption, logged, for interop with stations that send invalid messages | P1 | Open (ARCHITECTURE.md allows it "only per action and logged") |
-| 7 | Public test kit (`ocpptest`): in-memory pipe, fake peer, recording dispatchers | P1 | Open |
-| 8 | Custom handshake headers and an Origin check | P1 | Open (headers only through `WithHTTPClient`, which excludes `WithTLS`) |
-| 9 | Client close that waits for pending calls | P2 | Open |
-| 10 | Per-call response timeout | P2 | Open (the context deadline bounds the wait, not the slot) |
-| 11 | Local Controller role (2.x), composing client and server | P2 | Open |
-| 12 | Case-insensitive station identities: identifierString is case-insensitive (2.x Part 2), sessions are keyed by the exact string | P1 | Open question: settle against the OCA text before changing session lookup |
+| 1 | WebSocket ping/pong keepalive and dead-peer detection | P0 | **Done**: `WithPingInterval` (client, server); a dead peer is aborted without the closing handshake |
+| 2 | Close a peer after repeated malformed frames | P0 | **Done**: `WithMaxBadMessages` |
+| 3 | Write timeout for a peer that stops reading | P0 | **Done**: `WithWriteTimeout` |
+| 4 | Per-station rate limit of incoming CALLs | P1 | **Done**: `WithIncomingRateLimit` (client, server); messages over the rate wait, none is refused, as OCPP has no error for it |
+| 5 | Runtime reconfiguration of the client | P1 | **Done** for the back-off: `Client.SetReconnect` (RetryBackOff* set by the CSMS). **Planned (P1)**: switching URL and security profile after SetNetworkProfile, and fallback along NetworkConfigurationPriority; until then the application creates a new `Client` with the new profile |
+| 6 | Accepting messages of stations that do not conform | P1 | **By design**: typed validation stays always on. An application that must accept a broken station handles that action with a raw `ocpp.DispatcherFunc` (or calls with `json.RawMessage`) and decodes leniently itself, for that action only (API.md) |
+| 7 | Public test kit | P1 | **Done**: package `ocpptest` (`CSMS`, `Station`, `Session`, `Recorder`) |
+| 8 | Custom handshake headers, Origin check | P1 | **Done**: `client.WithHeader`; the server refuses foreign browser origins by default, `server.WithOriginPatterns` allows some |
+| 9 | Client close that waits for pending calls | P2 | **Done**: `Client.Shutdown(ctx)` |
+| 10 | Per-call response timeout | P2 | **By design**: the caller's context deadline bounds each call; the response timeout bounds the slot, which T6 makes a per-connection matter |
+| 11 | Local Controller role (2.x) | P2 | **Planned (P2)**: a package composing client and server with raw dispatch; no reference stack implements it to test against |
+| 12 | Case-insensitive station identities | P1 | **By design**: identities are matched exactly. identifierString is case-insensitive as a data type, but the identity is also a URL path segment and the Basic authentication user name, both case-sensitive; matching exactly never merges two stations. Recorded in ARCHITECTURE.md |
 
 Application scope: out of scope per ARCHITECTURE.md; at most an optional
-subpackage with no new dependency, each with an ADR.
+subpackage with no new dependency.
 
 | # | Feature | Priority | Status |
 |---|---|---|---|
-| 13 | Offline queue with TransactionMessageAttempts/RetryInterval (1.6 §4.3, 2.x E04/E10), behind a `Store` interface | P1 | Open; the largest gap against the union. Changes a non-goal: needs an ADR |
-| 14 | Certificate helpers: CertificateHashData, CSR for SignCertificate, OCSP request data | P1 | Open |
-| 15 | Heartbeat scheduler | P2 | Open |
-| 16 | Typed constants for 1.6 configuration keys and 2.x components and variables (no storage) | P2 | Open |
-| 17 | OpenTelemetry / Prometheus adapters on the hooks, as a separate module | P2 | Open; `examples/observability` shows where they plug in |
-| 18 | Scaling documentation (several CSMS instances, a broker) | P2 | Open |
+| 13 | Offline queue with TransactionMessageAttempts/RetryInterval (1.6 §4.3, 2.x E04/E10), behind a `Store` interface | P1 | **Planned (P1)**, after v0.1.0: changes an ARCHITECTURE non-goal and needs an ADR. Until then the application queues: `Call` fails at once with `ErrNotConnected` or `ErrConnectionLost`, never silently |
+| 14 | Certificate helpers | P1 | **Done** for CertificateHashData: package `ocppcert`. **By design** for CSRs and OCSP requests: `crypto/x509.CreateCertificateRequest` and the application's OCSP client build them; there is nothing OCPP-specific to add |
+| 15 | Heartbeat scheduler | P2 | **By design**: a ticker calling `Heartbeat` with the interval of the boot response; [examples/station-simulator](examples/station-simulator) shows it |
+| 16 | Typed constants for 1.6 configuration keys and 2.x components and variables | P2 | **Planned (P2)**: generated from the OCA appendices |
+| 17 | OpenTelemetry / Prometheus adapters | P2 | **Planned (P2)** as a separate module, so the library keeps one dependency; [examples/observability](examples/observability) shows where they plug in |
+| 18 | Running several CSMS instances | P2 | **Done** (documentation): API_SERVER.md, "Scaling out" |
 
 Will not do: smart charging calculation, signed meter values, firmware and
 log upload, ISO 15118 contract logic, local authorization lists,
-persistence (application logic); OCPP 1.6 SOAP, 1.5 and older.
+persistence (application logic; the examples show how an application
+does them); OCPP 1.6 SOAP, 1.5 and older.
+
+## API ergonomics
+
+Found by writing the use-case examples against the public API.
+
+| # | Friction | Status |
+|---|---|---|
+| 19 | A handler cannot act after its response is sent (NotifyReport after GetBaseReport, status notifications after UpdateFirmware, a reboot after Reset) | **Done**: `ocpp.AfterResponse`; the examples use it |
+| 20 | A station's deliberate close looks like a lost connection | **Done**: `*ocpp.CloseError` with `Normal()`, wrapped next to `ErrConnectionLost` |
+| 21 | `Connect` reported the HTTP status only in the text | **Done**: `*client.HandshakeError{StatusCode}` |
+| 22 | An authenticator could only refuse with 401 or 404 | **Done**: `*server.StatusError` (any 4xx or 5xx) |
+| 23 | `BasicAuth` does not compose with certificate authentication | **Done**: `server.CertificateAuth`, `server.AnyOf` |
+| 24 | `WithBasicAuth` repeats the identity, which may mismatch | **Done**: `client.New` refuses a user name that is not the identity |
+| 25 | Handlers cannot see how a station connected | **Done**: `Session.TLS()` |
+| 26 | 2.0.1 and 2.1 have distinct types, so multi-version 2.x code is written twice; `IdTokenType.type` is an enumeration in 2.0.1 and a string in 2.1 | **By design**: the types follow each version's schemas (ADR 0001), which do differ (2.1 opened the id token types); sharing them would hide such differences |
+| 27 | Wrapping a generated dispatcher in `ocpp.DispatcherFunc` drops its `DispatchSend` | **By design**, documented in API.md: a wrapper that must keep SENDs implements `ocpp.SendDispatcher` too and forwards to the wrapped dispatcher |
+| 28 | A closed `Client` cannot connect again | **By design**, documented in API_CLIENT.md: `Close` is final, as for `net/http`'s servers; a restarting station makes a new `Client` (examples/remote-management) |
 
 ## Interop gaps
 
+- **Actions without a reference scenario** (planned, P1, in ocpp-interop):
+  of the actions of each version, 30/39 (1.6J), 27/64 (2.0.1) and 43/91
+  (2.1) are exchanged with an independent stack; the rest are verified
+  against go-ocpp and the schemas only. The per-version matrices in
+  [docs/compatibility](docs/compatibility) list them. Closing this means
+  wiring every action into the reference adapters and fixtures.
 - ChargeTimeEU 2.1 (SEND, CALLRESULTERROR) exists on its master branch only;
   the reference adapters are pinned to releases (ocpp-interop R2.2).
 - No reference release sends SEND or CALLRESULTERROR: go-ocpp's are tested

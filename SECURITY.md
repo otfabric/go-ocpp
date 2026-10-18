@@ -45,6 +45,11 @@ Implemented in the client and server (Phase 2); see
   the object.
 - On 2.x connections the server refuses station identities that are not
   identifierStrings of at most 48 characters without ":" (HTTP 400).
+- The server refuses WebSocket upgrades whose browser Origin names another
+  host (403), unless `WithOriginPatterns` allows it: a web page cannot
+  open a station session in a user's browser.
+- `WithIncomingRateLimit` bounds how fast one station's CALLs reach the
+  handlers.
 - `WithWriteTimeout` (default 10 s) bounds a peer that stops reading;
   `WithPingInterval` detects half-open connections; `WithMaxBadMessages`
   closes a peer that keeps sending malformed frames.

@@ -34,7 +34,9 @@ type Client struct {
 	o      options
 	log    *slog.Logger
 	header http.Header
-	http   *http.Client
+	// draining is set by Shutdown: new calls fail with ErrClosed.
+	draining bool
+	http     *http.Client
 
 	mu        sync.Mutex
 	state     ocpp.State
@@ -110,15 +112,15 @@ func New(rawURL string, opts ...Option) (*Client, error) {
 	if o.maxMessageSize <= 0 {
 		o.maxMessageSize = DefaultMaxMessageSize
 	}
-	if o.pingInterval < 0 || o.maxBadMessages < 0 {
-		return nil, fmt.Errorf("%w: ping interval and bad message limit must not be negative", ocpp.ErrInvalidOption)
+	if o.pingInterval < 0 || o.maxBadMessages < 0 || o.incomingRate < 0 || o.incomingBurst < 0 {
+		return nil, fmt.Errorf("%w: ping interval, bad message limit and rate limit must not be negative", ocpp.ErrInvalidOption)
 	}
 	if o.metrics == nil {
 		o.metrics = ocpp.NopMetrics{}
 	}
 	if r := o.reconnect; r != nil {
-		if r.WaitMinimum <= 0 || r.RandomRange < 0 || r.RepeatTimes < 0 {
-			return nil, fmt.Errorf("%w: reconnect: WaitMinimum must be positive, RandomRange and RepeatTimes not negative", ocpp.ErrInvalidOption)
+		if err := r.check(); err != nil {
+			return nil, err
 		}
 	}
 	log := o.logger
@@ -128,6 +130,17 @@ func New(rawURL string, opts ...Option) (*Client, error) {
 	log = log.With("component", "ocpp.client")
 	o.logger = log // the engine's entries carry the component too
 	c := &Client{url: rawURL, id: id, o: o, log: log.With("station_id", id), header: http.Header{}, closeCh: make(chan struct{})}
+	for _, h := range o.headers {
+		if err := checkHeader(h[0], h[1]); err != nil {
+			return nil, err
+		}
+		c.header.Add(h[0], h[1])
+	}
+	if o.basicAuth && o.username != id {
+		// 2.x Part 2 A00, 1.6 Security Whitepaper: the user name is the
+		// identity; a CSMS refuses any other.
+		return nil, fmt.Errorf("%w: the Basic authentication user name %q is not the station identity %q", ocpp.ErrInvalidOption, o.username, id)
+	}
 	if o.basicAuth {
 		c.header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(o.username+":"+o.password)))
 	}
@@ -239,7 +252,7 @@ func (c *Client) dial(ctx context.Context) (*engine.Endpoint, ocpp.Version, erro
 	})
 	if err != nil {
 		if resp != nil {
-			err = fmt.Errorf("%w: HTTP %d: %w", ocpp.ErrConnectFailed, resp.StatusCode, err)
+			err = fmt.Errorf("%w: %w: %w", ocpp.ErrConnectFailed, &HandshakeError{StatusCode: resp.StatusCode}, err)
 		} else {
 			err = fmt.Errorf("%w: %w", ocpp.ErrConnectFailed, err)
 		}
@@ -267,6 +280,8 @@ func (c *Client) dial(ctx context.Context) (*engine.Endpoint, ocpp.Version, erro
 		WriteTimeout:       c.o.writeTimeout,
 		PingInterval:       c.o.pingInterval,
 		MaxBadMessages:     c.o.maxBadMessages,
+		IncomingRate:       c.o.incomingRate,
+		IncomingBurst:      c.o.incomingBurst,
 		Logger:             c.o.logger,
 		Metrics:            c.o.metrics,
 		CallInterceptor:    c.o.callInterceptor,
@@ -342,7 +357,9 @@ func (c *Client) supervise(ep *engine.Endpoint, done chan struct{}) {
 // backoff returns the delay before reconnection attempt n (OCPP 2.x Part 4
 // §5.4; see Reconnect). The doubling saturates instead of overflowing.
 func (c *Client) backoff(attempt int) time.Duration {
-	r := c.o.reconnect
+	c.mu.Lock()
+	r := *c.o.reconnect
+	c.mu.Unlock()
 	d := r.WaitMinimum
 	for i := 1; i < attempt && i <= r.RepeatTimes && d < math.MaxInt64/2; i++ {
 		d *= 2
@@ -351,6 +368,24 @@ func (c *Client) backoff(attempt int) time.Duration {
 		d += rand.N(r.RandomRange + 1)
 	}
 	return d
+}
+
+// SetReconnect changes the reconnection back-off from the next attempt on:
+// for a CSMS that sets the RetryBackOff variables of OCPPCommCtrlr (2.x)
+// while the station runs. Nil stops reconnecting after the next loss; a
+// reconnect already waiting finishes with the settings it had.
+func (c *Client) SetReconnect(r *Reconnect) error {
+	if r != nil {
+		if err := r.check(); err != nil {
+			return err
+		}
+		cp := *r
+		r = &cp
+	}
+	c.mu.Lock()
+	c.o.reconnect = r
+	c.mu.Unlock()
+	return nil
 }
 
 // setStateLocked records a state change and reports it. Every caller
@@ -368,7 +403,7 @@ func (c *Client) setStateLocked(s ocpp.State, err error) {
 // ocpp.ErrNotConnected; nothing is queued.
 func (c *Client) Call(ctx context.Context, action string, req, resp any) error {
 	c.mu.Lock()
-	ep, closed := c.ep, c.closed
+	ep, closed := c.ep, c.closed || c.draining
 	c.mu.Unlock()
 	if closed {
 		return ocpp.ErrClosed
@@ -384,7 +419,7 @@ func (c *Client) Call(ctx context.Context, action string, req, resp any) error {
 // not connected it fails at once with ocpp.ErrNotConnected.
 func (c *Client) Send(ctx context.Context, action string, req any) error {
 	c.mu.Lock()
-	ep, closed := c.ep, c.closed
+	ep, closed := c.ep, c.closed || c.draining
 	c.mu.Unlock()
 	if closed {
 		return ocpp.ErrClosed
@@ -424,6 +459,66 @@ func (c *Client) Close() error {
 	c.setStateLocked(ocpp.Closed, nil)
 	c.mu.Unlock()
 	return nil
+}
+
+// HandshakeError is the HTTP status with which the CSMS refused the
+// WebSocket handshake. Connect's error wraps it next to
+// ocpp.ErrConnectFailed, so that an application can decide how to go on:
+// 401 wrong credentials, 404 unknown identity, 409 already connected, 503
+// try later.
+//
+//	var he *client.HandshakeError
+//	if errors.As(err, &he) && he.StatusCode == http.StatusUnauthorized { ... }
+type HandshakeError struct {
+	StatusCode int
+}
+
+// Error implements error.
+func (e *HandshakeError) Error() string {
+	return fmt.Sprintf("HTTP %d %s", e.StatusCode, http.StatusText(e.StatusCode))
+}
+
+// checkHeader refuses header names that are not HTTP tokens, values with
+// control characters, and the headers the client sets itself.
+func checkHeader(name, value string) error {
+	if name == "" || strings.IndexFunc(name, func(r rune) bool {
+		return r <= ' ' || r >= 0x7f || strings.ContainsRune(`"(),/:;<=>?@[\]{}`, r)
+	}) >= 0 {
+		return fmt.Errorf("%w: header name %q", ocpp.ErrInvalidOption, name)
+	}
+	if strings.ContainsAny(value, "\r\n\x00") {
+		return fmt.Errorf("%w: header %s has a control character", ocpp.ErrInvalidOption, name)
+	}
+	switch c := http.CanonicalHeaderKey(name); {
+	case c == "Authorization", c == "Host", c == "Connection", c == "Upgrade", strings.HasPrefix(c, "Sec-Websocket-"):
+		return fmt.Errorf("%w: header %s is set by the client", ocpp.ErrInvalidOption, c)
+	}
+	return nil
+}
+
+// Shutdown stops new calls (they fail with ocpp.ErrClosed), waits until the
+// calls already made have their answers and queued SENDs are written, or
+// until ctx ends, and then closes like Close. It returns ctx.Err() when ctx
+// ended first; the client is closed either way.
+func (c *Client) Shutdown(ctx context.Context) error {
+	c.mu.Lock()
+	c.draining = true
+	ep := c.ep
+	c.mu.Unlock()
+	var err error
+	if ep != nil {
+		t := time.NewTicker(2 * time.Millisecond)
+		for !ep.Idle() && ep.Err() == nil && err == nil {
+			select {
+			case <-t.C:
+			case <-ctx.Done():
+				err = ctx.Err()
+			}
+		}
+		t.Stop()
+	}
+	_ = c.Close()
+	return err
 }
 
 var (

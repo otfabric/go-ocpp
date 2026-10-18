@@ -10,8 +10,10 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"errors"
 	"math/big"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -117,4 +119,58 @@ func TestInvalidIdentity(t *testing.T) {
 	}
 	c := station(t, base+"RDAM%20123", client.WithInsecureTransport(), client.WithVersions(ocpp.V16))
 	connect(t, c)
+}
+
+// CertificateAuth admits a station by its client certificate; AnyOf lets
+// one CSMS admit profile 2 and profile 3 stations; a handler sees the TLS
+// state through Session.TLS.
+func TestCertificateAuthAndAnyOf(t *testing.T) {
+	noLeak(t)
+	p := newPKI(t)
+	tlsCfg := &tls.Config{Certificates: []tls.Certificate{p.issue(t, "csms", true)}, ClientAuth: tls.VerifyClientCertIfGiven, ClientCAs: p.caPool}
+	sawCert := make(chan string, 4)
+	h := ocpp.DispatcherFunc(func(ctx context.Context, peer ocpp.Peer, action string, payload json.RawMessage) (json.RawMessage, error) {
+		if s, ok := peer.(*server.Session); ok && s.TLS() != nil && len(s.TLS().PeerCertificates) > 0 {
+			sawCert <- s.TLS().PeerCertificates[0].Subject.CommonName
+		} else {
+			sawCert <- ""
+		}
+		return json.RawMessage(`{}`), nil
+	})
+	auth := server.AnyOf(server.CertificateAuth(), server.BasicAuth(func(ctx context.Context, id string) (string, bool) {
+		return "profile-2-password", id == "P2"
+	}))
+	_, base := csms(t, tlsCfg, server.WithHandler(ocpp.V201, h), server.WithAuthenticator(auth))
+
+	c3 := station(t, base+"P3", client.WithVersions(ocpp.V201),
+		client.WithTLS(&tls.Config{RootCAs: p.caPool, Certificates: []tls.Certificate{p.issue(t, "P3", false)}}))
+	connect(t, c3)
+	_ = c3.Call(context.Background(), "Heartbeat", nil, nil)
+	if cn := <-sawCert; cn != "P3" {
+		t.Fatalf("handler saw certificate %q", cn)
+	}
+	c2 := station(t, base+"P2", client.WithVersions(ocpp.V201), client.WithTLS(&tls.Config{RootCAs: p.caPool}),
+		client.WithBasicAuth("P2", "profile-2-password"))
+	connect(t, c2)
+	_ = c2.Call(context.Background(), "Heartbeat", nil, nil)
+	if cn := <-sawCert; cn != "" {
+		t.Fatalf("profile 2 handler saw certificate %q", cn)
+	}
+	// Without a certificate or credentials, CertificateAuth refuses (401):
+	// it cannot know whether the station exists, so neither is told 404.
+	for _, id := range []string{"P2X", "P3"} {
+		c := station(t, base+id, client.WithVersions(ocpp.V201), client.WithTLS(&tls.Config{RootCAs: p.caPool}))
+		var he *client.HandshakeError
+		if err := c.Connect(context.Background()); !errors.As(err, &he) || he.StatusCode != http.StatusUnauthorized {
+			t.Errorf("%s: %v, want 401", id, err)
+		}
+	}
+	// Every authenticator says unknown: 404.
+	unknown := server.AuthenticatorFunc(func(context.Context, server.ConnectRequest) error { return server.ErrUnknownStation })
+	if err := server.AnyOf(unknown, unknown).Authenticate(context.Background(), server.ConnectRequest{}); !errors.Is(err, server.ErrUnknownStation) {
+		t.Fatalf("all unknown: %v", err)
+	}
+	if err := server.AnyOf().Authenticate(context.Background(), server.ConnectRequest{}); !errors.Is(err, server.ErrUnauthorized) {
+		t.Fatalf("AnyOf(): %v", err)
+	}
 }

@@ -21,7 +21,7 @@ jobs:
       go-versions: '["1.26", "1.27"]'
       golangci-lint-version: v2.15.0
       # Match the Makefile's COVER_PKGS: the e2e tests drive client and server.
-      coverpkg: github.com/otfabric/go-ocpp,github.com/otfabric/go-ocpp/ocppj,github.com/otfabric/go-ocpp/client,github.com/otfabric/go-ocpp/server,github.com/otfabric/go-ocpp/internal/engine,github.com/otfabric/go-ocpp/internal/transport
+      coverpkg: github.com/otfabric/go-ocpp,github.com/otfabric/go-ocpp/ocppj,github.com/otfabric/go-ocpp/client,github.com/otfabric/go-ocpp/server,github.com/otfabric/go-ocpp/internal/engine,github.com/otfabric/go-ocpp/internal/transport,github.com/otfabric/go-ocpp/ocpptest,github.com/otfabric/go-ocpp/ocppcert
     secrets: inherit
 
   # Formatting with the gofmt of the go.mod version and the latest one, the

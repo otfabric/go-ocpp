@@ -1,0 +1,3 @@
+func Hash(cert, issuer *x509.Certificate, alg crypto.Hash) (HashData, error)
+type HashData struct { HashAlgorithm string `json:"hashAlgorithm"` IssuerNameHash string `json:"issuerNameHash"` IssuerKeyHash string `json:"issuerKeyHash"` SerialNumber string `json:"serialNumber"` }
+var ErrUnsupportedHash

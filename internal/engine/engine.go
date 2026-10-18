@@ -58,6 +58,11 @@ type Config struct {
 	// MaxBadMessages closes the connection (status 1008) once that many
 	// malformed frames have been received on it. Zero: no limit.
 	MaxBadMessages int
+	// IncomingRate limits how many incoming CALLs and SENDs are dispatched
+	// per second, with bursts of IncomingBurst (at least 1). Messages over
+	// the rate wait; none is refused. Zero: no limit.
+	IncomingRate  float64
+	IncomingBurst int
 
 	Logger             *slog.Logger // nil: discard
 	Metrics            ocpp.Metrics // nil: none
@@ -97,6 +102,7 @@ type Endpoint struct {
 	done         chan struct{} // closed when every goroutine has exited
 	inHandler    atomic.Bool
 	badMessages  atomic.Int64
+	limiter      *limiter // nil without IncomingRate
 }
 
 type pendingCall struct {
@@ -131,6 +137,10 @@ func New(conn transport.Conn, cfg Config) *Endpoint {
 	if cfg.NewMessageID == nil {
 		cfg.NewMessageID = NewUUID
 	}
+	var lim *limiter
+	if cfg.IncomingRate > 0 {
+		lim = newLimiter(cfg.IncomingRate, cfg.IncomingBurst)
+	}
 	log := cfg.Logger
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
@@ -141,6 +151,7 @@ func New(conn transport.Conn, cfg Config) *Endpoint {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	e := &Endpoint{
+		limiter:  lim,
 		cfg:      cfg,
 		conn:     conn,
 		log:      log,
@@ -207,6 +218,15 @@ func (e *Endpoint) Close() error {
 		<-e.done
 	}
 	return nil
+}
+
+// Idle reports whether no outgoing CALL is outstanding or waiting for the
+// slot and no SEND is queued: what a graceful shutdown waits for.
+func (e *Endpoint) Idle() bool {
+	e.mu.Lock()
+	pending := e.pending != nil
+	e.mu.Unlock()
+	return !pending && e.waiting.Load() == 0 && len(e.calls) == 0 && len(e.sends) == 0
 }
 
 // HandlerRunning reports whether a handler is running. Owners use it to

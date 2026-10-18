@@ -23,7 +23,7 @@ connected.
 
 Docs: [Architecture](ARCHITECTURE.md) · [Requirements](REQUIREMENTS.md) ·
 [Specifications](SPECIFICATIONS.md) · [Plan](IMPLEMENTATION_PLAN.md) ·
-[API](API.md) · [Errors](ERRORS.md) · [Observability](OBSERVABILITY.md) ·
+[API](API.md) ([client](API_CLIENT.md), [server](API_SERVER.md)) · [Errors](ERRORS.md) · [Observability](OBSERVABILITY.md) ·
 [Security](SECURITY.md) · [Interoperability](INTEROPERABILITY.md) ·
 [Compatibility](COMPATIBILITY.md) · [Features and gaps](FEATURES.md) ·
 [Releases](RELEASE.md)

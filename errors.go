@@ -2,7 +2,10 @@
 
 package ocpp
 
-import "errors"
+import (
+	"errors"
+	"strconv"
+)
 
 // Sentinel errors shared by the client, the server and the version packages.
 // They are usually wrapped with detail; test for them with errors.Is.
@@ -56,3 +59,27 @@ var (
 // CALLRESULT or CALLERROR that matches no pending CALL: a late response
 // after a timeout, a duplicate, or an unknown message ID.
 var ErrUnexpectedResponse = errors.New("ocpp: unexpected response")
+
+// CloseError says how the peer closed the connection, when it sent a
+// WebSocket close frame. The error of a lost connection (Session.Err, the
+// session handler, Metrics.OnDisconnect, the client's state handler) wraps
+// it next to ErrConnectionLost:
+//
+//	var ce *ocpp.CloseError
+//	if errors.As(err, &ce) && ce.Normal() { /* the peer closed on purpose */ }
+type CloseError struct {
+	Code   int    // RFC 6455 §7.4 status code, e.g. 1000
+	Reason string // the peer's reason text, often empty
+}
+
+// Error implements error.
+func (e *CloseError) Error() string {
+	if e.Reason == "" {
+		return "closed by peer with status " + strconv.Itoa(e.Code)
+	}
+	return "closed by peer with status " + strconv.Itoa(e.Code) + ": " + e.Reason
+}
+
+// Normal reports whether the peer closed on purpose: status 1000 (normal
+// closure) or 1001 (going away, e.g. a reboot or a server shutting down).
+func (e *CloseError) Normal() bool { return e.Code == 1000 || e.Code == 1001 }

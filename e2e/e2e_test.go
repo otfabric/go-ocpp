@@ -5,14 +5,18 @@ package e2e
 import (
 	"context"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/coder/websocket"
 
 	"github.com/otfabric/go-ocpp"
 	"github.com/otfabric/go-ocpp/client"
@@ -196,8 +200,7 @@ func TestBasicAuth(t *testing.T) {
 
 	for _, tt := range []struct{ id, user, pass, status string }{
 		{"CS1", "CS1", "wrong", "401"},
-		{"CS1", "CS2", "correct horse battery staple", "401"}, // user name is not the identity
-		{"CS2", "CS2", "anything", "404"},                     // unknown station (OCPP-J §3.2)
+		{"CS2", "CS2", "anything", "404"}, // unknown station (OCPP-J §3.2)
 	} {
 		c := station(t, base+tt.id, client.WithInsecureTransport(), client.WithVersions(ocpp.V16), client.WithBasicAuth(tt.user, tt.pass))
 		err := c.Connect(context.Background())
@@ -207,6 +210,17 @@ func TestBasicAuth(t *testing.T) {
 		if strings.Contains(fmt.Sprint(err), tt.pass) {
 			t.Errorf("error reveals the password: %v", err)
 		}
+	}
+	// A user name that is not the identity: the client refuses to send it,
+	// and the server refuses it from a station that does.
+	if _, err := client.New(base+"CS1", client.WithInsecureTransport(), client.WithVersions(ocpp.V16),
+		client.WithBasicAuth("CS2", "correct horse battery staple")); !errors.Is(err, ocpp.ErrInvalidOption) {
+		t.Errorf("mismatched user name: %v", err)
+	}
+	_, resp, err := websocket.Dial(context.Background(), base+"CS1", &websocket.DialOptions{Subprotocols: []string{"ocpp1.6"},
+		HTTPHeader: http.Header{"Authorization": {"Basic " + base64.StdEncoding.EncodeToString([]byte("CS2:correct horse battery staple"))}}})
+	if err == nil || resp == nil || resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("mismatched user name at the server: %v", err)
 	}
 	none := station(t, base+"CS1", client.WithInsecureTransport(), client.WithVersions(ocpp.V16))
 	if err := none.Connect(context.Background()); !errors.Is(err, ocpp.ErrConnectFailed) {

@@ -8,8 +8,11 @@ func (c *Client) Connect(ctx context.Context) error
 func (c *Client) ID() string
 func (c *Client) Role() ocpp.Role
 func (c *Client) Send(ctx context.Context, action string, req any) error
+func (c *Client) SetReconnect(r *Reconnect) error
+func (c *Client) Shutdown(ctx context.Context) error
 func (c *Client) State() ocpp.State
 func (c *Client) Version() ocpp.Version
+func (e *HandshakeError) Error() string
 func DefaultReconnect() Reconnect
 func New(rawURL string, opts ...Option) (*Client, error)
 func WithBasicAuth(username, password string) Option
@@ -20,6 +23,8 @@ func WithHTTPClient(c *http.Client) Option
 func WithHandler(v ocpp.Version, d ocpp.Dispatcher) Option
 func WithHandlerInterceptor(i ocpp.Interceptor) Option
 func WithHandshakeTimeout(d time.Duration) Option
+func WithHeader(name, value string) Option
+func WithIncomingRateLimit(perSecond float64, burst int) Option
 func WithInsecureTransport() Option
 func WithLogger(l *slog.Logger) Option
 func WithMaxBadMessages(n int) Option
@@ -34,5 +39,6 @@ func WithTLS(cfg *tls.Config) Option
 func WithVersions(v ...ocpp.Version) Option
 func WithWriteTimeout(d time.Duration) Option
 type Client struct { }
+type HandshakeError struct { StatusCode int }
 type Option func(*options)
 type Reconnect struct { WaitMinimum time.Duration RandomRange time.Duration RepeatTimes int }

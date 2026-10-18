@@ -187,6 +187,14 @@ verified against an independent implementation.
       `component` log attribute; API golden test (`TestAPI`); dependency
       audit (coder/websocket only)
 - [x] Feature tracker against other implementations (FEATURES.md)
+- [x] Release preparation: use-case examples for every version
+      (examples/README.md); API reference split into API.md,
+      API_CLIENT.md and API_SERVER.md, with `TestDocsCoverAPI`; complete
+      ERRORS.md; per-version action matrices against the reference stacks
+      (docs/compatibility, `make compat`); every gap in FEATURES.md done,
+      by design or planned; `ocpptest`, `ocppcert`, `WithHeader`,
+      `WithOriginPatterns`, `WithIncomingRateLimit`, `Client.Shutdown`,
+      `Client.SetReconnect`
 - [ ] Interop with 2.1 against released references: pin ocpp-interop
       v0.2.0 (passes against its local build)
 - [x] Settle S1 (licensing of generated code): ADR 0007

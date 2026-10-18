@@ -20,7 +20,7 @@ var updateAPI = flag.Bool("update", false, "rewrite testdata/api from the curren
 
 // The packages whose exported API is recorded. The version packages are
 // generated from the schemas and recorded in their coverage manifests.
-var apiPackages = map[string]string{"ocpp": ".", "ocppj": "ocppj", "client": "client", "server": "server"}
+var apiPackages = map[string]string{"ocpp": ".", "ocppj": "ocppj", "client": "client", "server": "server", "ocpptest": "ocpptest", "ocppcert": "ocppcert"}
 
 // TestAPI compares the exported API of the core packages with
 // testdata/api, so that every change to it shows in review and in the

@@ -4,7 +4,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help all build examples fmt fmt-check lint lint-ci vet vuln test test-min coverage cover fuzz fuzz-long chaos soak check cross clean interop test-interop e2e deps gen gen-check schemas-check schemas-sync
+.PHONY: compat help all build examples fmt fmt-check lint lint-ci vet vuln test test-min coverage cover fuzz fuzz-long chaos soak check cross clean interop test-interop e2e deps gen gen-check schemas-check schemas-sync
 help: ## This help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_-]+:.*?## / {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
@@ -40,7 +40,7 @@ build: ## Build the library and the examples into ./bin
 	done
 
 # The self-contained examples: each starts both sides and exits by itself.
-RUN_EXAMPLES := ocpp16 ocpp201 ocpp21 observability
+RUN_EXAMPLES := ocpp16 ocpp201 ocpp21 observability csms station-simulator smart-charging security-profiles device-model remote-management vendor-extensions
 
 examples: ## Run the self-contained examples (each must exit successfully)
 	@for e in $(RUN_EXAMPLES); do \
@@ -173,6 +173,13 @@ test-interop: ## Run the interop suite against the ocpp-interop reference images
 		go test -tags=interop -count=1 -timeout=20m ./interop/...
 
 interop: test-interop ## Alias for test-interop
+
+compat: ## Rewrite docs/compatibility (one action matrix per OCPP version) from the reference images (needs Docker)
+	@OCPP_WRITE_COMPAT=1 OCPP_INTEROP_REQUIRE=1 \
+		OCPP_INTEROP_MOBILITYHOUSE_IMAGE=$(OCPP_INTEROP_MOBILITYHOUSE_IMAGE) \
+		OCPP_INTEROP_CHARGETIME_IMAGE=$(OCPP_INTEROP_CHARGETIME_IMAGE) \
+		OCPP_INTEROP_LORENZODONINI_IMAGE=$(OCPP_INTEROP_LORENZODONINI_IMAGE) \
+		go test -tags=interop -count=1 -run '^TestWriteCompatibility$$' ./interop/
 
 gen: ## Generate the version packages from the OCA schemas (internal/gen)
 	@echo "Generating ocpp16, ocpp201 and ocpp21"

@@ -56,3 +56,19 @@ func TestReconnectValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestSetReconnect(t *testing.T) {
+	c := newReconnecting(t, Reconnect{WaitMinimum: time.Second})
+	if err := c.SetReconnect(&Reconnect{WaitMinimum: 0}); err == nil {
+		t.Fatal("invalid settings accepted")
+	}
+	if err := c.SetReconnect(&Reconnect{WaitMinimum: 2 * time.Second, RepeatTimes: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if d := c.backoff(3); d != 4*time.Second {
+		t.Fatalf("backoff %s", d)
+	}
+	if err := c.SetReconnect(nil); err != nil {
+		t.Fatal(err)
+	}
+}

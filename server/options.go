@@ -55,6 +55,9 @@ type options struct {
 	writeTimeout       time.Duration
 	pingInterval       time.Duration
 	maxBadMessages     int
+	originPatterns     []string
+	incomingRate       float64
+	incomingBurst      int
 	callInterceptor    ocpp.Interceptor
 	handlerInterceptor ocpp.Interceptor
 	frameObserver      ocpp.FrameObserver
@@ -149,6 +152,24 @@ func WithPingInterval(d time.Duration) Option { return func(o *options) { o.ping
 // malformed frames have been received on it. Each is still answered or
 // dropped as the version requires. Zero (the default) sets no limit.
 func WithMaxBadMessages(n int) Option { return func(o *options) { o.maxBadMessages = n } }
+
+// WithOriginPatterns lets browsers on other origins connect, by host
+// pattern (path.Match syntax, e.g. "*.example.com"). By default a request
+// with an Origin header whose host differs from the request's is refused
+// (cross-site WebSocket hijacking). Stations send no Origin header and are
+// not affected.
+func WithOriginPatterns(patterns ...string) Option {
+	return func(o *options) { o.originPatterns = append(o.originPatterns, patterns...) }
+}
+
+// WithIncomingRateLimit dispatches at most perSecond of a station's incoming
+// CALLs and SENDs a second, in bursts of up to burst. Messages over the
+// rate wait: none is refused, since OCPP has no error for "too many";
+// once the bounded incoming queue is full, reading from the connection
+// waits too. Zero (the default) sets no limit.
+func WithIncomingRateLimit(perSecond float64, burst int) Option {
+	return func(o *options) { o.incomingRate, o.incomingBurst = perSecond, burst }
+}
 
 // WithCallInterceptor wraps every CALL sent to a station.
 func WithCallInterceptor(i ocpp.Interceptor) Option {

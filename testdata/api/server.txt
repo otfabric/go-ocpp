@@ -7,6 +7,8 @@ const RejectNew
 const ReplaceExisting ReplacePolicy = iota
 func (Secret) GoString() string
 func (Secret) String() string
+func (e *StatusError) Error() string
+func (e *StatusError) Unwrap() error
 func (f AuthenticatorFunc) Authenticate(ctx context.Context, r ConnectRequest) error
 func (s *Server) Close() error
 func (s *Server) ListenAndServe(addr string) error
@@ -26,8 +28,11 @@ func (s *Session) RemoteAddr() string
 func (s *Session) Role() ocpp.Role
 func (s *Session) Send(ctx context.Context, action string, req any) error
 func (s *Session) SessionID() string
+func (s *Session) TLS() *tls.ConnectionState
 func (s *Session) Version() ocpp.Version
+func AnyOf(auths ...Authenticator) Authenticator
 func BasicAuth(lookup func(ctx context.Context, stationID string) (password string, ok bool)) Authenticator
+func CertificateAuth() Authenticator
 func New(opts ...Option) (*Server, error)
 func WithAuthenticator(a Authenticator) Option
 func WithCallInterceptor(i ocpp.Interceptor) Option
@@ -35,12 +40,14 @@ func WithFrameObserver(f ocpp.FrameObserver) Option
 func WithHandler(v ocpp.Version, d ocpp.Dispatcher) Option
 func WithHandlerInterceptor(i ocpp.Interceptor) Option
 func WithHandshakeTimeout(d time.Duration) Option
+func WithIncomingRateLimit(perSecond float64, burst int) Option
 func WithLogger(l *slog.Logger) Option
 func WithMaxBadMessages(n int) Option
 func WithMaxMessageSize(n int) Option
 func WithMaxQueuedCalls(n int) Option
 func WithMaxStations(n int) Option
 func WithMetrics(m ocpp.Metrics) Option
+func WithOriginPatterns(patterns ...string) Option
 func WithPingInterval(d time.Duration) Option
 func WithReplacePolicy(p ReplacePolicy) Option
 func WithResponseTimeout(d time.Duration) Option
@@ -56,6 +63,7 @@ type ReplacePolicy uint8
 type Secret string
 type Server struct { }
 type Session struct { }
+type StatusError struct { Code int Err error }
 var ErrReplaced
 var ErrUnauthorized
 var ErrUnknownStation

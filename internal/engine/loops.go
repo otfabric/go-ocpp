@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/otfabric/go-ocpp"
+	"github.com/otfabric/go-ocpp/internal/after"
 	"github.com/otfabric/go-ocpp/internal/transport"
 	"github.com/otfabric/go-ocpp/ocppj"
 )
@@ -21,7 +22,7 @@ func (e *Endpoint) readLoop() {
 		if err != nil {
 			var ce *transport.CloseError
 			if errors.As(err, &ce) {
-				e.shutdown(lost(err), ce.Code, "")
+				e.shutdown(lost(&ocpp.CloseError{Code: ce.Code, Reason: ce.Reason}), ce.Code, "")
 			} else {
 				e.shutdown(lost(err), transport.StatusInternalError, "")
 			}
@@ -163,6 +164,9 @@ func (e *Endpoint) dispatchLoop() {
 	for {
 		select {
 		case f := <-e.incoming:
+			if e.limiter != nil && !e.limiter.wait(e.ctx) {
+				return
+			}
 			e.inHandler.Store(true)
 			if f.Type == ocppj.Send {
 				e.handleSend(f)
@@ -211,6 +215,7 @@ func (e *Endpoint) handleSend(f ocppj.Frame) {
 func (e *Endpoint) handle(f ocppj.Frame) {
 	start := time.Now()
 	info := ocpp.CallInfo{ConnInfo: e.cfg.Info, Action: f.Action, MessageID: f.ID, Direction: ocpp.Incoming}
+	hctx, afterList := after.With(e.ctx)
 	var result json.RawMessage
 	run := func(ctx context.Context) (err error) {
 		defer func() {
@@ -226,10 +231,22 @@ func (e *Endpoint) handle(f ocppj.Frame) {
 	}
 	var err error
 	if e.cfg.HandlerInterceptor != nil {
-		err = e.cfg.HandlerInterceptor(e.ctx, info, run)
+		err = e.cfg.HandlerInterceptor(hctx, info, run)
 	} else {
-		err = run(e.ctx)
+		err = run(hctx)
 	}
+	// Functions registered with ocpp.AfterResponse run once the result is
+	// queued: the writer sends queued results before new CALLs, so what
+	// they send goes out after the response.
+	defer func() {
+		if fs := afterList.Take(); len(fs) > 0 {
+			go func() {
+				for _, fn := range fs {
+					fn()
+				}
+			}()
+		}
+	}()
 	if err == nil && !isObject(result) {
 		err = errors.New("handler returned no response object")
 	}

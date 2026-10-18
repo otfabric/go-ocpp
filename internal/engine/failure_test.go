@@ -582,3 +582,71 @@ func (l *lockedWriter) Write(p []byte) (int, error) {
 	defer l.mu.Unlock()
 	return l.w.Write(p)
 }
+
+// IncomingRate delays dispatch beyond the burst; nothing is refused.
+func TestIncomingRate(t *testing.T) {
+	checkNoLeak(t)
+	_, raw := rawPeer(t, ocpp.V201, ocpp.DispatcherFunc(func(context.Context, ocpp.Peer, string, json.RawMessage) (json.RawMessage, error) {
+		return json.RawMessage(`{}`), nil
+	}), func(c *Config) { c.IncomingRate, c.IncomingBurst = 50, 2 })
+	start := time.Now()
+	for i := range 7 {
+		writeRaw(t, raw, fmt.Sprintf(`[2,"%d","Heartbeat",{}]`, i))
+	}
+	for range 7 {
+		if f := readFrame(t, raw, ocpp.V201); f.Type != ocppj.CallResult {
+			t.Fatalf("got %+v", f)
+		}
+	}
+	// 2 at once, then 5 at 50/s: at least 100 ms.
+	if d := time.Since(start); d < 90*time.Millisecond {
+		t.Fatalf("7 CALLs dispatched in %s", d)
+	}
+}
+
+func TestIdle(t *testing.T) {
+	checkNoLeak(t)
+	e, raw := rawPeer(t, ocpp.V201, nil, nil)
+	if !e.Idle() {
+		t.Fatal("a new endpoint is not idle")
+	}
+	done := make(chan error, 1)
+	go func() { done <- e.Call(context.Background(), "Heartbeat", nil, nil) }()
+	f := readFrame(t, raw, ocpp.V201)
+	if e.Idle() {
+		t.Fatal("idle with a CALL outstanding")
+	}
+	writeRaw(t, raw, `[3,"`+f.ID+`",{}]`)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if !e.Idle() {
+		t.Fatal("not idle after the answer")
+	}
+}
+
+// Functions registered with ocpp.AfterResponse run after the result is
+// queued: a CALL they send goes out after the response.
+func TestAfterResponse(t *testing.T) {
+	checkNoLeak(t)
+	var e *Endpoint
+	d := ocpp.DispatcherFunc(func(ctx context.Context, p ocpp.Peer, action string, payload json.RawMessage) (json.RawMessage, error) {
+		if !ocpp.AfterResponse(ctx, func() { _ = e.Call(context.Background(), "NotifyReport", nil, nil) }) {
+			t.Error("AfterResponse refused a handler's context")
+		}
+		return json.RawMessage(`{"status":"Accepted"}`), nil
+	})
+	var raw *raw
+	e, raw = rawPeer(t, ocpp.V201, d, nil)
+	writeRaw(t, raw, `[2,"r","GetBaseReport",{}]`)
+	if f := readFrame(t, raw, ocpp.V201); f.Type != ocppj.CallResult || f.ID != "r" {
+		t.Fatalf("first frame %+v, want the response", f)
+	}
+	if f := readFrame(t, raw, ocpp.V201); f.Type != ocppj.Call || f.Action != "NotifyReport" {
+		t.Fatalf("second frame %+v, want the CALL", f)
+	}
+	if ocpp.AfterResponse(context.Background(), func() {}) {
+		t.Fatal("AfterResponse accepted a context that is not a handler's")
+	}
+	_ = e.Close()
+}

@@ -115,5 +115,9 @@ passed.
 - OCPP 2.1 against released images (ocpp-interop v0.2.0), and against a
   second independent implementation.
 - SEND and CALLRESULTERROR against any independent implementation.
+- Actions no reference adapter declares: per version, the matrices in
+  [docs/compatibility](docs/compatibility) list which actions are
+  exchanged with a reference (30/39 in 1.6J, 27/64 in 2.0.1, 43/91 in
+  2.1) and which are verified against go-ocpp only.
 - Compression against the references.
 - TLS (security profiles 2 and 3): not yet in ocpp-interop.
