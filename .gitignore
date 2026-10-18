@@ -4,9 +4,10 @@ bin/
 # Ignore VS Code settings
 .vscode/
 
-# Ignore coverage files
-cover.*
-coverage.*
+# Ignore coverage files (written to the repository root; the version
+# packages' coverage.json manifests are not coverage output)
+/cover.*
+/coverage.*
 
 # macOS
 .DS_Store
