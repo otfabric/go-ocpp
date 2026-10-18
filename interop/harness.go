@@ -35,6 +35,10 @@ const (
 	defaultMobilityHouseImage = "ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:9b5449c6fdeeb9809348f772b9967676cc1831d3c0a664b357cbdc1b9b53b979"
 	defaultChargeTimeImage    = "ghcr.io/otfabric/ocpp-interop-chargetime@sha256:1dbe44f9a04d6afced3740485dc2a8429b3c5eb2f274392a32b7e1094996681c"
 	defaultLorenzodoniniImage = "ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:6adb1e6b39ee0a35bfdb85ac37e5cfed61f614231097b0ad4edda1fc0376e38e"
+	// EVerest libocpp (stations only) joins with ocpp-interop v0.3.0; until
+	// it is released and pinned here, it runs only when
+	// OCPP_INTEROP_EVEREST_IMAGE names an image.
+	defaultEverestImage = ""
 )
 
 // adapter is one reference implementation: a container image that follows
@@ -67,6 +71,7 @@ func adapters(t testing.TB) []adapter {
 		image("mobilityhouse", "OCPP_INTEROP_MOBILITYHOUSE_IMAGE", defaultMobilityHouseImage),
 		image("chargetime", "OCPP_INTEROP_CHARGETIME_IMAGE", defaultChargeTimeImage),
 		image("lorenzodonini", "OCPP_INTEROP_LORENZODONINI_IMAGE", defaultLorenzodoniniImage),
+		image("everest", "OCPP_INTEROP_EVEREST_IMAGE", defaultEverestImage),
 	} {
 		if a.image != "" {
 			all = append(all, a)
@@ -110,6 +115,7 @@ type capabilities struct {
 		Server   roleCaps `json:"server"`
 		Features struct {
 			SecurityProfiles []int `json:"securityProfiles"`
+			Compression      bool  `json:"compression"`
 			Send             bool  `json:"send"`            // OCPP 2.1 SEND (contract 0.4)
 			CallResultError  bool  `json:"callResultError"` // OCPP 2.1 CALLRESULTERROR (contract 0.4)
 		} `json:"features"`
@@ -236,10 +242,16 @@ type container struct {
 // fixture, published on a free loopback port, and waits until it is ready.
 func startServer(t testing.TB, a adapter, v ocpp.Version, extra ...string) *container {
 	t.Helper()
+	return startServerWith(t, a, v, nil, extra...)
+}
+
+// startServerWith is startServer with extra docker run options (a volume).
+func startServerWith(t testing.TB, a adapter, v ocpp.Version, runOpts []string, extra ...string) *container {
+	t.Helper()
 	port := freePort(t)
 	c := &container{adapter: a, name: containerName(a), port: port}
-	args := append([]string{"run", "-d", "--name", c.name, "-p", fmt.Sprintf("127.0.0.1:%d:9000", port),
-		a.image, "server", "--version", v.String()}, extra...)
+	args := append([]string{"run", "-d", "--name", c.name, "-p", fmt.Sprintf("127.0.0.1:%d:9000", port)}, runOpts...)
+	args = append(append(args, a.image, "server", "--version", v.String()), extra...)
 	c.start(t, args)
 	return c
 }
@@ -251,11 +263,38 @@ func startServer(t testing.TB, a adapter, v ocpp.Version, extra ...string) *cont
 // that, because on Linux the alias is the bridge address.
 func startStation(t testing.TB, a adapter, v ocpp.Version, port int, extra ...string) *container {
 	t.Helper()
+	return startStationWith(t, a, v, "ws", port, nil, extra...)
+}
+
+// startStationWith is startStation with a URL scheme (ws or wss) and extra
+// docker run options (a volume).
+func startStationWith(t testing.TB, a adapter, v ocpp.Version, scheme string, port int, runOpts []string, extra ...string) *container {
+	t.Helper()
 	c := &container{adapter: a, name: containerName(a)}
-	args := append([]string{"run", "-d", "--name", c.name, "--add-host=host.docker.internal:host-gateway",
-		a.image, "client", "run", "--version", v.String(), "--url", fmt.Sprintf("ws://host.docker.internal:%d/ocpp", port)}, extra...)
+	args := append([]string{"run", "-d", "--name", c.name, "--add-host=host.docker.internal:host-gateway"}, runOpts...)
+	args = append(append(args, a.image, "client", "run", "--version", v.String(),
+		"--url", fmt.Sprintf("%s://host.docker.internal:%d/ocpp", scheme, port)), extra...)
 	c.start(t, args)
 	return c
+}
+
+// runOnce runs "client <action>" of a, which connects, sends one CALL and
+// exits, and returns its exit code: for connections that must fail.
+func runOnce(t testing.TB, a adapter, v ocpp.Version, url string, runOpts []string, extra ...string) int {
+	t.Helper()
+	args := append([]string{"run", "--rm", "--add-host=host.docker.internal:host-gateway"}, runOpts...)
+	args = append(append(args, a.image, "client", "Heartbeat", "--version", v.String(), "--url", url,
+		"--connect-timeout-ms", "5000"), extra...)
+	_, _, err := docker(args...)
+	var exitErr *exec.ExitError
+	switch {
+	case err == nil:
+		return 0
+	case errors.As(err, &exitErr):
+		return exitErr.ExitCode()
+	}
+	t.Fatalf("run %s: %v", a.name, err)
+	return -1
 }
 
 func containerName(a adapter) string {

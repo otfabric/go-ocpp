@@ -4,10 +4,12 @@ package e2e
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -145,35 +147,91 @@ func (c *conformingPeer) count(action string, send bool) int {
 // the required properties only. Each payload is validated on arrival by
 // the receiving side's version package. Compression is on for the 2.x
 // versions, as a CSMS must support it.
+// transport is how a matrix run connects: a security profile (0 none, 1
+// Basic over ws, 2 TLS and Basic, 3 mutual TLS) and compression.
+type transport struct {
+	name     string
+	profile  int
+	compress bool
+}
+
+// The transports every action of every version is exchanged over: the
+// payloads with every property over each of them, and with the required
+// properties only over plain WebSocket.
+var transports = []transport{
+	{"plain", 0, false},
+	{"compressed", 0, true},
+	{"profile1", 1, false},
+	{"profile2", 2, true},
+	{"profile3", 3, true},
+	{"profile3-uncompressed", 3, false},
+}
+
 func TestMatrix(t *testing.T) {
+	p := newPKI(t)
 	for _, pkg := range versionPackages {
-		for _, full := range []bool{true, false} {
-			name := pkg.version.String() + "/minimal"
-			if full {
-				name = pkg.version.String() + "/full"
+		for _, tr := range transports {
+			for _, full := range []bool{true, false} {
+				if !full && tr.name != "plain" {
+					continue
+				}
+				name := pkg.version.String() + "/" + tr.name + "/minimal"
+				if full {
+					name = pkg.version.String() + "/" + tr.name + "/full"
+				}
+				t.Run(name, func(t *testing.T) {
+					t.Parallel()
+					runMatrix(t, pkg, full, tr, p)
+				})
 			}
-			t.Run(name, func(t *testing.T) {
-				t.Parallel()
-				runMatrix(t, pkg, full)
-			})
 		}
 	}
 }
 
-func runMatrix(t *testing.T, pkg versionPackage, full bool) {
+// matrixPassword is the station password of profiles 1 and 2.
+const matrixPassword = "matrix-password-0001"
+
+func runMatrix(t *testing.T, pkg versionPackage, full bool, tr transport, p *pki) {
 	actions := manifestOf(t, pkg.dir)
 	inst := instancesOf(t, actions)
 	csmsSide := newConformingPeer(pkg, inst, full)
 	stationSide := newConformingPeer(pkg, inst, full)
-	srv, base := csms(t, nil, server.WithHandler(pkg.version, csmsSide), server.WithoutAuthentication())
-	id := "M" + pkg.dir
+	id := "M" + strings.ReplaceAll(pkg.dir+"-"+tr.name, "-", "")
 	if !full {
 		id += "min"
 	}
-	opts := []client.Option{client.WithInsecureTransport(), client.WithVersions(pkg.version), client.WithHandler(pkg.version, stationSide)}
-	if pkg.version != ocpp.V16 {
+	serverOpts := []server.Option{server.WithHandler(pkg.version, csmsSide)}
+	opts := []client.Option{client.WithVersions(pkg.version), client.WithHandler(pkg.version, stationSide)}
+	var tlsCfg *tls.Config
+	switch tr.profile {
+	case 0:
+		serverOpts = append(serverOpts, server.WithoutAuthentication())
+		opts = append(opts, client.WithInsecureTransport())
+	case 1, 2:
+		serverOpts = append(serverOpts, server.WithAuthenticator(server.BasicAuth(func(ctx context.Context, station string) (string, bool) {
+			return matrixPassword, station == id
+		})))
+		opts = append(opts, client.WithBasicAuth(id, matrixPassword))
+		if tr.profile == 1 {
+			opts = append(opts, client.WithInsecureTransport())
+		}
+	case 3:
+		serverOpts = append(serverOpts, server.WithAuthenticator(server.CertificateAuth()))
+		opts = append(opts, client.WithTLS(&tls.Config{RootCAs: p.caPool, Certificates: []tls.Certificate{p.issue(t, id, false)}}))
+	}
+	if tr.profile >= 2 {
+		tlsCfg = &tls.Config{Certificates: []tls.Certificate{p.issue(t, "csms", true)}, ClientCAs: p.caPool}
+		if tr.profile == 3 {
+			tlsCfg.ClientAuth = tls.RequireAndVerifyClientCert
+		}
+		if tr.profile == 2 {
+			opts = append(opts, client.WithTLS(&tls.Config{RootCAs: p.caPool}))
+		}
+	}
+	if tr.compress {
 		opts = append(opts, client.WithCompression())
 	}
+	srv, base := csms(t, tlsCfg, serverOpts...)
 	c := station(t, base+id, opts...)
 	connect(t, c)
 	session := waitStation(t, srv, id)
