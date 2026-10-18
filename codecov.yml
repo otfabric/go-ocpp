@@ -1,0 +1,17 @@
+# Codecov configuration for go-ocpp.
+# CI uploads coverage for the library packages; examples/, generated code and
+# the generator are not counted.
+coverage:
+  status:
+    project:
+      default:
+        target: 90%
+        threshold: 1%
+    patch:
+      default:
+        target: 70%
+
+ignore:
+  - "examples/**"
+  - "internal/gen/**"
+  - "**/zz_generated_*.go"
