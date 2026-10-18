@@ -1,0 +1,62 @@
+name: CI
+run-name: "CI (${{ github.event_name }}) on ${{ github.ref_name }} by @${{ github.actor }}"
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  # Lint, vet, go mod tidy/verify, coverage and the race-detector test matrix
+  # (ADR 0006).
+  ci:
+    uses: otfabric/.github/.github/workflows/go-ci.yml@v2
+    with:
+      codecov-name: go-ocpp
+      go-versions: '["1.26", "1.27"]'
+      golangci-lint-version: v2.15.0
+    secrets: inherit
+
+  # Formatting with the gofmt of the go.mod version and the latest one, the
+  # dependency allow-list (ADR 0002), staticcheck and govulncheck: what the
+  # reusable workflow does not run.
+  checks:
+    name: Format, dependencies, staticcheck, govulncheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27.x"
+      - run: go install honnef.co/go/tools/cmd/staticcheck@latest
+      - run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - run: make fmt-check deps lint vuln
+
+  # The library must build without cgo on every supported OS and architecture
+  # (REQUIREMENTS.md R2.1), and its tests must pass natively on each OS.
+  platforms:
+    name: Build and test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Cross-build without cgo
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: make cross
+      - name: Test
+        shell: bash
+        env:
+          CGO_ENABLED: "0"
+        run: go test -count=1 ./...

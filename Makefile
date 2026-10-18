@@ -1,0 +1,140 @@
+# HELP
+# This will output the help for each task
+# thanks to https://marmelab.com/blog/2016/02/29/auto-documented-makefile.html
+
+.DEFAULT_GOAL := help
+
+.PHONY: help all build examples fmt fmt-check lint lint-ci vet vuln test coverage cover fuzz check cross clean interop test-interop e2e deps
+help: ## This help
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_-]+:.*?## / {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+
+# Parent otfabric/go.work does not list this module; isolate toolchain commands.
+export GOWORK := off
+
+# CI formats and lints with the Go version from go.mod, not with the toolchain installed here.
+# gofmt's output changes between Go releases, so formatting is done with that version, and
+# `fmt-check` also requires the local gofmt to agree.
+GO_MOD_VERSION := $(shell sed -nE 's/^go ([0-9]+\.[0-9]+).*/\1/p' go.mod | head -n1)
+GOFMT_CI = $(shell GOTOOLCHAIN=go$(GO_MOD_VERSION).0 go env GOROOT)/bin/gofmt
+
+# Output directory for generated binaries
+BIN_DIR := bin
+# Library packages: tests and coverage (exclude examples and the interop suite)
+TEST_PKGS := $(shell go list ./... | grep -v '/examples' | grep -v '/interop$$' | grep -v '/interop/')
+# Coverage is measured over the library packages, whichever package's tests exercise them.
+COVER_PKGS := $(shell go list ./... | grep -v '/examples' | grep -v '/e2e$$' | grep -v '/internal/gen' | grep -v '/interop$$' | grep -v '/interop/' | paste -sd, -)
+
+# Platforms the library must build on, pure Go (CGO_ENABLED=0).
+CROSS_PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64
+
+all: build ## Default target: build the examples
+
+build: ## Build the library and the examples into ./bin
+	@echo "Building"
+	@go build ./...
+	@mkdir -p $(BIN_DIR)
+	@for dir in examples/*/; do \
+		[ -d "$$dir" ] || continue; \
+		name="$$(basename "$$dir")"; \
+		go build -o "$(BIN_DIR)/example-$$name" "./$$dir"; \
+	done
+
+# The self-contained examples: each starts both sides and exits by itself.
+# Empty until Phase 3 adds station16 and csms16.
+RUN_EXAMPLES :=
+
+examples: ## Run the self-contained examples (each must exit successfully)
+	@for e in $(RUN_EXAMPLES); do \
+		echo "Running example $$e"; \
+		go run ./examples/$$e >/dev/null || { echo "example $$e failed"; exit 1; }; \
+	done
+
+cross: ## Build the library for every supported OS and architecture without cgo
+	@for p in $(CROSS_PLATFORMS); do \
+		echo "Building for $$p"; \
+		CGO_ENABLED=0 GOOS=$${p%/*} GOARCH=$${p#*/} go build ./... || exit 1; \
+	done
+
+fmt: ## Format Go code with the gofmt of the Go version in go.mod (what CI uses)
+	@echo "Running gofmt (go$(GO_MOD_VERSION))"
+	@$(GOFMT_CI) -w .
+
+fmt-check: ## Fail if the go.mod-version gofmt or the local gofmt would change any file
+	@echo "Checking formatting (gofmt go$(GO_MOD_VERSION) and local $$(go env GOVERSION))"
+	@ci="$$($(GOFMT_CI) -l .)"; loc="$$(gofmt -l .)"; \
+	if [ -n "$$ci$$loc" ]; then \
+		[ -z "$$ci" ] || { echo "Not formatted for gofmt go$(GO_MOD_VERSION) (CI):"; echo "$$ci"; }; \
+		[ -z "$$loc" ] || { echo "Not formatted for the local gofmt:"; echo "$$loc"; }; \
+		echo "Files must be stable under both. Run 'make fmt'."; \
+		exit 1; \
+	fi
+
+lint: ## Run staticcheck (includes -tags=interop for ./interop)
+	@echo "Running staticcheck"
+	@staticcheck -tags=interop ./...
+
+lint-ci: ## Run golangci-lint (see .golangci.yml)
+	@echo "Running golangci-lint"
+	@golangci-lint run ./...
+
+vet: ## Run go vet
+	@echo "Running go vet"
+	@go vet -tags=interop ./...
+
+vuln: ## Run govulncheck
+	@echo "Running govulncheck"
+	@govulncheck ./...
+
+# ADR 0002 allows exactly one production dependency, github.com/coder/websocket,
+# from Phase 2 on. Anything else needs an ADR first.
+ALLOWED_DEPS := github.com/coder/websocket
+deps: ## Fail if go.mod requires anything not allowed by an ADR
+	@echo "Checking dependencies"
+	@deps="$$(go list -m -f '{{if not .Main}}{{.Path}}{{end}}' all | grep -v -x -F $(foreach d,$(ALLOWED_DEPS),-e $(d)) || true)"; \
+	if [ -n "$$deps" ]; then echo "go.mod requires modules no ADR allows:"; echo "$$deps"; exit 1; fi
+
+test: ## Run the library tests with the race detector
+	@echo "Running tests"
+	@go test -count=1 -race $(TEST_PKGS)
+
+e2e: ## Run the end-to-end tests of this module's client against this module's server
+	@echo "Running end-to-end tests"
+	@if [ -d e2e ]; then go test -count=1 -race ./e2e/...; else echo "no e2e tests yet (Phase 2)"; fi
+
+coverage: ## Run tests with coverage on the library packages (writes coverage.out)
+	@echo "Running coverage"
+	@go test -count=1 -race -coverprofile=coverage.out -covermode=atomic -coverpkg=$(COVER_PKGS) $(TEST_PKGS)
+	@go tool cover -func=coverage.out | tail -n1
+
+cover: coverage ## Open coverage report in browser
+	@echo "Opening coverage report"
+	@go tool cover -html=coverage.out
+
+# Duration each fuzz target runs. Override with FUZZTIME=... (e.g. FUZZTIME=5m).
+# Targets are added with the code they fuzz: ocppj.Decode in Phase 2, the
+# dispatchers of the version packages in Phases 3, 5 and 6.
+FUZZTIME ?= 30s
+FUZZ_TARGETS :=
+fuzz: ## Run the fuzz targets for FUZZTIME each (default 30s)
+	@echo "Fuzzing (FUZZTIME=$(FUZZTIME))"
+	@for t in $(FUZZ_TARGETS); do \
+		go test -run='^$$' -fuzz="^$${t#*:}$$" -fuzztime=$(FUZZTIME) "./$${t%%:*}" || exit 1; \
+	done
+
+# Reference implementations for 'make interop': otfabric/ocpp-interop images,
+# pinned by multi-arch index digest, from its first release (Phase 4).
+# Keep in step with interop/harness.go and .github/workflows/interop.yml.
+test-interop: ## Run the interop suite against the ocpp-interop images (needs Docker)
+	@if [ -d interop ]; then \
+		OCPP_INTEROP_REQUIRE=1 go test -tags=interop -count=1 -timeout=20m ./interop/...; \
+	else \
+		echo "no interop suite yet (Phase 4)"; \
+	fi
+
+interop: test-interop ## Alias for test-interop
+
+check: fmt fmt-check deps lint lint-ci vet vuln test coverage cross examples ## Run format + lint + vet + vuln + test + cross-build
+
+clean: ## Remove generated binaries and coverage artifacts
+	@echo "Cleaning up"
+	@rm -rf $(BIN_DIR) coverage.out coverage.html
