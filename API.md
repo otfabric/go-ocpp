@@ -1,14 +1,14 @@
 # API Reference: otfabric/go-ocpp
 
-The reference for what is implemented (Phase 2): the root package, `ocppj`,
-`client` and `server`. The version packages (`ocpp16`, `ocpp201`, `ocpp21`)
-arrive in Phases 3, 5 and 6. Until then, requests and responses are any
-JSON-marshallable Go value, or `json.RawMessage`. The design they will
-follow is in [ARCHITECTURE.md](ARCHITECTURE.md#messages-handlers-and-calls).
+The reference for the root package, the version packages `ocpp16` and
+`ocpp201`, `client`, `server` and `ocppj`. pkg.go.dev has every generated
+type; this file describes the shape. The design is in
+[ARCHITECTURE.md](ARCHITECTURE.md#messages-handlers-and-calls).
 
 ## Contents
 
 - [Package ocpp](#package-ocpp)
+- [Packages ocpp16 and ocpp201](#packages-ocpp16-and-ocpp201)
 - [Package client](#package-client)
 - [Package server](#package-server)
 - [Package ocppj](#package-ocppj)
@@ -93,9 +93,59 @@ type Metrics interface { /* see OBSERVABILITY.md */ }
 type NopMetrics struct{}
 ```
 
+### Validation
+
+```go
+type ValidationError struct {
+    Code   ErrorCode // the CALLERROR code, spelt as the version spells it
+    Field  string    // e.g. "meterValue[0].sampledValue[1].measurand"
+    Reason string
+}
+func (e *ValidationError) CallError() *CallError
+var ErrInvalidMessage error // wrapped by every *ValidationError
+
+func Ptr[T any](v T) *T // for optional fields
+```
+
 ### Errors
 
 The sentinels are described in [ERRORS.md](ERRORS.md).
+
+## Packages ocpp16 and ocpp201
+
+Generated from the OCA schemas (`schemas/`). Each holds, for every action
+`X` of its version:
+
+```go
+type XRequest struct{ ... }  // and every object and enumeration it uses
+type XResponse struct{ ... }
+func (x *XRequest) Validate() error
+func X(ctx context.Context, c ocpp.Caller, req *XRequest) (*XResponse, error)
+```
+
+and for the version as a whole:
+
+| | ocpp16 | ocpp201 |
+|---|---|---|
+| Charging station handlers | `ChargePointHandler`, `UnimplementedChargePointHandler`, `ChargePoint(h) ocpp.Dispatcher` | `ChargingStationHandler`, `UnimplementedChargingStationHandler`, `ChargingStation(h)` |
+| CSMS handlers | `CentralSystemHandler`, `UnimplementedCentralSystemHandler`, `CentralSystem(h)` | `CSMSHandler`, `UnimplementedCSMSHandler`, `CSMS(h)` |
+| Actions | 39 (28 core, 11 security) | 64 |
+
+```go
+var Actions []Action // {Name string; From ocpp.Role}, From zero for DataTransfer
+func ValidateRequest(action string, payload json.RawMessage) error
+func ValidateResponse(action string, payload json.RawMessage) error
+```
+
+- Handler methods are `X(ctx, p ocpp.Peer, req *XRequest) (*XResponse, error)`.
+  `p` is the other end: call it to send a CALL back while handling.
+- Field names follow Go's initialisms: `idTag` is `IDTag`, `evseId` is
+  `EVSEID`. Enumeration constants are the type name without "EnumType" or
+  "Type", then the value: `ocpp201.RegistrationStatusAccepted`,
+  `ocpp16.ResetSoft`, `ocpp16.MeasurandEnergyActiveImportRegister`.
+- Optional fields are pointers; required arrays must not be nil (an empty
+  array is `[]T{}`).
+- `ocpp201.CustomData{VendorID, Fields}` keeps vendor properties as raw JSON.
 
 ## Package client
 
@@ -108,6 +158,7 @@ func (c *Client) Connect(ctx context.Context) error
 func (c *Client) Call(ctx context.Context, action string, req, resp any) error
 func (c *Client) Close() error
 func (c *Client) ID() string
+func (c *Client) Role() ocpp.Role // ocpp.ChargingStation
 func (c *Client) Version() ocpp.Version
 func (c *Client) State() ocpp.State
 ```
@@ -131,7 +182,8 @@ func (c *Client) State() ocpp.State
 | `WithTLS(cfg)` | system roots | Trust roots, client certificate (profile 3); MinVersion raised to TLS 1.2 |
 | `WithHTTPClient(c)` | `http.DefaultClient` | Handshake HTTP client (proxies); not with `WithTLS` |
 | `WithInsecureTransport()` | off | Allow `ws://` |
-| `WithReconnect(Reconnect{MinDelay, MaxDelay})` | off | Redial with exponential backoff and jitter (1 s to 2 min) after a lost connection |
+| `WithReconnect(Reconnect{WaitMinimum, RandomRange, RepeatTimes})` | off | Redial after a lost connection with the back-off of 2.x Part 4 §5.4; `DefaultReconnect` is 5 s + up to 10 s, doubled up to 5 times |
+| `WithCompression()` | off | Offer RFC 7692 compression |
 | `WithStateHandler(f)` | none | Called on every state change; must not block or call `Close` |
 | `WithLogger(l)` | silent | `*slog.Logger` |
 | `WithMetrics(m)` | none | `ocpp.Metrics` |
@@ -159,6 +211,7 @@ func (s *Server) Stations() []*Session
 func (s *Server) Versions() []ocpp.Version
 
 func (s *Session) ID() string
+func (s *Session) Role() ocpp.Role // ocpp.CSMS
 func (s *Session) Version() ocpp.Version
 func (s *Session) Call(ctx context.Context, action string, req, resp any) error
 func (s *Session) Close() error
@@ -188,10 +241,15 @@ type ConnectRequest struct {
 }
 
 func BasicAuth(lookup func(ctx context.Context, stationID string) (password string, ok bool)) Authenticator
+
+var ErrUnknownStation error // an authenticator's error for an unknown identity: HTTP 404
+var ErrUnauthorized error   // BasicAuth's error for refused credentials: HTTP 401
 ```
 
 `BasicAuth` requires the user name to equal the station identity, and
-compares passwords in constant time.
+compares passwords in constant time. An identity `lookup` does not know is
+refused with 404 (OCPP-J §3.2), others with 401. The server supports
+compression whenever a station offers it.
 
 | Option | Default | Meaning |
 |---|---|---|

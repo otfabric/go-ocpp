@@ -13,10 +13,12 @@ the Charging Station (OCPP 1.6: Charge Point) and the CSMS (OCPP 1.6: Central
 System). Both share one RPC engine, and either side can send requests once
 connected.
 
-> **Status: Phase 2 of 8.** The RPC engine, the client (Charging Station) and
-> the server (CSMS) work over WebSocket with TLS and authentication, for
-> every version, with raw JSON payloads. Typed messages and schema
-> validation come in Phase 3 (OCPP 1.6J). No release yet. See
+> **Status: Phase 5 of 8.** OCPP 1.6J (with the Security Whitepaper
+> extensions) and OCPP 2.0.1 are complete at the message level: every action
+> is typed, validated against the OCA schemas, and dispatchable in both
+> roles. 1.6J is tested against two independent implementations; 2.0.1
+> interop testing waits for the next ocpp-interop release. OCPP 2.1 is next
+> (Phase 6). No release yet. See
 > [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
 
 Docs: [Architecture](ARCHITECTURE.md) · [Requirements](REQUIREMENTS.md) ·
@@ -29,7 +31,8 @@ Docs: [Architecture](ARCHITECTURE.md) · [Requirements](REQUIREMENTS.md) ·
 
 - [Protocol versions](#protocol-versions)
 - [Install](#install)
-- [Design at a glance](#design-at-a-glance)
+- [Quick start](#quick-start)
+- [Interoperability](#interoperability)
 - [Assurance](#assurance)
 - [Development](#development)
 - [License](#license)
@@ -38,9 +41,9 @@ Docs: [Architecture](ARCHITECTURE.md) · [Requirements](REQUIREMENTS.md) ·
 
 | Version | Priority | Status |
 |---|---|---|
-| OCPP 1.6J, with the Security Whitepaper (Edition 4) extensions | P0 | transport and RPC; messages in Phase 3 |
-| OCPP 2.0.1 Edition 4, errata 2026-09 | P0 | transport and RPC; messages in Phase 5 |
-| OCPP 2.1 Edition 2, errata 2026-09 | P1 | CALL/CALLRESULT/CALLERROR; the rest in Phase 6 |
+| OCPP 1.6J, with the Security Whitepaper (Edition 4) extensions | P0 | 39 actions, both roles (`ocpp16`) |
+| OCPP 2.0.1 Edition 4, errata 2026-09 | P0 | 64 actions, both roles (`ocpp201`) |
+| OCPP 2.1 Edition 2, errata 2026-09 | P1 | Phase 6 |
 | OCPP 1.6 SOAP, OCPP 1.5 and older | — | out of scope |
 
 ## Install
@@ -49,63 +52,52 @@ Docs: [Architecture](ARCHITECTURE.md) · [Requirements](REQUIREMENTS.md) ·
 go get github.com/otfabric/go-ocpp
 ```
 
-Requires Go 1.26 or later. The only dependency is
+Requires Go 1.26 or later. The only dependency of the library is
 [coder/websocket](https://github.com/coder/websocket)
-([ADR 0002](docs/adr/0002-websocket-transport.md)).
+([ADR 0002](docs/adr/0002-websocket-transport.md)); the tests also use a
+reference JSON Schema validator ([ADR 0003](docs/adr/0003-schema-generation.md)).
 
-## Today: raw payloads
+## Quick start
 
-What works now, before the typed messages of Phase 3:
+A CSMS and a charging station, OCPP 2.0.1 (the [examples](examples) run
+complete, self-contained versions of this for 1.6 and 2.0.1):
 
 ```go
-// CSMS
+// CSMS: answer the stations' CALLs.
+type csms struct{ ocpp201.UnimplementedCSMSHandler }
+
+func (csms) BootNotification(ctx context.Context, p ocpp.Peer, req *ocpp201.BootNotificationRequest) (*ocpp201.BootNotificationResponse, error) {
+    return &ocpp201.BootNotificationResponse{Status: ocpp201.RegistrationStatusAccepted, CurrentTime: time.Now().UTC(), Interval: 300}, nil
+}
+
 srv, err := server.New(
-    server.WithHandler(ocpp.V16, ocpp.DispatcherFunc(func(ctx context.Context, p ocpp.Peer, action string, payload json.RawMessage) (json.RawMessage, error) {
-        switch action {
-        case "BootNotification":
-            return json.RawMessage(`{"status":"Accepted","currentTime":"2026-10-18T12:00:00Z","interval":300}`), nil
-        }
-        return nil, ocpp.NewCallError(ocpp.NotImplemented, "")
-    })),
+    server.WithHandler(ocpp.V201, ocpp201.CSMS(csms{})),
     server.WithAuthenticator(server.BasicAuth(lookupPassword)),
 )
-http.Handle("/ocpp/", srv)
+http.Handle("/ocpp/", srv) // behind TLS
 
-// Charging Station
+// Send a CALL to a connected station.
+if s, ok := srv.Station("STATION001"); ok {
+    resp, err := ocpp201.Reset(ctx, s, &ocpp201.ResetRequest{Type: ocpp201.ResetOnIdle})
+}
+
+// Charging station.
 c, err := client.New("wss://csms.example.com/ocpp/STATION001",
-    client.WithVersions(ocpp.V16),
+    client.WithHandler(ocpp.V201, ocpp201.ChargingStation(station{})),
     client.WithBasicAuth("STATION001", password),
-    client.WithReconnect(client.Reconnect{}),
+    client.WithReconnect(client.DefaultReconnect),
+    client.WithCompression(),
 )
 err = c.Connect(ctx)
-var resp json.RawMessage
-err = c.Call(ctx, "BootNotification", json.RawMessage(`{"chargePointVendor":"OTFabric","chargePointModel":"TestStation"}`), &resp)
+boot, err := ocpp201.BootNotification(ctx, c, &ocpp201.BootNotificationRequest{
+    Reason:          ocpp201.BootReasonPowerUp,
+    ChargingStation: ocpp201.ChargingStationType{VendorName: "OTFabric", Model: "TestStation"},
+})
 ```
 
-## Design at a glance
-
-The typed API of the version packages, from [ARCHITECTURE.md](ARCHITECTURE.md),
-arrives in Phase 3:
-
-```go
-// Charging Station
-c, err := client.New("wss://csms.example.com/ocpp/STATION001",
-    client.WithVersions(ocpp.V201),
-    client.WithHandler(ocpp.V201, ocpp201.ChargingStation(handler)),
-    client.WithBasicAuth("STATION001", password),
-)
-err = c.Connect(ctx)
-resp, err := ocpp201.BootNotification(ctx, c, &ocpp201.BootNotificationRequest{...})
-
-// CSMS
-srv, err := server.New(
-    server.WithHandler(ocpp.V16, ocpp16.CentralSystem(h16)),
-    server.WithHandler(ocpp.V201, ocpp201.CSMS(h201)),
-    server.WithAuthenticator(auth),
-)
-http.Handle("/ocpp/", srv)
-station, ok := srv.Station("STATION001")
-```
+Every request is validated against its schema before it is sent, every
+response when it arrives, and every incoming request before a handler sees
+it; an invalid one is answered with the CALLERROR its violation calls for.
 
 go-ocpp is a protocol library. It transports, validates and dispatches
 messages. Charging behaviour, authorization policy, persistence and billing

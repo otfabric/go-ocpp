@@ -12,6 +12,7 @@ Errors are wrapped with detail. Test for them with `errors.Is` and
 | The connection broke | `errors.Is(err, ocpp.ErrConnectionLost)` |
 | It was closed locally | `errors.Is(err, ocpp.ErrClosed)` |
 | A client could not connect | `errors.Is(err, ocpp.ErrConnectFailed)` |
+| A payload breaks its schema | `errors.As(err, &ve)` with `ve *ocpp.ValidationError` (wraps `ocpp.ErrInvalidMessage`) |
 | Too many calls waiting | `errors.Is(err, ocpp.ErrBusy)` |
 
 ## Sentinels
@@ -24,10 +25,11 @@ Errors are wrapped with detail. Test for them with `errors.Is` and
 | `ErrConnectionLost` | A call was pending or queued when the connection broke; `Session.Err` after the station went away |
 | `ErrTimeout` | No response to a CALL arrived within the response timeout |
 | `ErrBusy` | The queue of calls waiting for the single outgoing slot is full |
-| `ErrWrongDirection` | A role sends an action that the specification does not let it send (enforced once the version packages exist) |
+| `ErrWrongDirection` | A call function is used for an action the connection's role does not send |
 | `ErrUnsupportedVersion` | No common version could be negotiated |
 | `ErrProtocol` | A response could not be decoded into `resp`; also reported through metrics for frames that violate OCPP-J |
 | `ErrUnexpectedResponse` | Reported through `Metrics.OnProtocolError` for late, duplicate or unknown responses; never returned by a call |
+| `ErrInvalidMessage` | A request (before sending) or a response (on arrival) does not conform to its schema; wrapped by every `*ValidationError`. A response failing validation is also wrapped in `ErrProtocol` |
 | `ErrInvalidOption` | A constructor was given an invalid option |
 
 Package `server` adds:
@@ -35,7 +37,8 @@ Package `server` adds:
 | Error | Meaning |
 |---|---|
 | `server.ErrReplaced` | `Session.Err` of a session replaced by a new connection of the station. It wraps `ocpp.ErrClosed` |
-| `server.ErrUnauthorized` | What `server.BasicAuth` returns for refused credentials (logged, not sent) |
+| `server.ErrUnauthorized` | What `server.BasicAuth` returns for refused credentials (HTTP 401; logged, not sent) |
+| `server.ErrUnknownStation` | An authenticator's error for an identity it does not know (HTTP 404) |
 
 ## CALLERROR from the peer
 
@@ -55,6 +58,14 @@ a JSON object is answered with `InternalError` and an empty description. The
 error itself is logged locally, because it may contain internal details. A
 code the connection's version does not define is also replaced with
 `InternalError`.
+
+## Validation errors
+
+`*ocpp.ValidationError` says what is wrong with a payload: `Code` (the
+CALLERROR code for the violation, spelt as the version spells it), `Field`
+(a path such as `meterValue[0].sampledValue[1].measurand`) and `Reason`. A
+dispatcher answers an invalid incoming request with that CALLERROR; a call
+function returns it for an invalid request before anything is sent.
 
 ## What is not an error
 

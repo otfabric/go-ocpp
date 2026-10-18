@@ -1,9 +1,9 @@
 # Architecture
 
-Status: **Phase 2**. The root package, `ocppj`, the engine, the transport,
-`client` and `server` are implemented as described here. The version
-packages (`ocpp16`, `ocpp201`, `ocpp21`) are still design: their API sketches
-are the target for Phases 3, 5 and 6. Decisions that are hard to reverse are
+Status: **Phase 5**. The root package, `ocppj`, the engine, the transport,
+`client`, `server`, and the version packages `ocpp16` (OCPP 1.6J with the
+Security Whitepaper extensions) and `ocpp201` (OCPP 2.0.1) are implemented
+as described here. `ocpp21` is Phase 6. Decisions that are hard to reverse are
 recorded as ADRs in [docs/adr](docs/adr). Choices this document makes where
 the specifications are silent are collected in
 [Implementation choices](#implementation-choices).
@@ -66,27 +66,32 @@ go-ocpp/
 ├── *.go               package ocpp: Version, Peer, Caller, Dispatcher, CallError,
 │                      sentinel errors, Metrics, interceptors, State
 ├── ocppj/             OCPP-J frame codec; error codes per version
-├── ocpp16/            OCPP 1.6J messages, enums, validation, handlers (generated + hand-written)
+├── ocpp16/            OCPP 1.6J messages, enums, validation, handlers (generated)
 ├── ocpp201/           OCPP 2.0.1, same shape
-├── ocpp21/            OCPP 2.1, same shape; reuses nothing from ocpp201 at the type level (ADR 0001)
+├── ocpp21/            OCPP 2.1, same shape (Phase 6); reuses nothing from ocpp201 at the type level (ADR 0001)
+├── schemas/           the OCA JSON schemas, unmodified (CC BY-ND 4.0, ADR 0007)
 ├── client/            Charging Station role
 ├── server/            CSMS role
 ├── internal/
 │   ├── engine/        the RPC endpoint shared by client and server
 │   ├── transport/     the WebSocket adapter (ADR 0002)
-│   └── gen/           the schema-to-Go generator (go run ./internal/gen)
+│   ├── gen/           the schema-to-Go generator (go generate in each version package)
+│   ├── wire/          the runtime of the generated code
+│   └── schematest/    the schema conformance suite (tests only)
 ├── e2e/               this module's client against this module's server
 ├── interop/           against otfabric/ocpp-interop images (build tag interop)
 ├── examples/          station16, csms16, station201, csms201, ...
 └── docs/adr/          architecture decision records
 ```
 
-The import rules are checked by a test in Phase 2:
+The import rules are checked by a test (`imports_test.go`):
 
 - The root package `ocpp` imports only the standard library.
 - `ocppj` imports only `ocpp` and the standard library.
-- `ocpp16`, `ocpp201` and `ocpp21` import `ocpp` and `ocppj`, and never
-  `client`, `server` or each other.
+- `ocpp16`, `ocpp201` and `ocpp21` import `ocpp` and `internal/wire` (which
+  imports `ocppj`), and never `client`, `server` or each other.
+- `internal/schematest`, the only importer of the reference JSON Schema
+  validator, is imported by tests only.
 - `client` and `server` import `ocpp`, `ocppj` and `internal/...`. They do not
   import any version package. A version is plugged in as an
   `ocpp.Dispatcher` (see below).
@@ -257,14 +262,26 @@ type CallError struct {
 }
 ```
 
-Each version package generates the following from the schemas:
+Each version package is generated from the OCA schemas in `schemas/` by
+`internal/gen` (ADR 0003), and holds:
 
-1. A request and response type for every action, with a `Validate() error`
-   method and JSON tags that match the schema. Enums are named string types
-   with constants. Optional fields are pointers or `omitempty`, according to
-   the schema.
-2. One typed call function per action, which validates the request, calls
-   and validates the response:
+1. A type for every request and response, and for every object and
+   enumeration they use. Required fields are values; optional ones are
+   pointers (`ocpp.Ptr` helps), or slices with `omitempty`. Enumerations are
+   named string types with constants and a `Valid` method. Date-times are
+   `time.Time`. `customData` (2.x) is a `CustomData` that keeps the
+   vendor's properties as raw JSON. OCPP 1.6 defines its objects and
+   enumerations inline; the generator names them after chapter 7 of the
+   1.6 specification (`IDTagInfo`, `ChargePointStatus`, `Measurand`, …).
+2. Strict decoding and validation. `UnmarshalJSON` refuses a missing
+   required property and, where the schema says `additionalProperties:
+   false`, an unknown one. `Validate` checks every constraint the schemas
+   use: enumerations, string lengths in characters, minimum, maximum,
+   multipleOf, array sizes and absolute URIs. Failures are
+   `*ocpp.ValidationError`, which carry the CALLERROR code of the version.
+3. One call function per action. It checks the connection's version and
+   the role that may send the action, validates the request, calls, and
+   validates the response:
 
    ```go
    resp, err := ocpp16.BootNotification(ctx, c, &ocpp16.BootNotificationRequest{
@@ -273,48 +290,63 @@ Each version package generates the following from the schemas:
    })
    ```
 
-3. One handler interface per role, with one method per action that the role
-   receives. There is also an `Unimplemented...` struct to embed, which
-   answers `NotImplemented` for methods the application does not override.
-   This keeps an application compiling when a later version of the library
-   adds a method:
+4. One handler interface per role, with a method per action the role
+   receives, and an `Unimplemented…Handler` to embed, which answers
+   `NotSupported` for the methods an application does not override and
+   keeps it compiling when methods are added:
 
    ```go
    type CentralSystemHandler interface {
        BootNotification(ctx context.Context, p ocpp.Peer, req *BootNotificationRequest) (*BootNotificationResponse, error)
-       Heartbeat(ctx context.Context, p ocpp.Peer, req *HeartbeatRequest) (*HeartbeatResponse, error)
        // ... every Charge Point → Central System action
    }
 
-   func CentralSystem(h CentralSystemHandler, opts ...DispatchOption) ocpp.Dispatcher
-   func ChargePoint(h ChargePointHandler, opts ...DispatchOption) ocpp.Dispatcher
+   func CentralSystem(h CentralSystemHandler) ocpp.Dispatcher
+   func ChargePoint(h ChargePointHandler) ocpp.Dispatcher
    ```
 
-   For 2.x the roles are `CSMSHandler` and `ChargingStationHandler`.
-4. The action table and the coverage manifest: actions, direction, request
-   and response types, and test status.
+   For 2.x the roles are `CSMSHandler`/`CSMS` and
+   `ChargingStationHandler`/`ChargingStation`.
+5. `Actions` (every action and the role that sends it), `ValidateRequest`
+   and `ValidateResponse` (for raw payloads, e.g. ocppctl), and
+   `coverage.json`, the coverage manifest, with the SHA-256 of every schema
+   it was generated from.
+
+A dispatcher decodes and validates each incoming CALL before a handler sees
+it, and answers an invalid one with the CALLERROR its violation calls for:
+`FormationViolation`/`FormatViolation` for structure and unknown properties,
+`OccurenceConstraintViolation`/`OccurrenceConstraintViolation` for a missing
+property or a wrong number of elements, `TypeConstraintViolation` for a
+value of the wrong type, and `PropertyConstraintViolation` for a value
+outside its constraints. An action the version defines but this role does
+not receive is answered with `NotSupported`; an action the version does not
+define with `NotImplemented` (OCPP-J 1.6 §4.2.3, 2.x Part 4 §4.3).
 
 A handler returns either a response or an error. A `*ocpp.CallError` is sent
-as is. Any other error is sent as `InternalError` with a generic
-description, so that internal details do not leak to the peer, and is logged
-with its full text. A nil response with a nil error is also sent as
-`InternalError`.
+as is. Any other error is sent as `InternalError` with an empty description,
+so that internal details do not leak to the peer, and is logged with its
+full text. So is a nil response, or one that fails validation: that is a bug
+of the application, which the peer should not receive.
 
-The direction of every action is known. The engine refuses to send an action
-in the wrong direction, for example a station sending `RemoteStartTransaction`,
-and returns `ErrWrongDirection`.
+The direction of every action comes from the specifications
+(`internal/gen/directions.go`). A call function refuses an action the
+connection's role does not send, for example a station sending
+`RemoteStartTransaction`, with `ErrWrongDirection`. Raw calls are not
+checked.
 
 Vendor extensions use what the protocol defines: DataTransfer in every
-version, and `customData` in 2.x. `customData` is kept as raw JSON on every
-generated type. Raw use (`json.RawMessage` request and response, and a raw
-`Dispatcher`) is supported for tools like ocppctl, a proxy, or an
-application handling DataTransfer itself.
+version, and `customData` in 2.x. Raw use (`json.RawMessage` request and
+response, and a raw `Dispatcher`) remains available for tools like ocppctl,
+a proxy, or an application handling DataTransfer itself.
 
-Validation is generated as code, not interpreted from schemas at runtime
-([ADR 0003](docs/adr/0003-schema-generation.md)). It is on by default for
-incoming and outgoing messages. A `DispatchOption` and a client or server
-option can exempt named actions, never everything, and each exemption is
-logged once at start-up.
+Validation is generated code, not a schema interpreter at runtime, and is
+always on in the call functions and dispatchers. A test suite
+(`internal/schematest`) checks it for every message against the schemas
+and an independent JSON Schema validator: complete and minimal messages
+are accepted and survive a round trip; every constraint, broken one at a
+time, is refused by both, with the expected code. Exempting actions from
+validation for a non-conforming peer is not implemented; it would be added
+only per action and logged, never globally.
 
 ## Client: the Charging Station role
 
@@ -324,7 +356,7 @@ c, err := client.New("wss://csms.example.com/ocpp/STATION001",
     client.WithHandler(ocpp.V201, ocpp201.ChargingStation(h201)),
     client.WithHandler(ocpp.V16, ocpp16.ChargePoint(h16)),
     client.WithBasicAuth("STATION001", password),       // profile 2 with wss
-    client.WithReconnect(client.Reconnect{MinDelay: time.Second, MaxDelay: 2 * time.Minute}),
+    client.WithReconnect(client.DefaultReconnect),
     client.WithStateHandler(func(s ocpp.State, err error) { ... }),
     client.WithLogger(logger),
 )
@@ -339,7 +371,9 @@ resp, err := ocpp201.BootNotification(ctx, c, &ocpp201.BootNotificationRequest{.
   checked when `New` is called.
 - `Connect` dials, negotiates and returns when the connection is open or
   `ctx` ends. With reconnect enabled, a dropped connection is re-dialled
-  with exponential backoff and full jitter between `MinDelay` and `MaxDelay`.
+  with the back-off of 2.x Part 4 §5.4: RetryBackOffWaitMinimum plus up to
+  RetryBackOffRandomRange, doubled up to RetryBackOffRepeatTimes times
+  (`client.Reconnect`; `client.DefaultReconnect` when the CSMS has set none).
   `Close` stops this.
 - While disconnected, `Call` fails immediately with `ErrNotConnected`. The
   library has no queue of its own. The state handler tells the application
@@ -398,9 +432,16 @@ if ok {
   waiting for the outgoing slot (default 64, then `ErrBusy`). When a limit is
   hit, the request is refused or the connection closed, never buffered
   without bound.
-- Refusals before the upgrade are HTTP errors: 404 without an identity, 400
-  without a supported subprotocol, 401 when authentication fails (with
-  `WWW-Authenticate: Basic`), 409 and 503 as above.
+- Compression: the server accepts `permessage-deflate` (RFC 7692) when a
+  station offers it, as a 2.x CSMS SHALL (2.0.1 Part 4 §3.3; 2.1 §3.4),
+  without context takeover, so that idle connections hold no compression
+  state. The message size limit applies after decompression. A client
+  offers compression with `WithCompression`.
+- Refusals before the upgrade are HTTP errors: 404 without an identity or
+  for an identity the authenticator does not know (`ErrUnknownStation`),
+  401 when authentication fails (with `WWW-Authenticate: Basic`), 409 and
+  503 as above. A station that offers no supported subprotocol gets a
+  completed handshake without one and an immediate close (T1).
 - `Shutdown(ctx)` stops accepting connections and closes the sessions with
   status 1001 (going away). It returns when they have ended or `ctx` ends.
   `Close` does not wait. `Serve` and `ListenAndServe` then return
@@ -445,7 +486,9 @@ if ok {
   - incoming CALLs, with the handler's result and duration;
   - protocol errors, including late and unknown responses.
 
-  Validation failures are added with the version packages (Phase 3).
+  A request refused by validation shows as `OnCallHandled` with the
+  CALLERROR it was answered with; a response refused by validation as
+  `OnCallDone` with an error wrapping `ocpp.ErrInvalidMessage`.
 - **Interceptors.** `WithCallInterceptor` and `WithHandlerInterceptor` wrap
   outgoing and incoming calls with the call's metadata. This is where an
   application starts and ends OpenTelemetry spans, without the library
@@ -513,3 +556,6 @@ Each choice can be revisited if an edition or erratum settles it.
 | Incoming CALLs are queued up to 16 before the reader waits | Bounds memory if a peer ignores T6; the reader keeps backpressure on the connection |
 | Session replacement registers the new session first, then closes the old one | No moment without a session for a reconnecting station; never two that `Station` can return |
 | Binary WebSocket messages close the connection with 1003 | OCPP-J uses text messages only |
+| Compression without context takeover, accepted for every version | Lower memory per connection; supporting it on 1.6 connections is allowed and harmless |
+| `client.DefaultReconnect`: 5 s, plus up to 10 s, doubled up to 5 times | Part 4 §5.4 defines the algorithm, not default values |
+| An action the version defines but the role does not receive is answered with `NotSupported`, an unhandled one too (Unimplemented handlers) | "Recognized but not supported", where `NotImplemented` means "not known" |

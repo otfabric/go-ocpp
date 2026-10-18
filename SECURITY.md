@@ -38,7 +38,11 @@ Implemented in the client and server (Phase 2); see
 - Credentials and authorization tokens are never logged, and never appear in
   error strings or metric labels.
 - Frame size, station count, queue lengths and handshake time are bounded by
-  default.
+  default. With compression, the size limit applies after decompression, so
+  a small compressed message cannot inflate past it.
+- Every incoming payload is validated against its OCA schema before a
+  handler sees it; unknown properties are refused where the schema closes
+  the object.
 
 ### Deployment
 
@@ -57,6 +61,9 @@ Implemented in the client and server (Phase 2); see
 - Limits and their defaults: 10 000 stations, 64 KiB per message, 64 queued
   calls per connection, 30 s response timeout, 10 s for request headers on
   the server's own listener. Refusals are HTTP errors before the upgrade.
+- An identity the authenticator does not know (`server.ErrUnknownStation`,
+  which `server.BasicAuth` returns) is refused with HTTP 404, as OCPP-J
+  recommends; wrong credentials with 401.
 - Session replacement (`ReplaceExisting`, the default) happens only after
   authentication succeeds, so an unauthenticated client cannot evict a
   station.
