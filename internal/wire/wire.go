@@ -112,19 +112,32 @@ func Decode(payload json.RawMessage, m Message, c Codes) error {
 }
 
 // Classify turns a decoding error into a validation error.
+//
+// A syntax error is a FormationViolation/FormatViolation. Any other error
+// comes from a value that does not fit its field: the payload has parsed
+// as JSON, and the generated UnmarshalJSON methods have checked the
+// structure, so what remains is a value of the wrong type or format, such
+// as a number or a malformed string for a date-time. That is a
+// TypeConstraintViolation. The classification must not depend on the error
+// types of the standard library, which differ between Go releases: for a
+// date-time that is not a JSON string, Go 1.26 returns a plain error and
+// Go 1.27 a *json.UnmarshalTypeError.
 func Classify(err error, c Codes) *ocpp.ValidationError {
 	var ve *ocpp.ValidationError
+	var se *json.SyntaxError
 	var te *json.UnmarshalTypeError
 	var pe *time.ParseError
 	switch {
 	case errors.As(err, &ve):
 		return ve
+	case errors.As(err, &se):
+		return Invalid(c.Format, "", err.Error())
 	case errors.As(err, &te):
 		return Invalid(c.Type, te.Field, "a "+te.Value+" where the schema wants "+te.Type.String())
 	case errors.As(err, &pe):
 		return Invalid(c.Type, "", "not a date-time (RFC 3339): "+strconv.Quote(pe.Value))
 	default:
-		return Invalid(c.Format, "", err.Error())
+		return Invalid(c.Type, "", err.Error())
 	}
 }
 

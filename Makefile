@@ -4,7 +4,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help all build examples fmt fmt-check lint lint-ci vet vuln test coverage cover fuzz check cross clean interop test-interop e2e deps gen gen-check schemas-check schemas-sync
+.PHONY: help all build examples fmt fmt-check lint lint-ci vet vuln test test-min coverage cover fuzz check cross clean interop test-interop e2e deps gen gen-check schemas-check schemas-sync
 help: ## This help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_-]+:.*?## / {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
@@ -98,6 +98,12 @@ test: ## Run the library tests with the race detector
 	@echo "Running tests"
 	@go test -count=1 -race $(TEST_PKGS)
 
+# CI also tests with the oldest Go that go.mod allows, and the standard
+# library's behaviour differs between releases (error types, for one).
+test-min: ## Run the library tests with the Go version of go.mod (what CI's oldest job uses)
+	@echo "Running tests with go$(GO_MOD_VERSION).0"
+	@GOTOOLCHAIN=go$(GO_MOD_VERSION).0 go test -count=1 $(TEST_PKGS)
+
 e2e: ## Run the end-to-end tests of this module's client against this module's server
 	@echo "Running end-to-end tests"
 	@if [ -d e2e ]; then go test -count=1 -race ./e2e/...; else echo "no e2e tests yet (Phase 2)"; fi
@@ -167,7 +173,7 @@ schemas-sync: ## Refresh schemas/ from the OCA download page (review the diff; s
 schemas-check: ## Check the vendored OCA schemas against their recorded SHA-256 sums
 	@cd schemas && shasum -a 256 -c --quiet SHA256SUMS && echo "schemas: OK"
 
-check: fmt fmt-check deps gen-check schemas-check lint lint-ci vet vuln test coverage cross examples ## Run format + generate + lint + vet + vuln + test + cross-build
+check: fmt fmt-check deps gen-check schemas-check lint lint-ci vet vuln test test-min coverage cross examples ## Run format + generate + lint + vet + vuln + test + cross-build
 
 clean: ## Remove generated binaries and coverage artifacts
 	@echo "Cleaning up"
