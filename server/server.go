@@ -191,7 +191,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 	defer s.active.Done()
 
-	conn, err := transport.Accept(w, r, transport.AcceptOptions{Subprotocol: v.Subprotocol(), ReadLimit: int64(s.o.maxMessageSize)})
+	// A CSMS SHALL support RFC 7692 compression (2.0.1 Part 4 §3.3, 2.1
+	// §3.4); it is used when the station offers it.
+	conn, err := transport.Accept(w, r, transport.AcceptOptions{Subprotocol: v.Subprotocol(), ReadLimit: int64(s.o.maxMessageSize), Compression: true})
 	if err != nil {
 		s.mu.Lock()
 		s.admitting--
@@ -374,6 +376,11 @@ type Session struct {
 
 // ID returns the station identity.
 func (s *Session) ID() string { return s.id }
+
+// Role returns ocpp.CSMS, the role of this end of the session. The call
+// functions of the version packages use it to refuse an action a station
+// sends.
+func (s *Session) Role() ocpp.Role { return ocpp.CSMS }
 
 // Version returns the version negotiated for this connection.
 func (s *Session) Version() ocpp.Version { return s.version }

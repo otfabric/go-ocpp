@@ -16,9 +16,12 @@ type DialOptions struct {
 	HTTPClient   *http.Client // nil: http.DefaultClient
 	Header       http.Header
 	Subprotocols []string
-	// ReadLimit is the largest message accepted, in bytes; a larger one
-	// closes the connection with StatusTooBig.
+	// ReadLimit is the largest message accepted, in bytes, after
+	// decompression; a larger one closes the connection with StatusTooBig.
 	ReadLimit int64
+	// Compression offers permessage-deflate (RFC 7692), without context
+	// takeover.
+	Compression bool
 }
 
 // Dial opens a WebSocket to url. The *http.Response is returned when the
@@ -26,9 +29,10 @@ type DialOptions struct {
 // reported.
 func Dial(ctx context.Context, url string, o DialOptions) (Conn, *http.Response, error) {
 	c, resp, err := websocket.Dial(ctx, url, &websocket.DialOptions{
-		HTTPClient:   o.HTTPClient,
-		HTTPHeader:   o.Header,
-		Subprotocols: o.Subprotocols,
+		HTTPClient:      o.HTTPClient,
+		HTTPHeader:      o.Header,
+		Subprotocols:    o.Subprotocols,
+		CompressionMode: compression(o.Compression),
 	})
 	if err != nil {
 		return nil, resp, err
@@ -45,7 +49,20 @@ type AcceptOptions struct {
 	// chosen it from the client's offers. Empty selects none: the
 	// handshake completes without a Sec-WebSocket-Protocol header.
 	Subprotocol string
-	ReadLimit   int64
+	// ReadLimit is the largest message accepted, after decompression.
+	ReadLimit int64
+	// Compression accepts permessage-deflate (RFC 7692) when the client
+	// offers it, without context takeover.
+	Compression bool
+}
+
+func compression(on bool) websocket.CompressionMode {
+	if on {
+		// No context takeover: no per-connection compression state, which
+		// matters for a CSMS with many mostly idle connections.
+		return websocket.CompressionNoContextTakeover
+	}
+	return websocket.CompressionDisabled
 }
 
 // Accept upgrades an HTTP request to a WebSocket. On failure it has written
@@ -55,7 +72,7 @@ func Accept(w http.ResponseWriter, r *http.Request, o AcceptOptions) (Conn, erro
 	if o.Subprotocol != "" {
 		subprotocols = []string{o.Subprotocol}
 	}
-	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{Subprotocols: subprotocols})
+	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{Subprotocols: subprotocols, CompressionMode: compression(o.Compression)})
 	if err != nil {
 		return nil, err
 	}

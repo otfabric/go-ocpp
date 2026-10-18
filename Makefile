@@ -4,7 +4,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help all build examples fmt fmt-check lint lint-ci vet vuln test coverage cover fuzz check cross clean interop test-interop e2e deps
+.PHONY: help all build examples fmt fmt-check lint lint-ci vet vuln test coverage cover fuzz check cross clean interop test-interop e2e deps gen gen-check schemas-check
 help: ## This help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_-]+:.*?## / {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
@@ -22,7 +22,7 @@ BIN_DIR := bin
 # Library packages: tests and coverage (exclude examples and the interop suite)
 TEST_PKGS := $(shell go list ./... | grep -v '/examples' | grep -v '/interop$$' | grep -v '/interop/')
 # Coverage is measured over the library packages, whichever package's tests exercise them.
-COVER_PKGS := $(shell go list ./... | grep -v '/examples' | grep -v '/e2e$$' | grep -v '/internal/gen' | grep -v '/interop$$' | grep -v '/interop/' | paste -sd, -)
+COVER_PKGS := $(shell go list ./... | grep -v '/examples' | grep -v '/e2e$$' | grep -v '/internal/gen' | grep -v '/internal/schematest' | grep -v '/interop$$' | grep -v '/interop/' | paste -sd, -)
 
 # Platforms the library must build on, pure Go (CGO_ENABLED=0).
 CROSS_PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64
@@ -40,8 +40,7 @@ build: ## Build the library and the examples into ./bin
 	done
 
 # The self-contained examples: each starts both sides and exits by itself.
-# Empty until Phase 3 adds station16 and csms16.
-RUN_EXAMPLES :=
+RUN_EXAMPLES := ocpp16 ocpp201
 
 examples: ## Run the self-contained examples (each must exit successfully)
 	@for e in $(RUN_EXAMPLES); do \
@@ -85,12 +84,14 @@ vuln: ## Run govulncheck
 	@echo "Running govulncheck"
 	@govulncheck ./...
 
-# ADR 0002 allows exactly one production dependency, github.com/coder/websocket,
-# from Phase 2 on. Anything else needs an ADR first.
-ALLOWED_DEPS := github.com/coder/websocket
-deps: ## Fail if go.mod requires anything not allowed by an ADR
+# ADR 0002 allows exactly one production dependency, github.com/coder/websocket.
+# ADR 0003 allows a reference JSON Schema validator for tests only (imported
+# by internal/schematest, which only the version packages' tests import),
+# with what it requires. Anything else needs an ADR first.
+ALLOWED_DEPS := github.com/coder/websocket github.com/santhosh-tekuri/jsonschema/v6 golang.org/x/text
+deps: ## Fail if go.mod directly requires anything not allowed by an ADR
 	@echo "Checking dependencies"
-	@deps="$$(go list -m -f '{{if not .Main}}{{.Path}}{{end}}' all | grep -v -x -F $(foreach d,$(ALLOWED_DEPS),-e $(d)) || true)"; \
+	@deps="$$(go list -m -f '{{if and (not .Main) (not .Indirect)}}{{.Path}}{{end}}' all | grep -v -x -F $(foreach d,$(ALLOWED_DEPS),-e $(d)) || true)"; \
 	if [ -n "$$deps" ]; then echo "go.mod requires modules no ADR allows:"; echo "$$deps"; exit 1; fi
 
 test: ## Run the library tests with the race detector
@@ -114,7 +115,7 @@ cover: coverage ## Open coverage report in browser
 # Each entry is <package dir>:<fuzz target>. The dispatchers of the version
 # packages are added in Phases 3, 5 and 6.
 FUZZTIME ?= 30s
-FUZZ_TARGETS := ocppj:FuzzDecode
+FUZZ_TARGETS := ocppj:FuzzDecode ocpp16:FuzzDispatch ocpp201:FuzzDispatch
 fuzz: ## Run the fuzz targets for FUZZTIME each (default 30s)
 	@echo "Fuzzing (FUZZTIME=$(FUZZTIME))"
 	@for t in $(FUZZ_TARGETS); do \
@@ -141,7 +142,19 @@ test-interop: ## Run the interop suite against the ocpp-interop reference images
 
 interop: test-interop ## Alias for test-interop
 
-check: fmt fmt-check deps lint lint-ci vet vuln test coverage cross examples ## Run format + lint + vet + vuln + test + cross-build
+gen: ## Generate the version packages from the OCA schemas (internal/gen)
+	@echo "Generating ocpp16 and ocpp201"
+	@go generate ./ocpp16 ./ocpp201
+
+gen-check: gen ## Fail if the generated code differs from what is committed
+	@if ! git diff --quiet -- ocpp16 ocpp201; then \
+		echo "Generated code is out of date: run 'make gen' and commit."; git --no-pager diff --stat -- ocpp16 ocpp201; exit 1; \
+	fi
+
+schemas-check: ## Check the vendored OCA schemas against their recorded SHA-256 sums
+	@cd schemas && shasum -a 256 -c --quiet SHA256SUMS && echo "schemas: OK"
+
+check: fmt fmt-check deps gen-check schemas-check lint lint-ci vet vuln test coverage cross examples ## Run format + generate + lint + vet + vuln + test + cross-build
 
 clean: ## Remove generated binaries and coverage artifacts
 	@echo "Cleaning up"

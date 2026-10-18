@@ -30,6 +30,7 @@ type options struct {
 	tlsConfig          *tls.Config
 	httpClient         *http.Client
 	insecure           bool
+	compression        bool
 	reconnect          *Reconnect
 	stateHandler       func(ocpp.State, error)
 	logger             *slog.Logger
@@ -91,6 +92,12 @@ func WithHTTPClient(c *http.Client) Option {
 func WithInsecureTransport() Option {
 	return func(o *options) { o.insecure = true }
 }
+
+// WithCompression offers WebSocket compression (RFC 7692 permessage-deflate)
+// in the handshake. OCPP 2.x makes it optional for a charging station and
+// recommends it, to reduce mobile data; a CSMS must support it. The message
+// size limit applies after decompression.
+func WithCompression() Option { return func(o *options) { o.compression = true } }
 
 // Reconnect configures automatic reconnection, with the back-off that OCPP
 // 2.x Part 4 §5.4 requires of a charging station, configured by the device

@@ -152,6 +152,10 @@ func identity(u *url.URL) (string, error) {
 // ID returns the station identity.
 func (c *Client) ID() string { return c.id }
 
+// Role returns ocpp.ChargingStation. The call functions of the version
+// packages use it to refuse an action the CSMS sends.
+func (c *Client) Role() ocpp.Role { return ocpp.ChargingStation }
+
 // Version returns the version negotiated on the current connection, or the
 // last one; zero before the first connection.
 func (c *Client) Version() ocpp.Version {
@@ -226,6 +230,7 @@ func (c *Client) dial(ctx context.Context) (*engine.Endpoint, ocpp.Version, erro
 	}
 	conn, resp, err := transport.Dial(ctx, c.url, transport.DialOptions{
 		HTTPClient: c.http, Header: c.header, Subprotocols: subprotocols, ReadLimit: int64(c.o.maxMessageSize),
+		Compression: c.o.compression,
 	})
 	if err != nil {
 		if resp != nil {

@@ -191,3 +191,51 @@ func TestCloseErrorText(t *testing.T) {
 		t.Errorf("%q", got)
 	}
 }
+
+// Compression is negotiated when both ends want it, and the read limit
+// applies to the decompressed message: a small compressed message that
+// inflates past the limit closes the connection.
+func TestCompression(t *testing.T) {
+	got := make(chan error, 1)
+	hs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := Accept(w, r, AcceptOptions{Subprotocol: "ocpp2.0.1", ReadLimit: 1024, Compression: true})
+		if err != nil {
+			return
+		}
+		m, err := c.ReadMessage(context.Background())
+		if err == nil {
+			err = c.WriteMessage(context.Background(), m)
+		}
+		if err == nil {
+			_, err = c.ReadMessage(context.Background())
+		}
+		got <- err
+	}))
+	defer hs.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	c, resp, err := Dial(ctx, "ws"+strings.TrimPrefix(hs.URL, "http"), DialOptions{Subprotocols: []string{"ocpp2.0.1"}, Compression: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ext := resp.Header.Get("Sec-WebSocket-Extensions"); !strings.Contains(ext, "permessage-deflate") {
+		t.Fatalf("compression not negotiated: %q", ext)
+	}
+	small := []byte(`[2,"1","Heartbeat",{"pad":"` + strings.Repeat("a", 800) + `"}]`)
+	if err := c.WriteMessage(ctx, small); err != nil {
+		t.Fatal(err)
+	}
+	if m, err := c.ReadMessage(ctx); err != nil || string(m) != string(small) {
+		t.Fatalf("echo: %v", err)
+	}
+	// 64 KiB of one letter compresses to a few hundred bytes.
+	read := make(chan error, 1)
+	go func() { _, err := c.ReadMessage(ctx); read <- err }()
+	_ = c.WriteMessage(ctx, []byte(strings.Repeat("a", 64<<10)))
+	if err := <-got; err == nil {
+		t.Fatal("an inflated message past the limit was accepted")
+	}
+	if err := <-read; !errors.Is(err, ErrClosed) {
+		t.Fatalf("client: %v", err)
+	}
+}

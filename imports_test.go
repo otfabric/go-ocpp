@@ -25,10 +25,14 @@ var allowedImports = map[string][]string{
 	"internal/engine":    {module, module + "/ocppj", module + "/internal/transport"},
 	"client":             {module, module + "/ocppj", module + "/internal/engine", module + "/internal/transport"},
 	"server":             {module, module + "/ocppj", module + "/internal/engine", module + "/internal/transport"},
-	// Version packages (from Phase 3): the root package and ocppj only.
-	"ocpp16":  {module, module + "/ocppj"},
-	"ocpp201": {module, module + "/ocppj"},
-	"ocpp21":  {module, module + "/ocppj"},
+	// Version packages: the root package and their runtime, internal/wire.
+	"ocpp16":        {module, module + "/internal/wire"},
+	"ocpp201":       {module, module + "/internal/wire"},
+	"ocpp21":        {module, module + "/internal/wire"},
+	"internal/wire": {module, module + "/ocppj"},
+	// The schema conformance suite, imported by the version packages' tests
+	// only: a reference JSON Schema validator (ADR 0003).
+	"internal/schematest": {module, "github.com/santhosh-tekuri/jsonschema/v6"},
 }
 
 func TestImportRules(t *testing.T) {
