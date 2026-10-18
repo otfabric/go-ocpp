@@ -480,6 +480,12 @@ func TestInterceptorsAndObserver(t *testing.T) {
 	if fmt.Sprint(seen) != fmt.Sprint(want) {
 		t.Errorf("interceptors saw %q, want %q", seen, want)
 	}
+	// The observer sees an outgoing frame after it is written, so the CSMS's
+	// CALLRESULT may be observed after the station's Call has returned.
+	deadline := time.Now().Add(5 * time.Second)
+	for frames.Load() < 4 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
 	if n := frames.Load(); n != 4 {
 		t.Errorf("observer saw %d frames, want 4", n)
 	}
