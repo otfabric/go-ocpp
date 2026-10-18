@@ -95,6 +95,8 @@ func New(opts ...Option) (*Server, error) {
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
+	log = log.With("component", "ocpp.server")
+	o.logger = log // the engine's entries carry the component too
 	return &Server{o: o, log: log, sessions: map[string]*Session{}}, nil
 }
 
@@ -145,6 +147,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	v, supported := s.selectVersion(r.Header)
 	info.Version = v
+	if supported && v != ocpp.V16 && !validIdentity(id) {
+		// 2.x Part 4 §3.1.1: an identifierString without ":", at most 48
+		// characters. What the CSMS does with another is not specified;
+		// refusing it is an implementation choice (ARCHITECTURE.md).
+		s.refuse(w, log, info, http.StatusBadRequest, "invalid station identity",
+			fmt.Errorf("station identity %q is not an OCPP 2.x identity", id))
+		return
+	}
 	if s.o.auth != nil {
 		user, pass, hasBasic := r.BasicAuth()
 		err := s.o.auth.Authenticate(r.Context(), ConnectRequest{
@@ -298,6 +308,24 @@ func stationID(u *url.URL) (string, bool) {
 	return id, true
 }
 
+// validIdentity reports whether id is a valid OCPP 2.x Charging Station
+// identity: at most 48 characters of the identifierString set (Part 2),
+// without ":" (Part 4 §3.1.1).
+func validIdentity(id string) bool {
+	if len(id) == 0 || len(id) > 48 {
+		return false
+	}
+	for _, c := range []byte(id) {
+		switch {
+		case 'a' <= c && c <= 'z', 'A' <= c && c <= 'Z', '0' <= c && c <= '9':
+		case strings.IndexByte("*-_=+|@.", c) >= 0:
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 // ListenAndServe listens on addr and serves stations until Shutdown or
 // Close, after which it returns ocpp.ErrClosed. With WithTLS it serves TLS.
 func (s *Server) ListenAndServe(addr string) error {
@@ -328,6 +356,7 @@ func (s *Server) Serve(ln net.Listener) error {
 	}
 	s.listeners = append(s.listeners, hs)
 	s.mu.Unlock()
+	s.log.Info("listening", "addr", ln.Addr().String(), "tls", s.o.tlsConfig != nil)
 	err := hs.Serve(ln)
 	if errors.Is(err, http.ErrServerClosed) {
 		return ocpp.ErrClosed

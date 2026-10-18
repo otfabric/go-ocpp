@@ -72,6 +72,26 @@ Security profile 1 (HTTP Basic) is tested in both roles.
 "Station" counts the CALLs the station sends, "CSMS" those the CSMS sends.
 Unknown action, close and security profile 1 pass in every combination.
 
+### OCPP 2.1 (against ocpp-interop's unreleased Phase 6 build)
+
+The harness runs 2.1 wherever a reference declares it; the pinned v0.1.0
+images declare none, so CI skips 2.1 until ocpp-interop v0.2.0 is released
+and pinned. Against a local build of its `phase-6-ocpp21` branch (b13c25b,
+contract 0.4; 2026-10-18, linux/arm64), with all three references and every
+version (1.6J and 2.0.1 unchanged from the table above, 0 failures):
+
+| Test | Reference | 2.1 station / CSMS |
+|---|---|---|
+| go-ocpp client → reference CSMS | mobilityhouse | 21 pass + 1 known + 1 SEND skipped / 23 pass + 1 known |
+| reference station → go-ocpp server | mobilityhouse | 20 pass + 1 known + 1 SEND skipped + 1 not declared / 23 pass + 1 known |
+
+Security profile 1 passes in both roles. The known issue is Mobility House
+2.1.0 not answering 2.1 CALLs it has no handler for (below), which also
+skips the unknown-action scenario. Neither chargetime (2.1 on its master
+branch only) nor lorenzodonini supports 2.1. No reference release sends or
+receives SEND or CALLRESULTERROR, so go-ocpp's are verified against go-ocpp
+only (e2e) — not against an independent implementation.
+
 ### Known issues
 
 | Reference | Scenario | Evidence |
@@ -79,6 +99,7 @@ Unknown action, close and security profile 1 pass in every combination.
 | mobilityhouse 2.1.0 | The station cannot send SecurityEventNotification without the optional `techInfo` (`securityEventMinimal`) | [`ocpp/v16/call.py`](https://github.com/mobilityhouse/ocpp/blob/91f4f89140a2198dc5a300cfea88d947ac91ae28/ocpp/v16/call.py#L232-L236) |
 | ocpp-go v0.19.0 | The 2.0.1 station answers Reset with `"statusInfo": null`, which the schema does not allow and go-ocpp refuses (`resetImmediate`) | [`provisioning/reset.go`](https://github.com/lorenzodonini/ocpp-go/blob/a1eec917af884db0585752f909a61893aa667480/ocpp2.0.1/provisioning/reset.go#L61-L64) |
 | ocpp-go v0.19.0 | The 2.0.1 station drops `"tbc": false` from NotifyReport (`notifyReport`) | [`provisioning/notify_report.go`](https://github.com/lorenzodonini/ocpp-go/blob/a1eec917af884db0585752f909a61893aa667480/ocpp2.0.1/provisioning/notify_report.go#L98-L104) |
+| mobilityhouse 2.1.0 | A 2.1 CALL without a handler is never answered, in either role (`reservationStatusUpdate`, `cancelReservation`, `unknown-action`); fixed on master (ae716a1), not released | [`ocpp/charge_point.py`](https://github.com/mobilityhouse/ocpp/blob/91f4f89140a2198dc5a300cfea88d947ac91ae28/ocpp/charge_point.py#L161-L193) |
 
 ocpp-interop also records a ChargeTimeEU defect that go-ocpp's tests do not
 reach: its 2.0.1 CSMS breaks permessage-deflate with a station that offers
@@ -91,7 +112,8 @@ passed.
 
 ### Not covered yet
 
-- OCPP 2.1: the library implements it (Phase 6); the matrix gains it with
-  ocpp-interop v0.2.0, whose adapters add 2.1.
+- OCPP 2.1 against released images (ocpp-interop v0.2.0), and against a
+  second independent implementation.
+- SEND and CALLRESULTERROR against any independent implementation.
 - Compression against the references.
 - TLS (security profiles 2 and 3): not yet in ocpp-interop.

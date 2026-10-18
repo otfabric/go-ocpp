@@ -125,6 +125,8 @@ func New(rawURL string, opts ...Option) (*Client, error) {
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
+	log = log.With("component", "ocpp.client")
+	o.logger = log // the engine's entries carry the component too
 	c := &Client{url: rawURL, id: id, o: o, log: log.With("station_id", id), header: http.Header{}, closeCh: make(chan struct{})}
 	if o.basicAuth {
 		c.header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(o.username+":"+o.password)))

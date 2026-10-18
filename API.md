@@ -126,7 +126,7 @@ func Ptr[T any](v T) *T // for optional fields
 
 The sentinels are described in [ERRORS.md](ERRORS.md).
 
-## Packages ocpp16 and ocpp201
+## Packages ocpp16, ocpp201 and ocpp21
 
 Generated from the OCA schemas (`schemas/`). Each holds, for every action
 `X` of its version:
@@ -197,7 +197,7 @@ func (c *Client) State() ocpp.State
 | `WithTLS(cfg)` | system roots | Trust roots, client certificate (profile 3); MinVersion raised to TLS 1.2 |
 | `WithHTTPClient(c)` | `http.DefaultClient` | Handshake HTTP client (proxies); not with `WithTLS` |
 | `WithInsecureTransport()` | off | Allow `ws://` |
-| `WithReconnect(Reconnect{WaitMinimum, RandomRange, RepeatTimes})` | off | Redial after a lost connection with the back-off of 2.x Part 4 §5.4; `DefaultReconnect` is 5 s + up to 10 s, doubled up to 5 times |
+| `WithReconnect(Reconnect{WaitMinimum, RandomRange, RepeatTimes})` | off | Redial after a lost connection with the back-off of 2.x Part 4 §5.4; `DefaultReconnect()` is 5 s + up to 10 s, doubled up to 5 times |
 | `WithCompression()` | off | Offer RFC 7692 compression |
 | `WithStateHandler(f)` | none | Called on every state change; must not block or call `Close` |
 | `WithLogger(l)` | silent | `*slog.Logger` |
@@ -206,6 +206,9 @@ func (c *Client) State() ocpp.State
 | `WithResponseTimeout(d)` | 30 s | Wait for a CALL's response |
 | `WithMaxQueuedCalls(n)` | 64 | Calls waiting for the outgoing slot before `ErrBusy` |
 | `WithMaxMessageSize(n)` | 64 KiB | Largest message accepted |
+| `WithWriteTimeout(d)` | 10 s | Writing one message; then the connection is lost |
+| `WithPingInterval(d)` | off | WebSocket ping every `d`; no pong within `d` loses the connection (WebSocketPingInterval) |
+| `WithMaxBadMessages(n)` | off | Close with 1008 after `n` malformed frames |
 | `WithCallInterceptor(i)`, `WithHandlerInterceptor(i)` | none | Wrap outgoing and incoming calls |
 | `WithFrameObserver(f)` | none | See every frame |
 
@@ -272,6 +275,9 @@ compression whenever a station offers it.
 | `WithAuthenticator(a)` or `WithoutAuthentication()` | required, exactly one | Decide before the upgrade |
 | `WithSessionHandler(onConnect, onDisconnect)` | none | Session start and end |
 | `WithMaxStations(n)` | 10 000 | Then HTTP 503 |
+| `WithWriteTimeout(d)` | 10 s | Writing one message to a station; then its connection is lost |
+| `WithPingInterval(d)` | off | WebSocket ping to every station every `d`; no pong within `d` loses the connection |
+| `WithMaxBadMessages(n)` | off | Close a station's connection with 1008 after `n` malformed frames |
 | `WithReplacePolicy(p)` | `ReplaceExisting` | Or `RejectNew` (HTTP 409) |
 | `WithTLS(cfg)` | none | TLS for `ListenAndServe` and `Serve` |
 | `WithLogger`, `WithMetrics`, `WithCallInterceptor`, `WithHandlerInterceptor`, `WithFrameObserver` | none | As for the client |

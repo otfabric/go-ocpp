@@ -135,7 +135,10 @@ func New(conn transport.Conn, cfg Config) *Endpoint {
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
-	log = log.With("station_id", cfg.Info.StationID, "ocpp_version", cfg.Info.Version.String(), "session_id", cfg.Info.SessionID)
+	log = log.With("station_id", cfg.Info.StationID, "ocpp_version", cfg.Info.Version.String())
+	if cfg.Info.SessionID != "" { // the server's; a client has none
+		log = log.With("session_id", cfg.Info.SessionID)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	e := &Endpoint{
 		cfg:      cfg,

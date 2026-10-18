@@ -1,0 +1,61 @@
+const DefaultHandshakeTimeout = 10 * time.Second
+const DefaultMaxMessageSize = 64 << 10
+const DefaultMaxQueuedCalls = 64
+const DefaultMaxStations = 10000
+const DefaultResponseTimeout = 30 * time.Second
+const RejectNew
+const ReplaceExisting ReplacePolicy = iota
+func (Secret) GoString() string
+func (Secret) String() string
+func (f AuthenticatorFunc) Authenticate(ctx context.Context, r ConnectRequest) error
+func (s *Server) Close() error
+func (s *Server) ListenAndServe(addr string) error
+func (s *Server) Serve(ln net.Listener) error
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request)
+func (s *Server) Shutdown(ctx context.Context) error
+func (s *Server) Station(id string) (*Session, bool)
+func (s *Server) Stations() []*Session
+func (s *Server) Versions() []ocpp.Version
+func (s *Session) Call(ctx context.Context, action string, req, resp any) error
+func (s *Session) Close() error
+func (s *Session) ConnectedAt() time.Time
+func (s *Session) Done() <-chan struct{}
+func (s *Session) Err() error
+func (s *Session) ID() string
+func (s *Session) RemoteAddr() string
+func (s *Session) Role() ocpp.Role
+func (s *Session) Send(ctx context.Context, action string, req any) error
+func (s *Session) SessionID() string
+func (s *Session) Version() ocpp.Version
+func BasicAuth(lookup func(ctx context.Context, stationID string) (password string, ok bool)) Authenticator
+func New(opts ...Option) (*Server, error)
+func WithAuthenticator(a Authenticator) Option
+func WithCallInterceptor(i ocpp.Interceptor) Option
+func WithFrameObserver(f ocpp.FrameObserver) Option
+func WithHandler(v ocpp.Version, d ocpp.Dispatcher) Option
+func WithHandlerInterceptor(i ocpp.Interceptor) Option
+func WithHandshakeTimeout(d time.Duration) Option
+func WithLogger(l *slog.Logger) Option
+func WithMaxBadMessages(n int) Option
+func WithMaxMessageSize(n int) Option
+func WithMaxQueuedCalls(n int) Option
+func WithMaxStations(n int) Option
+func WithMetrics(m ocpp.Metrics) Option
+func WithPingInterval(d time.Duration) Option
+func WithReplacePolicy(p ReplacePolicy) Option
+func WithResponseTimeout(d time.Duration) Option
+func WithSessionHandler(onConnect func(*Session), onDisconnect func(*Session, error)) Option
+func WithTLS(cfg *tls.Config) Option
+func WithWriteTimeout(d time.Duration) Option
+func WithoutAuthentication() Option
+type Authenticator interface { Authenticate(ctx context.Context, r ConnectRequest) error }
+type AuthenticatorFunc func(ctx context.Context, r ConnectRequest) error
+type ConnectRequest struct { StationID string Username string Password Secret HasBasicAuth bool TLS *tls.ConnectionState RemoteAddr string Request *http.Request }
+type Option func(*options)
+type ReplacePolicy uint8
+type Secret string
+type Server struct { }
+type Session struct { }
+var ErrReplaced
+var ErrUnauthorized
+var ErrUnknownStation

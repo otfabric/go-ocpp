@@ -19,6 +19,7 @@ import (
 	"github.com/otfabric/go-ocpp"
 	"github.com/otfabric/go-ocpp/ocpp16"
 	"github.com/otfabric/go-ocpp/ocpp201"
+	"github.com/otfabric/go-ocpp/ocpp21"
 )
 
 // fixture is the part of an ocpp-interop fixture the tests use. It is read
@@ -229,15 +230,23 @@ func (d *dispatcher) Dispatch(ctx context.Context, p ocpp.Peer, action string, p
 // validateRequest and validateResponse are go-ocpp's typed validation of a
 // version: what a reference sends must pass it.
 func validateRequest(v ocpp.Version, action string, payload json.RawMessage) error {
-	if v == ocpp.V201 {
+	switch v {
+	case ocpp.V21:
+		return ocpp21.ValidateRequest(action, payload)
+	case ocpp.V201:
 		return ocpp201.ValidateRequest(action, payload)
+	case ocpp.V16:
 	}
 	return ocpp16.ValidateRequest(action, payload)
 }
 
 func validateResponse(v ocpp.Version, action string, payload json.RawMessage) error {
-	if v == ocpp.V201 {
+	switch v {
+	case ocpp.V21:
+		return ocpp21.ValidateResponse(action, payload)
+	case ocpp.V201:
 		return ocpp201.ValidateResponse(action, payload)
+	case ocpp.V16:
 	}
 	return ocpp16.ValidateResponse(action, payload)
 }

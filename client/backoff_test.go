@@ -43,10 +43,10 @@ func TestBackoff(t *testing.T) {
 	if d := huge.backoff(1000); d < time.Hour {
 		t.Fatalf("saturated back-off: %v", d)
 	}
-	if DefaultReconnect.WaitMinimum <= 0 {
+	if DefaultReconnect().WaitMinimum <= 0 {
 		t.Fatal("DefaultReconnect is not usable")
 	}
-	newReconnecting(t, DefaultReconnect)
+	newReconnecting(t, DefaultReconnect())
 }
 
 func TestReconnectValidation(t *testing.T) {

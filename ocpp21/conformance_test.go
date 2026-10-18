@@ -27,7 +27,7 @@ type manifest struct {
 	} `json:"actions"`
 }
 
-func readManifest(t *testing.T) manifest {
+func readManifest(t testing.TB) manifest {
 	t.Helper()
 	data, err := os.ReadFile("coverage.json")
 	if err != nil {

@@ -13,7 +13,7 @@ the Charging Station (OCPP 1.6: Charge Point) and the CSMS (OCPP 1.6: Central
 System). Both share one RPC engine, and either side can send requests once
 connected.
 
-> **Status: Phase 6 of 8.** OCPP 1.6J (with the Security Whitepaper
+> **Status: Phase 7 of 8 (hardening).** OCPP 1.6J (with the Security Whitepaper
 > extensions), OCPP 2.0.1 and OCPP 2.1 are complete at the message level:
 > every action is typed, validated against the OCA schemas, and dispatchable
 > in both roles; 2.1 adds the SEND and CALLRESULTERROR message types. 1.6J
@@ -25,7 +25,8 @@ Docs: [Architecture](ARCHITECTURE.md) · [Requirements](REQUIREMENTS.md) ·
 [Specifications](SPECIFICATIONS.md) · [Plan](IMPLEMENTATION_PLAN.md) ·
 [API](API.md) · [Errors](ERRORS.md) · [Observability](OBSERVABILITY.md) ·
 [Security](SECURITY.md) · [Interoperability](INTEROPERABILITY.md) ·
-[Compatibility](COMPATIBILITY.md) · [Releases](RELEASE.md)
+[Compatibility](COMPATIBILITY.md) · [Features and gaps](FEATURES.md) ·
+[Releases](RELEASE.md)
 
 ## Table of contents
 
@@ -85,7 +86,7 @@ if s, ok := srv.Station("STATION001"); ok {
 c, err := client.New("wss://csms.example.com/ocpp/STATION001",
     client.WithHandler(ocpp.V201, ocpp201.ChargingStation(station{})),
     client.WithBasicAuth("STATION001", password),
-    client.WithReconnect(client.DefaultReconnect),
+    client.WithReconnect(client.DefaultReconnect()),
     client.WithCompression(),
 )
 err = c.Connect(ctx)

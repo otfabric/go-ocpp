@@ -91,11 +91,11 @@ func TestSlowHandshake(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		fmt.Fprintf(conn, "GET /ocpp/SLOW%d HTTP/1.1\r\nHost: x\r\n", i) // no end of headers
+		_, _ = fmt.Fprintf(conn, "GET /ocpp/SLOW%d HTTP/1.1\r\nHost: x\r\n", i) // no end of headers
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			defer conn.Close()
+			defer func() { _ = conn.Close() }()
 			_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 			start := time.Now()
 			_, err := io.Copy(io.Discard, conn) // returns when the server closes
@@ -324,11 +324,12 @@ func TestKeepalive(t *testing.T) {
 		t.Fatal("the CSMS did not notice the dead link")
 	}
 	eventually(t, "the station notices the dead link", func() bool { return c.State() != ocpp.Connected })
-	mu.Lock()
-	if !errors.Is(lostErr, ocpp.ErrConnectionLost) {
-		t.Errorf("session ended with %v", lostErr)
-	}
-	mu.Unlock()
+	// The session handler runs just after Done is closed.
+	eventually(t, "the session reported as lost", func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return errors.Is(lostErr, ocpp.ErrConnectionLost)
+	})
 
 	proxy.cutAll()
 	proxy.frozen.Store(false)

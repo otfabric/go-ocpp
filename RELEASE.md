@@ -77,7 +77,7 @@ Changed after checking the OCA text (SPECIFICATIONS.md, T1–T11):
 - On 2.x, a corrupt frame whose message ID cannot be read is answered with
   a CALLERROR with ID "-1"
 - `client.Reconnect` is now `{WaitMinimum, RandomRange, RepeatTimes}`, the
-  back-off of 2.x Part 4 §5.4, with `client.DefaultReconnect`
+  back-off of 2.x Part 4 §5.4, with `client.DefaultReconnect()`
 - `client.Client.Role` and `server.Session.Role`
 
 Phase 6 (OCPP 2.1):
@@ -94,7 +94,36 @@ Phase 6 (OCPP 2.1):
 - CALLERROR descriptions are cut to 255 characters on 2.x
 - Example `examples/ocpp21`; end-to-end tests for 2.1
 
+Phase 7 (hardening):
+
+- `WithPingInterval` (WebSocket keepalive), `WithWriteTimeout` and
+  `WithMaxBadMessages` on client and server. A peer that stopped
+  responding is aborted without the closing handshake
+- On 2.x connections the server refuses (HTTP 400) station identities that
+  are not identifierStrings of at most 48 characters without ":"
+- `ocpp.ErrHandlerPanic`; handler panics are logged with their stack
+- Every log entry carries `component` (`ocpp.client`, `ocpp.server`); the
+  server logs where it listens; client entries no longer carry an empty
+  `session_id`
+- A session replaced by a new connection reports `server.ErrReplaced` to
+  `Metrics.OnDisconnect` and the session handler (was nil)
+- Breaking: `client.DefaultReconnect` is a function, `DefaultReconnect()`
+- Fixed: a CALL that became pending just as the connection closed waited
+  for its response timeout instead of failing at once
+- Tests: every action of every version end to end; parallel, chaos (seeded
+  proxy), soak and resource-exhaustion tests; TLS and authentication
+  refusals; fuzz targets for the engine and the server handshake;
+  `TestAPI` for the exported API. `make fuzz-long`, `make chaos`, `make
+  soak`; nightly `Hardening` workflow
+- Interop harness runs OCPP 2.1 where a reference declares it
+- Example `examples/observability`; FEATURES.md (features and gaps against
+  other implementations); API stability policy in COMPATIBILITY.md
+
 ### Known limitations
 
-- OCPP 2.1 has not yet been tested against independent implementations
-  (ocpp-interop v0.2.0).
+- OCPP 2.1 passes against Mobility House 2.1.0 in a local build of
+  ocpp-interop, not yet against released images (v0.2.0), and against no
+  second independent implementation.
+- SEND and CALLRESULTERROR are tested against go-ocpp only: no reference
+  release implements them.
+- See FEATURES.md for the gaps tracked against other implementations.

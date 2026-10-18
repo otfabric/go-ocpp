@@ -51,6 +51,19 @@ jobs:
           go-version-file: go.mod
       - run: make schemas-check gen-check
 
+  # A short run of every fuzz target and of the chaos test on every push;
+  # the long runs are nightly (hardening.yml).
+  hardening:
+    name: Short fuzz and chaos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: make fuzz FUZZTIME=10s
+      - run: make chaos CHAOS_DURATION=10s
+
   # The library must build without cgo on every supported OS and architecture
   # (REQUIREMENTS.md R2.1), and its tests must pass natively on each OS.
   platforms:

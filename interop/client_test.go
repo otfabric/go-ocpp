@@ -51,6 +51,21 @@ func TestStationAgainstReferenceCSMS(t *testing.T) {
 					for _, name := range f.samplesFrom("station") {
 						s := f.Samples[name]
 						t.Run(name, func(t *testing.T) {
+							a.skipKnownIssue(t, v, name)
+							if isSend(v, s.Action) {
+								if !a.caps(t).Versions[v.String()].Features.Send {
+									t.Skipf("%s does not declare receiving SEND messages", a.name)
+								}
+								// A SEND is never answered: it must leave the
+								// connection usable.
+								if err := c.Send(ctx, s.Action, s.Payload); err != nil {
+									t.Fatalf("SEND %s: %v", s.Action, err)
+								}
+								if err := c.Call(ctx, "Heartbeat", json.RawMessage(`{}`), nil); err != nil {
+									t.Fatalf("a CALL after the SEND: %v", err)
+								}
+								return
+							}
 							var resp json.RawMessage
 							err := c.Call(ctx, s.Action, s.Payload, &resp)
 							checkGoCall(t, f, s, resp, err)
@@ -62,6 +77,10 @@ func TestStationAgainstReferenceCSMS(t *testing.T) {
 					for _, name := range f.samplesFrom("csms") {
 						s := f.Samples[name]
 						t.Run(name, func(t *testing.T) {
+							a.skipKnownIssue(t, v, name)
+							if isSend(v, s.Action) {
+								t.Skip("the container contract (0.4) has no operation to make a reference send a SEND")
+							}
 							if !slices.Contains(refCaps.Sends, s.Action) {
 								t.Skipf("%s does not declare sending %s", a.name, s.Action)
 							}
@@ -73,6 +92,7 @@ func TestStationAgainstReferenceCSMS(t *testing.T) {
 				})
 
 				t.Run("unknown-action", func(t *testing.T) {
+					a.skipKnownIssue(t, v, "unknown-action")
 					err := c.Call(ctx, "NoSuchAction", nil, nil)
 					var ce *ocpp.CallError
 					if !errors.As(err, &ce) || !noAnswerCodes[ce.Code] {

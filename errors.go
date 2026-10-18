@@ -45,6 +45,11 @@ var (
 
 	// ErrInvalidOption is returned by constructors given an invalid option.
 	ErrInvalidOption = errors.New("ocpp: invalid option")
+
+	// ErrHandlerPanic is reported through Metrics.OnCallHandled when a
+	// handler panicked. The panic is recovered, logged with its stack, and
+	// the CALL answered with InternalError.
+	ErrHandlerPanic = errors.New("ocpp: handler panic")
 )
 
 // ErrUnexpectedResponse is reported through Metrics.OnProtocolError for a

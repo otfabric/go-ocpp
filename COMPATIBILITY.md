@@ -32,3 +32,24 @@ Cells we have not verified are marked "unverified".
 | Logging | slog | unverified | unverified | unverified |
 | Metrics | callbacks | unverified | unverified | unverified |
 | Tested interoperability | 1.6J and 2.0.1, both roles, against mobilityhouse, chargetime and lorenzodonini (INTEROPERABILITY.md) | — | — | — |
+
+The comparison with more implementations, and the gaps go-ocpp tracks, are
+in [FEATURES.md](FEATURES.md).
+
+## API stability
+
+go-ocpp follows semantic versioning. Before v1.0.0, a minor release may
+change the API; every change is listed in RELEASE.md, and `TestAPI` makes
+each one visible in review (`testdata/api`). From v1.0.0:
+
+- A patch release fixes bugs and follows the specifications more closely;
+  it does not change the API. A fix that refuses messages a release
+  accepted, because they violate a schema or a SHALL, is a fix.
+- A minor release adds: options, methods, sentinel errors, `Metrics`
+  callbacks (embed `ocpp.NopMetrics` so that an implementation keeps
+  compiling), and handler methods when the OCA publishes new actions (embed
+  the `Unimplemented…Handler`).
+- A major release is needed for anything else.
+- Generated version packages follow the OCA schemas: an erratum that
+  changes a schema changes the types, in a minor release, with the change
+  listed.

@@ -372,7 +372,7 @@ c, err := client.New("wss://csms.example.com/ocpp/STATION001",
     client.WithHandler(ocpp.V201, ocpp201.ChargingStation(h201)),
     client.WithHandler(ocpp.V16, ocpp16.ChargePoint(h16)),
     client.WithBasicAuth("STATION001", password),       // profile 2 with wss
-    client.WithReconnect(client.DefaultReconnect),
+    client.WithReconnect(client.DefaultReconnect()),
     client.WithStateHandler(func(s ocpp.State, err error) { ... }),
     client.WithLogger(logger),
 )
@@ -389,7 +389,7 @@ resp, err := ocpp201.BootNotification(ctx, c, &ocpp201.BootNotificationRequest{.
   `ctx` ends. With reconnect enabled, a dropped connection is re-dialled
   with the back-off of 2.x Part 4 §5.4: RetryBackOffWaitMinimum plus up to
   RetryBackOffRandomRange, doubled up to RetryBackOffRepeatTimes times
-  (`client.Reconnect`; `client.DefaultReconnect` when the CSMS has set none).
+  (`client.Reconnect`; `client.DefaultReconnect()` when the CSMS has set none).
   `Close` stops this.
 - While disconnected, `Call` fails immediately with `ErrNotConnected`. The
   library has no queue of its own. The state handler tells the application
@@ -522,7 +522,10 @@ if ok {
 | version packages | generated round-trip tests per message; valid and invalid payloads; fuzzing of each dispatcher |
 | `internal/engine` | in-memory transport; ordering, timeouts, late responses, cancellation, close during a call; goroutine-leak check |
 | `client`, `server` | `httptest` servers; handshake, auth, TLS, reconnect, session replacement, limits |
-| `e2e` | every version, both directions, many concurrent stations, `-race` |
+| `e2e` | every action of every version in both directions with full and minimal payloads (`TestMatrix`); many concurrent stations; parallel calls, close and shutdown under load, replacement storms; resource exhaustion (slow handshakes, station floods, oversized messages, compression bombs, call floods, queue saturation, slow readers, half-open links); TLS and authentication refusals; all with `-race` |
+| chaos | a seeded TCP proxy that fragments, delays and cuts connections while stations of every version call and SEND (`TestChaos`; `make chaos`, `make soak`, nightly in `hardening.yml`) |
+| fuzzing | `ocppj.Decode`, the engine (`FuzzEndpoint`: frame sequences), the server handshake, and each version's dispatchers seeded with every action's payloads; 10 s per target in CI, 10 min nightly |
+| API | `TestAPI` compares the exported API of `ocpp`, `ocppj`, `client` and `server` with `testdata/api` |
 | `interop` | build tag `interop`; images of `otfabric/ocpp-interop` pinned by digest; both roles |
 
 The interop harness follows go-iec104's: images are consumed only as
@@ -575,5 +578,11 @@ Each choice can be revisited if an edition or erratum settles it.
 | Session replacement registers the new session first, then closes the old one | No moment without a session for a reconnecting station; never two that `Station` can return |
 | Binary WebSocket messages close the connection with 1003 | OCPP-J uses text messages only |
 | Compression without context takeover, accepted for every version | Lower memory per connection; supporting it on 1.6 connections is allowed and harmless |
-| `client.DefaultReconnect`: 5 s, plus up to 10 s, doubled up to 5 times | Part 4 §5.4 defines the algorithm, not default values |
+| `client.DefaultReconnect()`: 5 s, plus up to 10 s, doubled up to 5 times | Part 4 §5.4 defines the algorithm, not default values |
 | An action the version defines but the role does not receive is answered with `NotSupported`, an unhandled one too (Unimplemented handlers) | "Recognized but not supported", where `NotImplemented` means "not known" |
+| No WebSocket pings unless `WithPingInterval` is set; a pong must arrive within the interval | 2.x and 1.6 configure WebSocketPingInterval on the station; the application passes the value in. A CSMS may ping too |
+| A connection whose peer stopped responding (no pong, a write timed out) is aborted without the closing handshake | A peer that answers no ping answers no close frame; waiting for it would only delay noticing the loss |
+| No limit on malformed frames unless `WithMaxBadMessages` is set; then the connection is closed with 1008 | The specifications answer each malformed frame and say nothing about repeated ones |
+| On 2.x connections the server refuses (HTTP 400) a station identity that is not an identifierString of at most 48 characters without ":" | 2.x Part 4 §3.1.1 forbids such identities but does not say what the CSMS does; refusing keeps Basic authentication unambiguous. 1.6 sets no rule, so 1.6 identities are not checked |
+| A session replaced by a new connection reports `server.ErrReplaced` to `OnDisconnect` and the session handler; a local `Close` or `Shutdown` reports nil | The application did not close it: it should be able to tell |
+| SENDs are dispatched in the queue of incoming CALLs, in arrival order | Handlers see messages in the order the peer sent them; a SEND waits while a CALL's handler runs |

@@ -116,15 +116,17 @@ type Reconnect struct {
 	RepeatTimes int           // RetryBackOffRepeatTimes; zero: the delay never doubles
 }
 
-// DefaultReconnect are reconnection settings for when the CSMS has not
+// DefaultReconnect returns reconnection settings for when the CSMS has not
 // configured any: 5 s, plus up to 10 s at random, doubled up to 5 times
 // (at most 160 s plus the random part). The specifications give no
 // defaults; these are an implementation choice.
-var DefaultReconnect = Reconnect{WaitMinimum: 5 * time.Second, RandomRange: 10 * time.Second, RepeatTimes: 5}
+func DefaultReconnect() Reconnect {
+	return Reconnect{WaitMinimum: 5 * time.Second, RandomRange: 10 * time.Second, RepeatTimes: 5}
+}
 
 // WithReconnect makes the client redial after an open connection is lost
 // (OCPP 2.x Part 4 §5.4: a station SHALL reconnect), with the back-off r;
-// DefaultReconnect when the CSMS has configured none. It redials
+// DefaultReconnect() when the CSMS has configured none. It redials
 // until Close. Nothing is resent: requests that were pending fail with
 // ErrConnectionLost, and the application decides what to send again.
 func WithReconnect(r Reconnect) Option {

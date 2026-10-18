@@ -3,10 +3,12 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"runtime"
 	"strings"
 	"sync"
@@ -525,4 +527,58 @@ func TestMaxBadMessages(t *testing.T) {
 	if !errors.Is(e.Err(), ocpp.ErrConnectionLost) || !errors.Is(e.Err(), ocpp.ErrProtocol) {
 		t.Fatalf("err %v", e.Err())
 	}
+}
+
+// handledMetrics records the errors of handled CALLs.
+type handledMetrics struct {
+	ocpp.NopMetrics
+	mu   sync.Mutex
+	errs []error
+}
+
+func (m *handledMetrics) OnCallHandled(_ ocpp.ConnInfo, _ string, _ time.Duration, err error) {
+	m.mu.Lock()
+	m.errs = append(m.errs, err)
+	m.mu.Unlock()
+}
+
+// A handler panic is answered with InternalError, reported as
+// ErrHandlerPanic, and logged with its stack.
+func TestHandlerPanicReported(t *testing.T) {
+	checkNoLeak(t)
+	var logs bytes.Buffer
+	var logMu sync.Mutex
+	m := &handledMetrics{}
+	d := ocpp.DispatcherFunc(func(context.Context, ocpp.Peer, string, json.RawMessage) (json.RawMessage, error) {
+		panic("boom")
+	})
+	_, raw := rawPeer(t, ocpp.V201, d, func(c *Config) {
+		c.Metrics = m
+		c.Logger = slog.New(slog.NewTextHandler(&lockedWriter{w: &logs, mu: &logMu}, nil))
+	})
+	writeRaw(t, raw, `[2,"p","Heartbeat",{}]`)
+	if f := readFrame(t, raw, ocpp.V201); f.Type != ocppj.CallError || f.ErrorCode != ocpp.InternalError {
+		t.Fatalf("got %+v", f)
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.errs) != 1 || !errors.Is(m.errs[0], ocpp.ErrHandlerPanic) {
+		t.Fatalf("OnCallHandled got %v", m.errs)
+	}
+	logMu.Lock()
+	defer logMu.Unlock()
+	if !strings.Contains(logs.String(), "handler panic") || !strings.Contains(logs.String(), "stack=") {
+		t.Fatalf("panic not logged with its stack:\n%s", logs.String())
+	}
+}
+
+type lockedWriter struct {
+	w  *bytes.Buffer
+	mu *sync.Mutex
+}
+
+func (l *lockedWriter) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.w.Write(p)
 }

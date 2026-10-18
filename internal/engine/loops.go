@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"runtime/debug"
 	"time"
 
 	"github.com/otfabric/go-ocpp"
@@ -183,7 +184,7 @@ func (e *Endpoint) handleSend(f ocppj.Frame) {
 	run := func(ctx context.Context) (err error) {
 		defer func() {
 			if r := recover(); r != nil {
-				err = fmt.Errorf("handler panic: %v", r)
+				err = e.recovered(f, r)
 			}
 		}()
 		sd, ok := e.cfg.Dispatcher.(ocpp.SendDispatcher)
@@ -214,7 +215,7 @@ func (e *Endpoint) handle(f ocppj.Frame) {
 	run := func(ctx context.Context) (err error) {
 		defer func() {
 			if r := recover(); r != nil {
-				err = fmt.Errorf("handler panic: %v", r)
+				err = e.recovered(f, r)
 			}
 		}()
 		if e.cfg.Dispatcher == nil {
@@ -239,6 +240,13 @@ func (e *Endpoint) handle(f ocppj.Frame) {
 		return
 	}
 	e.sendResult(ocppj.Frame{Type: ocppj.CallError, ID: f.ID, ErrorCode: e.errorCode(err, f), Description: e.limit(e.description(err))})
+}
+
+// recovered logs a handler panic with its stack and returns the error that
+// reports it.
+func (e *Endpoint) recovered(f ocppj.Frame, r any) error {
+	e.log.Error("handler panic", "action", f.Action, "message_id", f.ID, "panic", fmt.Sprint(r), "stack", string(debug.Stack()))
+	return fmt.Errorf("%w: %v", ocpp.ErrHandlerPanic, r)
 }
 
 // limit cuts an error description to the 255 characters OCPP 2.x allows

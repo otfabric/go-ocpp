@@ -77,7 +77,7 @@ func Run(t *testing.T, cfg Config) {
 
 // Instance returns a valid instance of the schema in file: with every
 // property (full) or the required ones only, encoded as JSON.
-func Instance(t *testing.T, file string, full bool) json.RawMessage {
+func Instance(t testing.TB, file string, full bool) json.RawMessage {
 	t.Helper()
 	s := load(t, file)
 	b, err := json.Marshal(s.instance(s.root, full))
@@ -93,7 +93,7 @@ type suiteSchema struct {
 	ref  *jsonschema.Schema
 }
 
-func load(t *testing.T, file string) *suiteSchema {
+func load(t testing.TB, file string) *suiteSchema {
 	t.Helper()
 	data, err := os.ReadFile(file)
 	if err != nil {

@@ -15,7 +15,7 @@ Order: go-ocpp foundations → OCPP 1.6J → two interop adapters → OCPP 2.0.1
 | 3 | OCPP 1.6J | **Done** |
 | 4 | Initial interoperability (1.6J) | **Done** (ocpp-interop v0.0.1) |
 | 5 | OCPP 2.0.1 | **Done** (ocpp-interop v0.1.0) |
-| 6 | OCPP 2.1 | In progress |
+| 6 | OCPP 2.1 | Done, interop pending ocpp-interop v0.2.0 |
 | 7 | Production hardening | Open |
 | 8 | ocppctl | Open |
 
@@ -169,13 +169,26 @@ verified against an independent implementation.
 
 ## Phase 7 - Production hardening
 
-- [ ] Long fuzzing runs; corpus committed
-- [ ] Resource exhaustion: many stations, slow readers, oversized and
-      compressed frames, handshake floods
-- [ ] Reconnect storms and long-running soak tests
-- [ ] TLS and authentication negative tests
-- [ ] API review against R13 (ocppctl needs); documentation review;
-      dependency audit
+- [x] Fuzzing: engine and handshake targets added; dispatchers seeded with
+      every action's payloads; 10 s per target in CI, 10 min nightly
+      (`hardening.yml`). Failing inputs are committed under testdata/fuzz;
+      none found so far
+- [x] Resource exhaustion: many stations, slow readers, oversized and
+      compressed frames, handshake floods, call floods, queue saturation,
+      half-open links (`e2e/exhaustion_test.go`)
+- [x] Chaos (seeded proxy: fragmentation, delays, cuts), parallel and race
+      tests, reconnect and replacement storms, soak (`make soak`, nightly)
+- [x] TLS and authentication negative tests
+- [x] Self-interop matrix: every action of every version, both directions
+- [x] Keepalive (`WithPingInterval`), `WithWriteTimeout`,
+      `WithMaxBadMessages`; 2.x identity check
+- [x] API review against R13 (met: raw calls, validation, action lists,
+      frame codec, frame observer); `ErrHandlerPanic`; `DefaultReconnect()`;
+      `component` log attribute; API golden test (`TestAPI`); dependency
+      audit (coder/websocket only)
+- [x] Feature tracker against other implementations (FEATURES.md)
+- [ ] Interop with 2.1 against released references: pin ocpp-interop
+      v0.2.0 (passes against its local build)
 - [x] Settle S1 (licensing of generated code): ADR 0007
 - [ ] v0.1.0 of go-ocpp
 

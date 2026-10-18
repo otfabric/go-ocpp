@@ -31,6 +31,7 @@ Errors are wrapped with detail. Test for them with `errors.Is` and
 | `ErrUnexpectedResponse` | Reported through `Metrics.OnProtocolError` for late, duplicate or unknown responses; never returned by a call |
 | `ErrInvalidMessage` | A request (before sending) or a response (on arrival) does not conform to its schema; wrapped by every `*ValidationError`. A response failing validation is also wrapped in `ErrProtocol`; on OCPP 2.1 it is also answered with a CALLRESULTERROR |
 | `ErrInvalidOption` | A constructor was given an invalid option |
+| `ErrHandlerPanic` | Reported through `Metrics.OnCallHandled` when a handler panicked; the CALL is answered with `InternalError`. Never returned by a call |
 
 Package `server` adds:
 
