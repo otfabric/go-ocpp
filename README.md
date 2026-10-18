@@ -4,6 +4,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/otfabric/go-ocpp.svg)](https://pkg.go.dev/github.com/otfabric/go-ocpp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![CI Status](https://github.com/otfabric/go-ocpp/actions/workflows/ci.yml/badge.svg)](https://github.com/otfabric/go-ocpp/actions/workflows/ci.yml)
+[![Interop](https://github.com/otfabric/go-ocpp/actions/workflows/interop.yml/badge.svg)](https://github.com/otfabric/go-ocpp/actions/workflows/interop.yml)
 [![Code Coverage](https://codecov.io/gh/otfabric/go-ocpp/graph/badge.svg)](https://codecov.io/gh/otfabric/go-ocpp)
 [![Latest Release](https://img.shields.io/github/v/release/otfabric/go-ocpp?label=release)](https://github.com/otfabric/go-ocpp/releases)
 
@@ -109,6 +110,19 @@ station, ok := srv.Station("STATION001")
 go-ocpp is a protocol library. It transports, validates and dispatches
 messages. Charging behaviour, authorization policy, persistence and billing
 belong to the application's handlers.
+
+## Interoperability
+
+go-ocpp is tested in both roles against The Mobility House ocpp 2.1.0 and
+ChargeTimeEU Java-OCA-OCPP v2.0, as packaged by
+[otfabric/ocpp-interop v0.0.1](https://github.com/otfabric/ocpp-interop/releases/tag/v0.0.1).
+For OCPP 1.6J with raw payloads, every fixture sample passes in both
+directions, except one known upstream defect. See
+[INTEROPERABILITY.md](INTEROPERABILITY.md).
+
+```bash
+make interop   # needs Docker
+```
 
 ## Assurance
 

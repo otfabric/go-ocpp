@@ -36,6 +36,14 @@ Phase 2 (shared OCPP-J engine):
 - End-to-end tests over real WebSockets for every version, and an
   import-rule test
 
+Phase 4 (go-ocpp side):
+
+- Interop suite (`interop/`, build tag `interop`, `make interop`, workflow
+  `interop.yml` on amd64 and arm64) against otfabric/ocpp-interop v0.0.1,
+  pinned by digest: OCPP 1.6J in both roles against The Mobility House ocpp
+  2.1.0 and ChargeTimeEU Java-OCA-OCPP v2.0, with every fixture sample in
+  both directions, security profile 1, unknown actions and close
+
 ### Known limitations
 
 - No typed messages or schema validation yet (Phase 3). Requests and

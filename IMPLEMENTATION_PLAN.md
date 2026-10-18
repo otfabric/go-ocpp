@@ -101,23 +101,25 @@ handlers.
 
 In ocpp-interop:
 
-- [ ] Contract 1.0 (from draft 0.1), and fixtures for 1.6
-- [ ] Adapters `mobilityhouse` (Python) and `chargetime` (Java), both roles,
+- [ ] Contract 1.0 (draft 0.2 so far; ChargeTimeEU cannot implement all of
+      it), fixtures for 1.6 done
+- [x] Adapters `mobilityhouse` (Python) and `chargetime` (Java), both roles,
       1.6J
-- [ ] Container images for amd64 and arm64, pinned bases, non-root,
+- [x] Container images for amd64 and arm64, pinned bases, non-root,
       licences
-- [ ] Smoke tests and the cross-adapter matrix; reports in the result
+- [x] Smoke tests and the cross-adapter matrix; reports in the result
       schema
-- [ ] Release v0.1.0, published to GHCR with digests
+- [x] Released as v0.0.1, published to GHCR with digests
 
 In go-ocpp:
 
-- [ ] `interop/` harness (build tag), pinned digests in three places,
-      `interop.yml`
-- [ ] go-ocpp client against both reference servers, and both reference
-      clients against the go-ocpp server
-- [ ] INTEROPERABILITY.md and COMPATIBILITY.md with real results
-- [ ] Interop badge in README.md, added once `interop.yml` exists
+- [x] `interop/` harness (build tag), pinned digests in three places
+      (ocpp-interop v0.0.1), `interop.yml` on amd64 and arm64
+- [x] go-ocpp client against both reference servers, and both reference
+      clients against the go-ocpp server (1.6J, raw payloads, profiles 0
+      and 1)
+- [x] INTEROPERABILITY.md and COMPATIBILITY.md with real results
+- [x] Interop badge in README.md
 
 Gate: 1.6J interoperates in both roles with two independent
 implementations.
