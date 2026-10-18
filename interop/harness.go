@@ -216,6 +216,12 @@ var knownIssues = map[string]string{
 	"mobilityhouse/2.1/reservationStatusUpdate": mobilityhouse21NoAnswer,
 	"mobilityhouse/2.1/cancelReservation":       mobilityhouse21NoAnswer,
 	"mobilityhouse/2.1/unknown-action":          mobilityhouse21NoAnswer,
+	// Java-OCA-OCPP v2.0 with Java-WebSocket 1.6.0, OCPP 2.0.1: the CSMS
+	// announces server_no_context_takeover but keeps its compression
+	// context, so a station cannot decompress the second message.
+	"chargetime/2.0.1/compression-csms": "https://github.com/TooTallNate/Java-WebSocket/blob/da3cf2a777aed862f2f5b5cf060cae7969958667/src/main/java/org/java_websocket/extensions/permessage_deflate/PerMessageDeflateExtension.java#L335-L340",
+	// The station offers client_no_context_takeover but keeps its context.
+	"chargetime/2.0.1/compression-station": "https://github.com/TooTallNate/Java-WebSocket/blob/da3cf2a777aed862f2f5b5cf060cae7969958667/src/main/java/org/java_websocket/extensions/permessage_deflate/PerMessageDeflateExtension.java#L326-L333",
 }
 
 const mobilityhouse21NoAnswer = "https://github.com/mobilityhouse/ocpp/blob/91f4f89140a2198dc5a300cfea88d947ac91ae28/ocpp/charge_point.py#L161-L193"

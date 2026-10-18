@@ -91,7 +91,12 @@ func (ca *testCA) issue(t *testing.T, cn string, hosts []string) (certPEM, keyPE
 		t.Fatal(err)
 	}
 	certPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
-	keyPEM = pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
+	// Contract 0.5: unencrypted PKCS #8.
+	pkcs8, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyPEM = pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8})
 	pair, err = tls.X509KeyPair(certPEM, keyPEM)
 	if err != nil {
 		t.Fatal(err)
