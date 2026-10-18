@@ -12,9 +12,10 @@ the Charging Station (OCPP 1.6: Charge Point) and the CSMS (OCPP 1.6: Central
 System). Both share one RPC engine, and either side can send requests once
 connected.
 
-> **Status: foundations (Phase 1 of 8).** The architecture is designed and the
-> repository is set up. The protocol engine, the client, the server and the
-> message types are not implemented yet, so nothing below is usable. See
+> **Status: Phase 2 of 8.** The RPC engine, the client (Charging Station) and
+> the server (CSMS) work over WebSocket with TLS and authentication, for
+> every version, with raw JSON payloads. Typed messages and schema
+> validation come in Phase 3 (OCPP 1.6J). No release yet. See
 > [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
 
 Docs: [Architecture](ARCHITECTURE.md) · [Requirements](REQUIREMENTS.md) ·
@@ -36,9 +37,9 @@ Docs: [Architecture](ARCHITECTURE.md) · [Requirements](REQUIREMENTS.md) ·
 
 | Version | Priority | Status |
 |---|---|---|
-| OCPP 1.6J, with the Security Whitepaper (Edition 4) extensions | P0 | designed |
-| OCPP 2.0.1 Edition 4, errata 2026-09 | P0 | designed |
-| OCPP 2.1 Edition 2, errata 2026-09 | P1 | designed |
+| OCPP 1.6J, with the Security Whitepaper (Edition 4) extensions | P0 | transport and RPC; messages in Phase 3 |
+| OCPP 2.0.1 Edition 4, errata 2026-09 | P0 | transport and RPC; messages in Phase 5 |
+| OCPP 2.1 Edition 2, errata 2026-09 | P1 | CALL/CALLRESULT/CALLERROR; the rest in Phase 6 |
 | OCPP 1.6 SOAP, OCPP 1.5 and older | — | out of scope |
 
 ## Install
@@ -47,14 +48,43 @@ Docs: [Architecture](ARCHITECTURE.md) · [Requirements](REQUIREMENTS.md) ·
 go get github.com/otfabric/go-ocpp
 ```
 
-Requires Go 1.26 or later. The module has no dependencies yet. From Phase 2
-on it depends on [coder/websocket](https://github.com/coder/websocket), and
-on nothing else ([ADR 0002](docs/adr/0002-websocket-transport.md)).
+Requires Go 1.26 or later. The only dependency is
+[coder/websocket](https://github.com/coder/websocket)
+([ADR 0002](docs/adr/0002-websocket-transport.md)).
+
+## Today: raw payloads
+
+What works now, before the typed messages of Phase 3:
+
+```go
+// CSMS
+srv, err := server.New(
+    server.WithHandler(ocpp.V16, ocpp.DispatcherFunc(func(ctx context.Context, p ocpp.Peer, action string, payload json.RawMessage) (json.RawMessage, error) {
+        switch action {
+        case "BootNotification":
+            return json.RawMessage(`{"status":"Accepted","currentTime":"2026-10-18T12:00:00Z","interval":300}`), nil
+        }
+        return nil, ocpp.NewCallError(ocpp.NotImplemented, "")
+    })),
+    server.WithAuthenticator(server.BasicAuth(lookupPassword)),
+)
+http.Handle("/ocpp/", srv)
+
+// Charging Station
+c, err := client.New("wss://csms.example.com/ocpp/STATION001",
+    client.WithVersions(ocpp.V16),
+    client.WithBasicAuth("STATION001", password),
+    client.WithReconnect(client.Reconnect{}),
+)
+err = c.Connect(ctx)
+var resp json.RawMessage
+err = c.Call(ctx, "BootNotification", json.RawMessage(`{"chargePointVendor":"OTFabric","chargePointModel":"TestStation"}`), &resp)
+```
 
 ## Design at a glance
 
-This is the target API from [ARCHITECTURE.md](ARCHITECTURE.md). It is not
-implemented yet.
+The typed API of the version packages, from [ARCHITECTURE.md](ARCHITECTURE.md),
+arrives in Phase 3:
 
 ```go
 // Charging Station

@@ -111,10 +111,10 @@ cover: coverage ## Open coverage report in browser
 	@go tool cover -html=coverage.out
 
 # Duration each fuzz target runs. Override with FUZZTIME=... (e.g. FUZZTIME=5m).
-# Targets are added with the code they fuzz: ocppj.Decode in Phase 2, the
-# dispatchers of the version packages in Phases 3, 5 and 6.
+# Each entry is <package dir>:<fuzz target>. The dispatchers of the version
+# packages are added in Phases 3, 5 and 6.
 FUZZTIME ?= 30s
-FUZZ_TARGETS :=
+FUZZ_TARGETS := ocppj:FuzzDecode
 fuzz: ## Run the fuzz targets for FUZZTIME each (default 30s)
 	@echo "Fuzzing (FUZZTIME=$(FUZZTIME))"
 	@for t in $(FUZZ_TARGETS); do \

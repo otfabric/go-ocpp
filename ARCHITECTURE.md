@@ -1,9 +1,12 @@
 # Architecture
 
-Status: **design (Phase 0)**. The packages below describe what is to be
-built. The API sketches are the target for Phase 2 and may change while it is
-implemented. Decisions that are hard to reverse are recorded as ADRs in
-[docs/adr](docs/adr).
+Status: **Phase 2**. The root package, `ocppj`, the engine, the transport,
+`client` and `server` are implemented as described here. The version
+packages (`ocpp16`, `ocpp201`, `ocpp21`) are still design: their API sketches
+are the target for Phases 3, 5 and 6. Decisions that are hard to reverse are
+recorded as ADRs in [docs/adr](docs/adr). Choices this document makes where
+the specifications are silent are collected in
+[Implementation choices](#implementation-choices).
 
 ## Contents
 
@@ -20,6 +23,7 @@ implemented. Decisions that are hard to reverse are recorded as ADRs in
 - [Testing](#testing)
 - [What the library does not do](#what-the-library-does-not-do)
 - [Normative state transitions](#normative-state-transitions)
+- [Implementation choices](#implementation-choices)
 
 ## Layers
 
@@ -140,7 +144,7 @@ type Frame struct {
     ID          string          // message ID
     Action      string          // Call, Send
     Payload     json.RawMessage // Call, CallResult, Send
-    ErrorCode   string          // CallError, CallResultError
+    ErrorCode   ocpp.ErrorCode  // CallError, CallResultError
     Description string
     Details     json.RawMessage
 }
@@ -155,10 +159,12 @@ Decoding enforces what the version allows. For example, types 5 and 6 are
 errors on a 1.6 or 2.0.1 connection, and message IDs are limited to 36
 characters. A decode error says whether the message ID could still be
 recovered, because that decides whether the engine can answer with a
-CALLERROR or can only log and drop the frame (SPECIFICATIONS.md T9). Error
-codes are typed per version, because 1.6 and 2.x differ:
-`FormationViolation` in 1.6 is `FormatViolation` in 2.x, and 2.x adds codes
-such as `MessageTypeNotSupported` and `RpcFrameworkError`.
+CALLERROR or can only log and drop the frame (SPECIFICATIONS.md T9). The
+error codes are constants of type `ocpp.ErrorCode` in the root package;
+`ocppj.ErrorCodes(v)` and `ocppj.ValidErrorCode(v, code)` say which ones a
+version defines, because 1.6 and 2.x differ: `FormationViolation` in 1.6 is
+`FormatViolation` in 2.x, 1.6 spells `OccurenceConstraintViolation` with one
+"r", and 2.x adds `MessageTypeNotSupported` and `RpcFrameworkError`.
 
 The payload stays `json.RawMessage` at this layer. Typed decoding and
 validation belong to the version packages.
@@ -191,20 +197,26 @@ validation belong to the version packages.
   SEND frames (2.1) do not take the slot (T5). The slot is released when the
   response arrives, the request times out, or the connection closes.
 - **Timeouts.** Each CALL has a response timeout (default 30 s, configurable
-  per client or server). A context deadline shortens it but never lengthens
-  it. A CALL that times out returns `ErrTimeout`. A response that arrives
-  later is dropped with a log entry and a metric (R4.5).
+  per client or server). A CALL that times out returns `ErrTimeout`, and the
+  slot is free again. A response that arrives later is dropped with a log
+  entry and a metric (R4.5). When the caller's context ends first, `Call`
+  returns `ctx.Err()` at once, but the CALL already on the wire keeps the
+  slot until its response or its response timeout, as T6 requires.
 - **Incoming CALLs.** Incoming CALLs are dispatched one at a time, in arrival
   order, on a goroutine separate from the reader. The reader therefore keeps
   delivering responses while a handler runs. This prevents deadlock when a
   handler sends a CALL of its own: for example, a CSMS that sends
   GetConfiguration from inside its BootNotification handler. The handler
   context is cancelled when the connection closes.
-- **Lifecycle.** States are Connecting, Open, Closing and Closed. `Close` is
-  idempotent and returns after the goroutines have exited. Pending and
-  queued calls then fail with `ErrConnectionLost` (on a broken connection)
-  or `ErrClosed` (after `Close`). A `Close` called from a handler does not
-  wait for that handler.
+- **Lifecycle.** An endpoint is created, then started once its owner has
+  made it reachable, so that a handler calling back during the first frame
+  finds it. `Close` is idempotent. It runs the WebSocket closing handshake
+  and returns after the reader and writer have exited, and after the
+  dispatcher too unless a handler is running (a `Close` from inside a
+  handler must not wait for itself); `Done` reports when everything has
+  returned. Pending and queued calls fail with `ErrClosed` after `Close`, and
+  with `ErrConnectionLost` when the connection breaks. A frame observer or a
+  metrics callback must not call `Close`.
 
 The default 30 s timeout is an implementation choice. OCPP 2.x lets the
 CSMS configure the station's message timeout through the device model
@@ -370,19 +382,29 @@ if ok {
   `Station(id)` and `Stations()` look sessions up.
 - Session replacement: when an authenticated connection arrives for an
   identity that already has a session, the default `ReplaceExisting` policy
-  closes the old session first and then registers the new one. Stations
-  commonly reconnect before the CSMS notices that the old TCP connection is
-  dead, and because authentication runs first, an unauthenticated client
-  cannot use this to evict a station. `RejectNew` is the alternative. Under
-  no policy are two sessions active for one identity. Whether a newer edition
+  registers the new session and then closes the old one, with WebSocket
+  status 1008 and `server.ErrReplaced` as its `Err`. From that moment
+  `Station(id)` returns only the new session. The old one may take up to the
+  WebSocket closing handshake to end, and nothing can look it up meanwhile.
+  Stations commonly reconnect before the CSMS notices that the old TCP
+  connection is dead, and because authentication runs first, an
+  unauthenticated client cannot use this to evict a station. `RejectNew`
+  refuses the new connection with HTTP 409 instead. Whether a newer edition
   specifies this behaviour is to be checked (SPECIFICATIONS.md S4).
-- Limits: the maximum number of stations, the frame size (default 64 KiB,
-  overridable per version), the handshake timeout and the response timeout.
-  When a limit is hit, the request is refused or the connection closed, never
-  buffered without bound.
-- `Shutdown(ctx)` stops accepting connections and closes sessions with a
-  normal close. It returns when they have ended or `ctx` ends. `Close` does
-  not wait.
+- Limits: the maximum number of stations (default 10 000, then HTTP 503), the
+  message size (default 64 KiB; a larger message closes the connection with
+  1009), the time to read the request headers when the server listens itself
+  (default 10 s), the response timeout (default 30 s) and the queue of calls
+  waiting for the outgoing slot (default 64, then `ErrBusy`). When a limit is
+  hit, the request is refused or the connection closed, never buffered
+  without bound.
+- Refusals before the upgrade are HTTP errors: 404 without an identity, 400
+  without a supported subprotocol, 401 when authentication fails (with
+  `WWW-Authenticate: Basic`), 409 and 503 as above.
+- `Shutdown(ctx)` stops accepting connections and closes the sessions with
+  status 1001 (going away). It returns when they have ended or `ctx` ends.
+  `Close` does not wait. `Serve` and `ListenAndServe` then return
+  `ocpp.ErrClosed`.
 
 ## Security
 
@@ -412,19 +434,18 @@ if ok {
 - **Logging.** `WithLogger(*slog.Logger)`. A nil logger is silent. Log
   attributes include `station_id`, `ocpp_version`, `session_id`,
   `message_id`, `action`, `direction`, `duration` and `error_code`. Payloads
-  are logged only at debug level, and only when the application turns
-  payload logging on.
+  are never logged; a frame observer can see them.
 - **Metrics.** `WithMetrics(ocpp.Metrics)`, a callback interface. Embedding
   `ocpp.NopMetrics` lets an implementation compile when callbacks are added.
   Callbacks receive the station ID as an argument. Whether to label with it
   is the application's choice, which keeps cardinality under its control.
   The callbacks cover:
   - connections: established, failed, disconnected, reconnect attempts;
-  - CALLs sent and received, and their results and latency;
-  - timeouts;
-  - protocol errors and validation failures;
-  - late and unknown responses;
-  - the depth of the pending queue.
+  - outgoing CALLs, with their result (including timeouts) and latency;
+  - incoming CALLs, with the handler's result and duration;
+  - protocol errors, including late and unknown responses.
+
+  Validation failures are added with the version packages (Phase 3).
 - **Interceptors.** `WithCallInterceptor` and `WithHandlerInterceptor` wrap
   outgoing and incoming calls with the call's metadata. This is where an
   application starts and ends OpenTelemetry spans, without the library
@@ -432,7 +453,7 @@ if ok {
 - **Frame observer.** `WithFrameObserver` sees every frame sent and received.
   ocppctl's trace and replay features need it (R13).
 
-Details will be in OBSERVABILITY.md once implemented (Phase 2).
+[OBSERVABILITY.md](OBSERVABILITY.md) has the details.
 
 ## Testing
 
@@ -463,11 +484,32 @@ reported as skipped, never as passed.
 
 ## Normative state transitions
 
-To be filled in as the engine is implemented. Each entry names the state
-change, the version, and the section of the specification it follows.
+Each entry names the state change, the versions, and the rule in
+SPECIFICATIONS.md it follows. The rules are still marked "secondary" there
+until checked against the OCA text (S4).
 
-| Transition | Versions | Source |
-|---|---|---|
-| Outgoing CALL slot released on response or timeout | all | T6 |
-| Unknown message type: ignore, do not answer | 2.0.1, 2.1 | T9 (to confirm) |
-| SEND neither answered nor counted against the CALL slot | 2.1 | T5 |
+| Transition | Versions | Source | Code |
+|---|---|---|---|
+| A CALL takes the outgoing slot; the slot is freed by its response, its response timeout, or the end of the connection, and not by the caller's context | all | T6 | `internal/engine/call.go` |
+| A response whose message ID matches no pending CALL is dropped | all | T6, T7 | `respond` |
+| A malformed CALL whose message ID can be read is answered with a CALLERROR | all | T3 | `malformed` |
+| A frame of an unknown message type is dropped without an answer | all | T9 (to confirm) | `malformed` |
+| Subprotocol: the server selects the first of the station's offers it supports; no common one refuses the upgrade | all | T1 | `server.selectVersion` |
+| SEND neither answered nor counted against the CALL slot | 2.1 | T5 | Phase 6 |
+
+## Implementation choices
+
+Where the specifications leave a decision open, go-ocpp decides as follows.
+Each choice can be revisited if an edition or erratum settles it.
+
+| Choice | Reason |
+|---|---|
+| A malformed CALL on a 1.6 connection is answered with `FormationViolation`; on 2.x with `RpcFrameworkError` | 1.6 has no RPC-level code; `FormationViolation` ("not conform the PDU structure") is the closest |
+| Frames of an unknown type are dropped, not answered with `MessageTypeNotSupported` | Reported errata (T9) remove that answer; dropping is also safe under the older text |
+| A handler error other than `*ocpp.CallError` becomes `InternalError` with an empty description | Error texts can contain internal details; they are logged locally instead |
+| A `*ocpp.CallError` with a code the version does not define becomes `InternalError` | The peer must only see codes its version knows |
+| Message IDs are random UUIDs (36 characters) | Unique per connection without coordination, and within the 36-character limit |
+| Default frame size limit 64 KiB, response timeout 30 s, write timeout 10 s, 64 queued calls | The specifications set none; OCPP 2.x lets the CSMS configure the station's message timeout, which the application passes in |
+| Incoming CALLs are queued up to 16 before the reader waits | Bounds memory if a peer ignores T6; the reader keeps backpressure on the connection |
+| Session replacement registers the new session first, then closes the old one | No moment without a session for a reconnecting station; never two that `Station` can return |
+| Binary WebSocket messages close the connection with 1003 | OCPP-J uses text messages only |
