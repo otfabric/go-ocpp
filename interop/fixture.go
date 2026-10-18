@@ -17,12 +17,15 @@ import (
 	"time"
 
 	"github.com/otfabric/go-ocpp"
+	"github.com/otfabric/go-ocpp/ocpp16"
+	"github.com/otfabric/go-ocpp/ocpp201"
 )
 
 // fixture is the part of an ocpp-interop fixture the tests use. It is read
 // from the image (print-fixture), so the expectations cannot drift from
 // what the image serves.
 type fixture struct {
+	version  ocpp.Version
 	Stations []struct {
 		ID       string `json:"id"`
 		Password string `json:"password"`
@@ -58,22 +61,23 @@ type sample struct {
 	Payload json.RawMessage `json:"payload"`
 }
 
-var fixtures sync.Map // image -> *fixture
+var fixtures sync.Map // image + version -> *fixture
 
-func (a adapter) fixture(t testing.TB) *fixture {
+func (a adapter) fixture(t testing.TB, v ocpp.Version) *fixture {
 	t.Helper()
-	if f, ok := fixtures.Load(a.image); ok {
+	key := a.image + " " + v.String()
+	if f, ok := fixtures.Load(key); ok {
 		return f.(*fixture)
 	}
-	out, stderr, err := docker("run", "--rm", a.image, "print-fixture", "--version", "1.6")
+	out, stderr, err := docker("run", "--rm", a.image, "print-fixture", "--version", v.String())
 	if err != nil {
 		t.Fatalf("print-fixture of %s: %v\n%s", a.image, err, stderr)
 	}
-	f := &fixture{}
+	f := &fixture{version: v}
 	if err := json.Unmarshal([]byte(out), f); err != nil {
 		t.Fatalf("fixture of %s: %v", a.image, err)
 	}
-	fixtures.Store(a.image, f)
+	fixtures.Store(key, f)
 	return f
 }
 
@@ -120,16 +124,23 @@ func (f *fixture) answer(table map[string]answer, action string, req json.RawMes
 	switch a.Derived {
 	case "idTokens":
 		var r struct {
-			IDTag string `json:"idTag"`
+			IDTag   string `json:"idTag"`
+			IDToken struct {
+				IDToken string `json:"idToken"`
+			} `json:"idToken"`
 		}
 		_ = json.Unmarshal(req, &r)
+		token, field := r.IDTag, "idTagInfo"
+		if f.version != ocpp.V16 {
+			token, field = r.IDToken.IDToken, "idTokenInfo"
+		}
 		status := "Invalid"
 		for _, tok := range f.IDTokens {
-			if tok.IDToken == r.IDTag {
+			if tok.IDToken == token {
 				status = tok.Status
 			}
 		}
-		out["idTagInfo"] = map[string]any{"status": status}
+		out[field] = map[string]any{"status": status}
 	case "configuration":
 		var r struct {
 			Key []string `json:"key"`
@@ -145,7 +156,7 @@ func (f *fixture) answer(table map[string]answer, action string, req json.RawMes
 		for _, k := range r.Key {
 			found := false
 			for _, c := range f.Configuration {
-				if c.Key == k {
+				if strings.EqualFold(c.Key, k) {
 					known = append(known, map[string]any{"key": c.Key, "value": c.Value, "readonly": c.Readonly})
 					found = true
 				}
@@ -166,21 +177,26 @@ func (f *fixture) answer(table map[string]answer, action string, req json.RawMes
 
 // dispatcher answers CALLs as the fixture's table for the receiving role
 // says, with "${now}" replaced by the current time, and records every CALL
-// it receives.
+// it receives, with what go-ocpp's typed validation says about it.
 type dispatcher struct {
-	f     *fixture
-	table map[string]answer
-	mu    sync.Mutex
-	got   map[string][]json.RawMessage // action -> payloads received
+	f       *fixture
+	table   map[string]answer
+	version ocpp.Version
+	mu      sync.Mutex
+	got     map[string][]json.RawMessage // action -> payloads received
+	invalid map[string][]error           // action -> validation errors
 }
 
-func newDispatcher(f *fixture, table map[string]answer) *dispatcher {
-	return &dispatcher{f: f, table: table, got: map[string][]json.RawMessage{}}
+func newDispatcher(f *fixture, table map[string]answer, v ocpp.Version) *dispatcher {
+	return &dispatcher{f: f, table: table, version: v, got: map[string][]json.RawMessage{}, invalid: map[string][]error{}}
 }
 
 func (d *dispatcher) Dispatch(ctx context.Context, p ocpp.Peer, action string, payload json.RawMessage) (json.RawMessage, error) {
 	d.mu.Lock()
 	d.got[action] = append(d.got[action], append(json.RawMessage(nil), payload...))
+	if err := validateRequest(d.version, action, payload); err != nil {
+		d.invalid[action] = append(d.invalid[action], err)
+	}
 	d.mu.Unlock()
 	out, cerr := d.f.answer(d.table, action, payload)
 	if cerr != nil {
@@ -191,6 +207,22 @@ func (d *dispatcher) Dispatch(ctx context.Context, p ocpp.Peer, action string, p
 	}
 	b, err := json.Marshal(replaceNow(out))
 	return b, err
+}
+
+// validateRequest and validateResponse are go-ocpp's typed validation of a
+// version: what a reference sends must pass it.
+func validateRequest(v ocpp.Version, action string, payload json.RawMessage) error {
+	if v == ocpp.V201 {
+		return ocpp201.ValidateRequest(action, payload)
+	}
+	return ocpp16.ValidateRequest(action, payload)
+}
+
+func validateResponse(v ocpp.Version, action string, payload json.RawMessage) error {
+	if v == ocpp.V201 {
+		return ocpp201.ValidateResponse(action, payload)
+	}
+	return ocpp16.ValidateResponse(action, payload)
 }
 
 // received returns the payloads of action that arrived.

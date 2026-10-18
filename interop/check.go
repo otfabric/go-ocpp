@@ -39,6 +39,11 @@ func checkGoCall(t *testing.T, f *fixture, s sample, resp json.RawMessage, err e
 		if err := contains(want, decode(t, resp)); err != nil {
 			t.Fatalf("%s answered %s: %v", s.Action, resp, err)
 		}
+		// The reference's answer conforms to the schema, by go-ocpp's typed
+		// validation.
+		if err := validateResponse(f.version, s.Action, resp); err != nil {
+			t.Fatalf("%s answer %s fails go-ocpp's validation: %v", s.Action, resp, err)
+		}
 	}
 }
 
@@ -76,5 +81,10 @@ func checkReceived(t *testing.T, d *dispatcher, s sample) {
 	}
 	if err := contains(decode(t, s.Payload), decode(t, got[len(got)-1])); err != nil {
 		t.Fatalf("%s arrived as %s: %v", s.Action, got[len(got)-1], err)
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if errs := d.invalid[s.Action]; len(errs) > 0 {
+		t.Fatalf("%s as the reference sent it fails go-ocpp's validation: %v", s.Action, errs[len(errs)-1])
 	}
 }

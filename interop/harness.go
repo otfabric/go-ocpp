@@ -18,6 +18,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/otfabric/go-ocpp"
 )
 
 // The reference images this version of go-ocpp is qualified against:
@@ -128,12 +130,13 @@ func (a adapter) caps(t testing.TB) *capabilities {
 
 // role returns what the reference declares for one role of a version, and
 // skips the test if it does not support that role.
-func (a adapter) role(t testing.TB, version, role string) roleCaps {
+func (a adapter) role(t testing.TB, v ocpp.Version, role string) roleCaps {
 	t.Helper()
-	v, ok := a.caps(t).Versions[version]
-	r := v.Client
+	version := v.String()
+	vc, ok := a.caps(t).Versions[version]
+	r := vc.Client
 	if role == "server" {
-		r = v.Server
+		r = vc.Server
 	}
 	if !ok || !r.Supported {
 		t.Skipf("%s does not declare the %s role for OCPP %s", a.name, role, version)
@@ -141,12 +144,15 @@ func (a adapter) role(t testing.TB, version, role string) roleCaps {
 	return r
 }
 
-func (a adapter) securityProfile(t testing.TB, version string, profile int) {
+func (a adapter) securityProfile(t testing.TB, v ocpp.Version, profile int) {
 	t.Helper()
-	if !slices.Contains(a.caps(t).Versions[version].Features.SecurityProfiles, profile) {
-		t.Skipf("%s does not declare security profile %d for OCPP %s", a.name, profile, version)
+	if !slices.Contains(a.caps(t).Versions[v.String()].Features.SecurityProfiles, profile) {
+		t.Skipf("%s does not declare security profile %d for OCPP %s", a.name, profile, v)
 	}
 }
+
+// versions are the OCPP versions the interop suite runs.
+var versions = []ocpp.Version{ocpp.V16, ocpp.V201}
 
 // knownIssues are upstream defects of a reference, by adapter and fixture
 // sample, with the evidence. Such a scenario is skipped with the link; it
@@ -154,7 +160,7 @@ func (a adapter) securityProfile(t testing.TB, version string, profile int) {
 var knownIssues = map[string]string{
 	// ocpp.v16.call.SecurityEventNotification.tech_info has no default, so the
 	// upstream cannot send the optional techInfo left out.
-	"mobilityhouse/securityEventMinimal": "https://github.com/mobilityhouse/ocpp/blob/91f4f89140a2198dc5a300cfea88d947ac91ae28/ocpp/v16/call.py#L232-L236",
+	"mobilityhouse/1.6/securityEventMinimal": "https://github.com/mobilityhouse/ocpp/blob/91f4f89140a2198dc5a300cfea88d947ac91ae28/ocpp/v16/call.py#L232-L236",
 }
 
 var seq atomic.Int64
@@ -175,14 +181,14 @@ type container struct {
 	port    int // the CSMS's port on the host's loopback; 0 for a station
 }
 
-// startServer runs the reference CSMS of a for OCPP 1.6 with its baseline
+// startServer runs the reference CSMS of a for version v with its baseline
 // fixture, published on a free loopback port, and waits until it is ready.
-func startServer(t testing.TB, a adapter, extra ...string) *container {
+func startServer(t testing.TB, a adapter, v ocpp.Version, extra ...string) *container {
 	t.Helper()
 	port := freePort(t)
 	c := &container{adapter: a, name: containerName(a), port: port}
 	args := append([]string{"run", "-d", "--name", c.name, "-p", fmt.Sprintf("127.0.0.1:%d:9000", port),
-		a.image, "server", "--version", "1.6"}, extra...)
+		a.image, "server", "--version", v.String()}, extra...)
 	c.start(t, args)
 	return c
 }
@@ -192,11 +198,11 @@ func startServer(t testing.TB, a adapter, extra ...string) *container {
 // The container reaches the host through the gateway alias, on Docker
 // Desktop and on Linux alike; the server must listen on all interfaces for
 // that, because on Linux the alias is the bridge address.
-func startStation(t testing.TB, a adapter, port int, extra ...string) *container {
+func startStation(t testing.TB, a adapter, v ocpp.Version, port int, extra ...string) *container {
 	t.Helper()
 	c := &container{adapter: a, name: containerName(a)}
 	args := append([]string{"run", "-d", "--name", c.name, "--add-host=host.docker.internal:host-gateway",
-		a.image, "client", "run", "--version", "1.6", "--url", fmt.Sprintf("ws://host.docker.internal:%d/ocpp", port)}, extra...)
+		a.image, "client", "run", "--version", v.String(), "--url", fmt.Sprintf("ws://host.docker.internal:%d/ocpp", port)}, extra...)
 	c.start(t, args)
 	return c
 }
