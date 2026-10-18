@@ -22,22 +22,27 @@ on:
       lorenzodonini_image:
         description: "lorenzodonini/ocpp-go reference image (default: the pinned release)"
         required: false
+      everest_image:
+        description: "EVerest libocpp reference image (default: the pinned release)"
+        required: false
 
 permissions:
   contents: read
   packages: read
 
 env:
-  # otfabric/ocpp-interop v0.2.0: The Mobility House ocpp 2.1.0,
-  # ChargeTimeEU Java-OCA-OCPP v2.0, lorenzodonini/ocpp-go v0.19.0.
+  # otfabric/ocpp-interop v0.3.1: The Mobility House ocpp 2.1.0,
+  # ChargeTimeEU Java-OCA-OCPP v2.0, lorenzodonini/ocpp-go v0.19.0, EVerest
+  # libocpp of everest-core 2026.02.1.
   # Keep in step with the Makefile and interop/harness.go.
-  OCPP_INTEROP_MOBILITYHOUSE_IMAGE: ${{ inputs.mobilityhouse_image || 'ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:9b5449c6fdeeb9809348f772b9967676cc1831d3c0a664b357cbdc1b9b53b979' }}
-  OCPP_INTEROP_CHARGETIME_IMAGE: ${{ inputs.chargetime_image || 'ghcr.io/otfabric/ocpp-interop-chargetime@sha256:1dbe44f9a04d6afced3740485dc2a8429b3c5eb2f274392a32b7e1094996681c' }}
-  OCPP_INTEROP_LORENZODONINI_IMAGE: ${{ inputs.lorenzodonini_image || 'ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:6adb1e6b39ee0a35bfdb85ac37e5cfed61f614231097b0ad4edda1fc0376e38e' }}
+  OCPP_INTEROP_MOBILITYHOUSE_IMAGE: ${{ inputs.mobilityhouse_image || 'ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:e82896331789e7a1d5ac678994e8a0b5ed29e48ba16a8beb994c16fb7a2f5dd6' }}
+  OCPP_INTEROP_CHARGETIME_IMAGE: ${{ inputs.chargetime_image || 'ghcr.io/otfabric/ocpp-interop-chargetime@sha256:a46c0db29e154e96f8779aebb585fd7c10db1b23be9401442881be21504d2247' }}
+  OCPP_INTEROP_LORENZODONINI_IMAGE: ${{ inputs.lorenzodonini_image || 'ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:8328f5bf6e66281bec10ff35b812eb957c59fd4778f9984c09c28248a0aa9d91' }}
+  OCPP_INTEROP_EVEREST_IMAGE: ${{ inputs.everest_image || 'ghcr.io/otfabric/ocpp-interop-everest@sha256:990c3ea95c7caa98449663bb7f48d5be7df0144241750e72adbbec2022c3321c' }}
 
 jobs:
   interop:
-    name: Mobility House + ChargeTimeEU + ocpp-go (${{ matrix.arch }})
+    name: Mobility House + ChargeTimeEU + ocpp-go + EVerest (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     strategy:
@@ -59,7 +64,7 @@ jobs:
 
       - name: Pull reference images
         run: |
-          images=("${OCPP_INTEROP_MOBILITYHOUSE_IMAGE}" "${OCPP_INTEROP_CHARGETIME_IMAGE}" "${OCPP_INTEROP_LORENZODONINI_IMAGE}")
+          images=("${OCPP_INTEROP_MOBILITYHOUSE_IMAGE}" "${OCPP_INTEROP_CHARGETIME_IMAGE}" "${OCPP_INTEROP_LORENZODONINI_IMAGE}" "${OCPP_INTEROP_EVEREST_IMAGE}")
           # GHCR is occasionally slow or rate limiting: try each pull a few times.
           for image in "${images[@]}"; do
             for attempt in 1 2 3 4 5; do

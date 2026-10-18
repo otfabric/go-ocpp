@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -239,6 +241,46 @@ func TestOptionsAndSendPaths(t *testing.T) {
 				t.Fatalf("closed with %v, want 1008", err)
 			}
 			break
+		}
+	}
+}
+
+// Compression is really negotiated: the server accepts permessage-deflate
+// for every version when it is offered, and the client offers it only with
+// WithCompression.
+func TestCompressionNegotiated(t *testing.T) {
+	noLeak(t)
+	_, base := csms(t, nil, server.WithHandler(ocpp.V16, ocpp.DispatcherFunc(echo)), server.WithHandler(ocpp.V201, ocpp.DispatcherFunc(echo)),
+		server.WithHandler(ocpp.V21, ocpp.DispatcherFunc(echo)), server.WithoutAuthentication())
+	for _, v := range []ocpp.Version{ocpp.V16, ocpp.V201, ocpp.V21} {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		c, resp, err := websocket.Dial(ctx, base+"Z"+strings.ReplaceAll(v.String(), ".", ""), &websocket.DialOptions{
+			Subprotocols: []string{v.Subprotocol()}, CompressionMode: websocket.CompressionNoContextTakeover})
+		cancel()
+		if err != nil {
+			t.Fatalf("%s: %v", v, err)
+		}
+		if ext := resp.Header.Get("Sec-WebSocket-Extensions"); !strings.Contains(ext, "permessage-deflate") {
+			t.Errorf("%s: the server did not accept compression: %q", v, ext)
+		}
+		_ = c.CloseNow()
+	}
+
+	offered := make(chan string, 2)
+	hs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		offered <- r.Header.Get("Sec-WebSocket-Extensions")
+		http.Error(w, "no", http.StatusForbidden)
+	}))
+	defer hs.Close()
+	url := "ws" + strings.TrimPrefix(hs.URL, "http") + "/ocpp/OFFER"
+	for _, compress := range []bool{true, false} {
+		opts := []client.Option{client.WithInsecureTransport(), client.WithVersions(ocpp.V201)}
+		if compress {
+			opts = append(opts, client.WithCompression())
+		}
+		_ = station(t, url, opts...).Connect(context.Background())
+		if got := <-offered; strings.Contains(got, "permessage-deflate") != compress {
+			t.Errorf("WithCompression %v: offered %q", compress, got)
 		}
 	}
 }

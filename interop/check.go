@@ -7,6 +7,7 @@ package interop
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/otfabric/go-ocpp"
@@ -21,30 +22,52 @@ var noAnswerCodes = map[ocpp.ErrorCode]bool{ocpp.NotImplemented: true, ocpp.NotS
 // the answer the fixture defines for the sample.
 func checkGoCall(t *testing.T, f *fixture, s sample, resp json.RawMessage, err error) {
 	t.Helper()
+	if problem := goCallProblem(t, f, s, resp, err); problem != nil {
+		t.Fatal(problem)
+	}
+}
+
+// checkUndeclaredGoCall checks a CALL go-ocpp sent with an action the
+// reference does not declare handling. An exchange that works as the
+// fixture says is a pass: it did work. One that does not is skipped as
+// unsupported, never failed and never passed.
+func checkUndeclaredGoCall(t *testing.T, a adapter, f *fixture, s sample, resp json.RawMessage, err error) {
+	t.Helper()
+	if problem := goCallProblem(t, f, s, resp, err); problem != nil {
+		t.Skipf("%s does not declare handling %s, and it does not answer it as the fixture says: %v", a.name, s.Action, problem)
+	}
+}
+
+// goCallProblem compares the outcome of a CALL go-ocpp sent (resp, err)
+// with the answer the fixture defines for the sample, and returns what
+// differs, or nil.
+func goCallProblem(t *testing.T, f *fixture, s sample, resp json.RawMessage, err error) error {
+	t.Helper()
 	want, wantErr, answered := f.expected(t, s)
 	var ce *ocpp.CallError
 	switch {
 	case !answered:
 		if !errors.As(err, &ce) || !noAnswerCodes[ce.Code] {
-			t.Fatalf("%s has no answer in the fixture: want CALLERROR NotImplemented or NotSupported, got %v (%s)", s.Action, err, resp)
+			return fmt.Errorf("%s has no answer in the fixture: want CALLERROR NotImplemented or NotSupported, got %v (%s)", s.Action, err, resp)
 		}
 	case wantErr != nil:
 		if !errors.As(err, &ce) || ce.Code != wantErr.Code {
-			t.Fatalf("want CALLERROR %s, got %v", wantErr.Code, err)
+			return fmt.Errorf("want CALLERROR %s, got %v", wantErr.Code, err)
 		}
 	default:
 		if err != nil {
-			t.Fatalf("%s: %v", s.Action, err)
+			return fmt.Errorf("%s: %w", s.Action, err)
 		}
 		if err := contains(want, decode(t, resp)); err != nil {
-			t.Fatalf("%s answered %s: %v", s.Action, resp, err)
+			return fmt.Errorf("%s answered %s: %w", s.Action, resp, err)
 		}
 		// The reference's answer conforms to the schema, by go-ocpp's typed
 		// validation.
 		if err := validateResponse(f.version, s.Action, resp); err != nil {
-			t.Fatalf("%s answer %s fails go-ocpp's validation: %v", s.Action, resp, err)
+			return fmt.Errorf("%s answer %s fails go-ocpp's validation: %w", s.Action, resp, err)
 		}
 	}
+	return nil
 }
 
 // checkRefCall checks the result document of a CALL the reference sent

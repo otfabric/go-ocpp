@@ -24,17 +24,20 @@ import (
 )
 
 // The reference images this version of go-ocpp is qualified against:
-// otfabric/ocpp-interop v0.2.0 (The Mobility House ocpp 2.1.0, ChargeTimeEU
-// Java-OCA-OCPP v2.0, lorenzodonini/ocpp-go v0.19.0; OCPP 1.6J and 2.0.1 in
-// all three, 2.1 in The Mobility House), pinned by multi-arch index digest
+// otfabric/ocpp-interop v0.3.1 (The Mobility House ocpp 2.1.0, ChargeTimeEU
+// Java-OCA-OCPP v2.0, lorenzodonini/ocpp-go v0.19.0: OCPP 1.6J and 2.0.1 in
+// all three, 2.1 in The Mobility House; EVerest libocpp of everest-core
+// 2026.02.1, a station for 1.6J, 2.0.1 and 2.1), pinned by multi-arch index
+// digest
 // so that a run is reproducible. Moving to another release of ocpp-interop
 // means changing these constants; the Makefile and
 // .github/workflows/interop.yml follow.
 const (
-	interopRelease            = "v0.2.0"
-	defaultMobilityHouseImage = "ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:9b5449c6fdeeb9809348f772b9967676cc1831d3c0a664b357cbdc1b9b53b979"
-	defaultChargeTimeImage    = "ghcr.io/otfabric/ocpp-interop-chargetime@sha256:1dbe44f9a04d6afced3740485dc2a8429b3c5eb2f274392a32b7e1094996681c"
-	defaultLorenzodoniniImage = "ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:6adb1e6b39ee0a35bfdb85ac37e5cfed61f614231097b0ad4edda1fc0376e38e"
+	interopRelease            = "v0.3.1"
+	defaultMobilityHouseImage = "ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:e82896331789e7a1d5ac678994e8a0b5ed29e48ba16a8beb994c16fb7a2f5dd6"
+	defaultChargeTimeImage    = "ghcr.io/otfabric/ocpp-interop-chargetime@sha256:a46c0db29e154e96f8779aebb585fd7c10db1b23be9401442881be21504d2247"
+	defaultLorenzodoniniImage = "ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:8328f5bf6e66281bec10ff35b812eb957c59fd4778f9984c09c28248a0aa9d91"
+	defaultEverestImage       = "ghcr.io/otfabric/ocpp-interop-everest@sha256:990c3ea95c7caa98449663bb7f48d5be7df0144241750e72adbbec2022c3321c"
 )
 
 // adapter is one reference implementation: a container image that follows
@@ -67,6 +70,7 @@ func adapters(t testing.TB) []adapter {
 		image("mobilityhouse", "OCPP_INTEROP_MOBILITYHOUSE_IMAGE", defaultMobilityHouseImage),
 		image("chargetime", "OCPP_INTEROP_CHARGETIME_IMAGE", defaultChargeTimeImage),
 		image("lorenzodonini", "OCPP_INTEROP_LORENZODONINI_IMAGE", defaultLorenzodoniniImage),
+		image("everest", "OCPP_INTEROP_EVEREST_IMAGE", defaultEverestImage),
 	} {
 		if a.image != "" {
 			all = append(all, a)
@@ -110,6 +114,7 @@ type capabilities struct {
 		Server   roleCaps `json:"server"`
 		Features struct {
 			SecurityProfiles []int `json:"securityProfiles"`
+			Compression      bool  `json:"compression"`
 			Send             bool  `json:"send"`            // OCPP 2.1 SEND (contract 0.4)
 			CallResultError  bool  `json:"callResultError"` // OCPP 2.1 CALLRESULTERROR (contract 0.4)
 		} `json:"features"`
@@ -206,10 +211,27 @@ var knownIssues = map[string]string{
 	"mobilityhouse/1.6/securityEventMinimal": "https://github.com/mobilityhouse/ocpp/blob/91f4f89140a2198dc5a300cfea88d947ac91ae28/ocpp/v16/call.py#L232-L236",
 	// mobilityhouse 2.1.0: ChargePoint._raise_key_error knows 1.6, 2.0 and
 	// 2.0.1 only, so a 2.1 CALL without a handler is never answered (fixed
-	// on master in ae716a1, #744, not released).
-	"mobilityhouse/2.1/reservationStatusUpdate": mobilityhouse21NoAnswer,
-	"mobilityhouse/2.1/cancelReservation":       mobilityhouse21NoAnswer,
-	"mobilityhouse/2.1/unknown-action":          mobilityhouse21NoAnswer,
+	// on master in ae716a1, #744, not released). The fixtures answer every
+	// action; only an unknown action is left unanswered.
+	"mobilityhouse/2.1/unknown-action": mobilityhouse21NoAnswer,
+	// EVerest libocpp (everest-core 2026.02.1): ocpp::v2::MessageType has no
+	// ReportDERControl, so libocpp's message queue cannot send it, although
+	// the adapter declares it (libocpp has its request and response types).
+	"everest/2.1/reportDERControl": "https://github.com/EVerest/everest-core/blob/b61bb12b8cb89ee9d0fab037b05c3bb8cea9b13e/lib/everest/ocpp/include/ocpp/v2/types.hpp#L15-L195",
+	// ocpp-go v0.19.0: GetCompositeScheduleResponse does not have the OCA
+	// structure: a top-level evseId the schema does not allow, no
+	// statusInfo, and a schedule of {startDateTime, chargingSchedule}
+	// instead of CompositeScheduleType, sent empty.
+	"lorenzodonini/2.0.1/getCompositeSchedule": "https://github.com/lorenzodonini/ocpp-go/blob/a1eec917af884db0585752f909a61893aa667480/ocpp2.0.1/smartcharging/get_composite_schedule.go#L31-L50",
+	// ocpp-go v0.19.0: SetNetworkProfileResponse.StatusInfo has no
+	// omitempty, so the station answers "statusInfo": null.
+	"lorenzodonini/2.0.1/setNetworkProfile": "https://github.com/lorenzodonini/ocpp-go/blob/a1eec917af884db0585752f909a61893aa667480/ocpp2.0.1/provisioning/set_network_profile.go#L170-L172",
+	// Java-OCA-OCPP v2.0 with Java-WebSocket 1.6.0, OCPP 2.0.1: the CSMS
+	// announces server_no_context_takeover but keeps its compression
+	// context, so a station cannot decompress the second message.
+	"chargetime/2.0.1/compression-csms": "https://github.com/TooTallNate/Java-WebSocket/blob/da3cf2a777aed862f2f5b5cf060cae7969958667/src/main/java/org/java_websocket/extensions/permessage_deflate/PerMessageDeflateExtension.java#L335-L340",
+	// The station offers client_no_context_takeover but keeps its context.
+	"chargetime/2.0.1/compression-station": "https://github.com/TooTallNate/Java-WebSocket/blob/da3cf2a777aed862f2f5b5cf060cae7969958667/src/main/java/org/java_websocket/extensions/permessage_deflate/PerMessageDeflateExtension.java#L326-L333",
 }
 
 const mobilityhouse21NoAnswer = "https://github.com/mobilityhouse/ocpp/blob/91f4f89140a2198dc5a300cfea88d947ac91ae28/ocpp/charge_point.py#L161-L193"
@@ -236,10 +258,16 @@ type container struct {
 // fixture, published on a free loopback port, and waits until it is ready.
 func startServer(t testing.TB, a adapter, v ocpp.Version, extra ...string) *container {
 	t.Helper()
+	return startServerWith(t, a, v, nil, extra...)
+}
+
+// startServerWith is startServer with extra docker run options (a volume).
+func startServerWith(t testing.TB, a adapter, v ocpp.Version, runOpts []string, extra ...string) *container {
+	t.Helper()
 	port := freePort(t)
 	c := &container{adapter: a, name: containerName(a), port: port}
-	args := append([]string{"run", "-d", "--name", c.name, "-p", fmt.Sprintf("127.0.0.1:%d:9000", port),
-		a.image, "server", "--version", v.String()}, extra...)
+	args := append([]string{"run", "-d", "--name", c.name, "-p", fmt.Sprintf("127.0.0.1:%d:9000", port)}, runOpts...)
+	args = append(append(args, a.image, "server", "--version", v.String()), extra...)
 	c.start(t, args)
 	return c
 }
@@ -251,11 +279,38 @@ func startServer(t testing.TB, a adapter, v ocpp.Version, extra ...string) *cont
 // that, because on Linux the alias is the bridge address.
 func startStation(t testing.TB, a adapter, v ocpp.Version, port int, extra ...string) *container {
 	t.Helper()
+	return startStationWith(t, a, v, "ws", port, nil, extra...)
+}
+
+// startStationWith is startStation with a URL scheme (ws or wss) and extra
+// docker run options (a volume).
+func startStationWith(t testing.TB, a adapter, v ocpp.Version, scheme string, port int, runOpts []string, extra ...string) *container {
+	t.Helper()
 	c := &container{adapter: a, name: containerName(a)}
-	args := append([]string{"run", "-d", "--name", c.name, "--add-host=host.docker.internal:host-gateway",
-		a.image, "client", "run", "--version", v.String(), "--url", fmt.Sprintf("ws://host.docker.internal:%d/ocpp", port)}, extra...)
+	args := append([]string{"run", "-d", "--name", c.name, "--add-host=host.docker.internal:host-gateway"}, runOpts...)
+	args = append(append(args, a.image, "client", "run", "--version", v.String(),
+		"--url", fmt.Sprintf("%s://host.docker.internal:%d/ocpp", scheme, port)), extra...)
 	c.start(t, args)
 	return c
+}
+
+// runOnce runs "client <action>" of a, which connects, sends one CALL and
+// exits, and returns its exit code: for connections that must fail.
+func runOnce(t testing.TB, a adapter, v ocpp.Version, url string, runOpts []string, extra ...string) int {
+	t.Helper()
+	args := append([]string{"run", "--rm", "--add-host=host.docker.internal:host-gateway"}, runOpts...)
+	args = append(append(args, a.image, "client", "Heartbeat", "--version", v.String(), "--url", url,
+		"--connect-timeout-ms", "5000"), extra...)
+	_, _, err := docker(args...)
+	var exitErr *exec.ExitError
+	switch {
+	case err == nil:
+		return 0
+	case errors.As(err, &exitErr):
+		return exitErr.ExitCode()
+	}
+	t.Fatalf("run %s: %v", a.name, err)
+	return -1
 }
 
 func containerName(a adapter) string {

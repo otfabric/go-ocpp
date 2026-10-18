@@ -12,9 +12,10 @@ their results are in [INTEROPERABILITY.md](../../INTEROPERABILITY.md).
 
 | Reference | Upstream | Image | Contract | OCPP 1.6 |
 |---|---|---|---|---|
-| mobilityhouse | The Mobility House ocpp 2.1.0 | `ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:9b5449c6fdee…` | 0.4 | station yes, CSMS yes |
-| chargetime | ChargeTimeEU Java-OCA-OCPP v2.0 | `ghcr.io/otfabric/ocpp-interop-chargetime@sha256:1dbe44f9a04d…` | 0.4 | station yes, CSMS yes |
-| lorenzodonini | lorenzodonini ocpp-go v0.19.0 | `ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:6adb1e6b39ee…` | 0.4 | station yes, CSMS yes |
+| mobilityhouse | The Mobility House ocpp 2.1.0 | `ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:e82896331789…` | 0.5 | station yes, CSMS yes |
+| chargetime | ChargeTimeEU Java-OCA-OCPP v2.0 | `ghcr.io/otfabric/ocpp-interop-chargetime@sha256:a46c0db29e15…` | 0.5 | station yes, CSMS yes |
+| lorenzodonini | lorenzodonini ocpp-go v0.19.0 | `ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:8328f5bf6e66…` | 0.5 | station yes, CSMS yes |
+| everest | EVerest libocpp 2026.02.1 | `ghcr.io/otfabric/ocpp-interop-everest@sha256:990c3ea95c7c…` | 0.5 | station yes, CSMS no |
 
 Cells: **sends** / **handles** as declared; — not declared; n/a the
 reference does not support the version. go-ocpp: every action is typed,
@@ -22,58 +23,58 @@ validated against the OCA schema in both directions, dispatchable, and
 exchanged in both roles between a go-ocpp station and CSMS (e2e
 `TestMatrix`).
 
-| Action | Sent by | go-ocpp | mobilityhouse station | mobilityhouse CSMS | chargetime station | chargetime CSMS | lorenzodonini station | lorenzodonini CSMS | Interop scenarios |
-|---|---|---|---|---|---|---|---|---|---|
-| Authorize | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | `authorizeAccepted`, `authorizeBlocked` |
-| BootNotification | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | `boot` |
-| CancelReservation | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | `cancelReservation` |
-| CertificateSigned | CSMS | ✓ CALL | — | — | — | — | — | — | — |
-| ChangeAvailability | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | `changeAvailability` |
-| ChangeConfiguration | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | `changeConfiguration` |
-| ClearCache | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | `clearCache` |
-| ClearChargingProfile | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | `clearChargingProfile` |
-| DataTransfer | both | ✓ CALL | sends, handles | sends, handles | sends, handles | sends, handles | sends, handles | sends, handles | `dataTransferFromCsms`, `dataTransfer` |
-| DeleteCertificate | CSMS | ✓ CALL | — | — | — | — | — | — | — |
-| DiagnosticsStatusNotification | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | `diagnosticsStatus` |
-| ExtendedTriggerMessage | CSMS | ✓ CALL | — | sends | — | sends | — | sends | `extendedTriggerHeartbeat` |
-| FirmwareStatusNotification | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | `firmwareStatus` |
-| GetCompositeSchedule | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | `getCompositeSchedule` |
-| GetConfiguration | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | `getConfiguration` |
-| GetDiagnostics | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | `getDiagnostics` |
-| GetInstalledCertificateIds | CSMS | ✓ CALL | — | — | — | — | — | — | — |
-| GetLocalListVersion | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | `getLocalListVersion` |
-| GetLog | CSMS | ✓ CALL | — | — | — | — | — | — | — |
-| Heartbeat | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | `heartbeat` |
-| InstallCertificate | CSMS | ✓ CALL | — | — | — | — | — | — | — |
-| LogStatusNotification | Station | ✓ CALL | — | — | — | — | — | — | — |
-| MeterValues | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | `meterValues` |
-| RemoteStartTransaction | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | `remoteStart` |
-| RemoteStopTransaction | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | `remoteStop` |
-| ReserveNow | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | `reserveNow` |
-| Reset | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | `resetSoft` |
-| SecurityEventNotification | Station | ✓ CALL | sends | — | sends | — | sends | — | `securityEventMinimal`, `securityEvent` |
-| SendLocalList | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | `sendLocalList` |
-| SetChargingProfile | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | `setTxDefaultProfile` |
-| SignCertificate | Station | ✓ CALL | — | — | — | — | — | — | — |
-| SignedFirmwareStatusNotification | Station | ✓ CALL | — | — | — | — | — | — | — |
-| SignedUpdateFirmware | CSMS | ✓ CALL | — | — | — | — | — | — | — |
-| StartTransaction | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | `startTransaction` |
-| StatusNotification | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | `statusAvailable` |
-| StopTransaction | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | `stopTransaction` |
-| TriggerMessage | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | `triggerHeartbeat` |
-| UnlockConnector | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | `unlockConnector` |
-| UpdateFirmware | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | `updateFirmware` |
+| Action | Sent by | go-ocpp | mobilityhouse station | mobilityhouse CSMS | chargetime station | chargetime CSMS | lorenzodonini station | lorenzodonini CSMS | everest station | everest CSMS | Interop scenarios |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Authorize | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | `authorizeAccepted`, `authorizeBlocked` |
+| BootNotification | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | `boot` |
+| CancelReservation | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | `cancelReservation` |
+| CertificateSigned | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | `certificateSigned` |
+| ChangeAvailability | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | `changeAvailability` |
+| ChangeConfiguration | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | `changeConfiguration` |
+| ClearCache | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | `clearCache` |
+| ClearChargingProfile | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | `clearChargingProfile` |
+| DataTransfer | both | ✓ CALL | sends, handles | sends, handles | sends, handles | sends, handles | sends, handles | sends, handles | sends, handles | — | `dataTransferFromCsms`, `dataTransfer` |
+| DeleteCertificate | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | `deleteCertificate` |
+| DiagnosticsStatusNotification | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | `diagnosticsStatus` |
+| ExtendedTriggerMessage | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | `extendedTriggerHeartbeat` |
+| FirmwareStatusNotification | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | `firmwareStatus` |
+| GetCompositeSchedule | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | `getCompositeSchedule` |
+| GetConfiguration | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | `getConfiguration` |
+| GetDiagnostics | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | `getDiagnostics` |
+| GetInstalledCertificateIds | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | `getInstalledCertificateIds` |
+| GetLocalListVersion | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | `getLocalListVersion` |
+| GetLog | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | `getLog` |
+| Heartbeat | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | `heartbeat` |
+| InstallCertificate | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | `installCertificate` |
+| LogStatusNotification | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | — | — | `logStatus` |
+| MeterValues | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | `meterValues` |
+| RemoteStartTransaction | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | `remoteStart` |
+| RemoteStopTransaction | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | `remoteStop` |
+| ReserveNow | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | `reserveNow` |
+| Reset | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | `resetSoft` |
+| SecurityEventNotification | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | `securityEventMinimal`, `securityEvent` |
+| SendLocalList | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | `sendLocalList` |
+| SetChargingProfile | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | `setTxDefaultProfile` |
+| SignCertificate | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | — | — | `signCertificate` |
+| SignedFirmwareStatusNotification | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | — | — | `signedFirmwareStatus` |
+| SignedUpdateFirmware | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | `signedUpdateFirmware` |
+| StartTransaction | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | `startTransaction` |
+| StatusNotification | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | `statusAvailable` |
+| StopTransaction | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | `stopTransaction` |
+| TriggerMessage | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | `triggerHeartbeat` |
+| UnlockConnector | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | `unlockConnector` |
+| UpdateFirmware | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | `updateFirmware` |
 
 ## Totals
 
-| | Actions | go-ocpp | mobilityhouse station | mobilityhouse CSMS | chargetime station | chargetime CSMS | lorenzodonini station | lorenzodonini CSMS |
-|---|---|---|---|---|---|---|---|---|
-| OCPP 1.6 | 39 | 39 | 29 | 29 | 29 | 29 | 29 | 29 |
+| | Actions | go-ocpp | mobilityhouse station | mobilityhouse CSMS | chargetime station | chargetime CSMS | lorenzodonini station | lorenzodonini CSMS | everest station | everest CSMS |
+|---|---|---|---|---|---|---|---|---|---|---|
+| OCPP 1.6 | 39 | 39 | 39 | 39 | 39 | 39 | 39 | 39 | 29 | 0 |
 
 A reference's count is the actions its station or CSMS sends or handles.
 
-30 of the 39 actions are exchanged with at least one reference stack in an
-interop scenario. The other 9 are verified against go-ocpp itself (e2e) and
+39 of the 39 actions are exchanged with at least one reference stack in an
+interop scenario. The other 0 are verified against go-ocpp itself (e2e) and
 against the OCA schemas, not against an independent implementation: no
 reference adapter declares them yet (tracked in FEATURES.md, interop gaps).
 

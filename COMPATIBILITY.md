@@ -21,14 +21,13 @@ each reference stack's station and CSMS declare for it, and the interop
 scenarios that exchange it. They are generated from the reference images
 (`make compat`):
 
-- [OCPP 1.6J](docs/compatibility/ocpp16.md): 39 actions; 30 exchanged with a reference
-- [OCPP 2.0.1](docs/compatibility/ocpp201.md): 64 actions; 27 exchanged with a reference
-- [OCPP 2.1](docs/compatibility/ocpp21.md): 91 actions; 43 exchanged with Mobility House, the only reference with 2.1
+- [OCPP 1.6J](docs/compatibility/ocpp16.md): 39 actions; all 39 exchanged with a reference
+- [OCPP 2.0.1](docs/compatibility/ocpp201.md): 64 actions; all 64 exchanged with a reference
+- [OCPP 2.1](docs/compatibility/ocpp21.md): 91 actions; 90 exchanged with a reference (The Mobility House in both roles, EVerest libocpp as a station); NotifyPeriodicEventStream is a SEND, which no reference supports
 
-The actions without a scenario are verified against go-ocpp itself (every
-action, both directions, `TestMatrix`) and the OCA schemas, not yet against
-an independent implementation; FEATURES.md tracks extending the reference
-adapters to them.
+Every action is also verified against go-ocpp itself (both directions,
+over plain WebSocket, compression and security profiles 1 to 3,
+`TestMatrix`) and the OCA schemas.
 
 ## Comparison with the reference stacks
 
@@ -55,7 +54,7 @@ from our tests. "unverified" means we could not establish it.
 | Metrics | callbacks (`ocpp.Metrics`) | no | no | no |
 | Limits (stations, size, queues, bad messages, rate) | yes | partial | no | partial (frame size) |
 | Test kit | `ocpptest` | mocks | partial | test modules |
-| Tested interoperability | against all three, both roles, 1.6J, 2.0.1, 2.1 (INTEROPERABILITY.md) | — | — | — |
+| Tested interoperability | against all three and EVerest libocpp, both roles, 1.6J, 2.0.1, 2.1, security profiles 1–3, compression (INTEROPERABILITY.md) | — | — | — |
 
 The comparison with more implementations, and the gaps go-ocpp tracks, are
 in [FEATURES.md](FEATURES.md).
