@@ -151,18 +151,18 @@ soak: ## Chaos for SOAKTIME (default 10m), then the parallel and exhaustion test
 		-run '^(TestParallel.*|TestCloseUnderLoad|TestReplacementStorm|TestShutdownUnderLoad|TestSlowHandshake|TestStationFlood|TestOversizedMessage|TestCompressionBomb|TestIncomingFlood|TestQueueSaturation|TestSlowReader|TestKeepalive|TestMatrix)$$' ./e2e
 	@go test -race -count=20 -timeout=0 -run '^(TestCallRacingClose|TestPing|TestMaxBadMessages)$$' ./internal/engine
 
-# Reference implementations for 'make interop': otfabric/ocpp-interop v0.1.0
+# Reference implementations for 'make interop': otfabric/ocpp-interop v0.2.0
 # (The Mobility House ocpp 2.1.0, ChargeTimeEU Java-OCA-OCPP v2.0,
-# lorenzodonini/ocpp-go v0.19.0; OCPP 1.6J and 2.0.1), pinned by multi-arch
-# index digest. Keep in step with interop/harness.go and
+# lorenzodonini/ocpp-go v0.19.0; OCPP 1.6J and 2.0.1 in all three, 2.1 in
+# The Mobility House), pinned by multi-arch index digest. Keep in step with interop/harness.go and
 # .github/workflows/interop.yml.
 # A reference image that cannot be had fails the run: asked to test against
 # it, passing by skipping would say nothing.
 # Override to test other builds, e.g. the local ones of an ocpp-interop checkout:
 #   make interop OCPP_INTEROP_MOBILITYHOUSE_IMAGE=ghcr.io/otfabric/ocpp-interop-mobilityhouse:dev
-OCPP_INTEROP_MOBILITYHOUSE_IMAGE ?= ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:fff81e3cfd67a135acf63994f1622a141a9150a6973ee668e4a06a4e0aeb65ec
-OCPP_INTEROP_CHARGETIME_IMAGE    ?= ghcr.io/otfabric/ocpp-interop-chargetime@sha256:01b3d8d3fa12de8acbd170434fc6a04fa0e0ec11f7d5a53c93d84e512a892cc7
-OCPP_INTEROP_LORENZODONINI_IMAGE ?= ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:27801a6ae636cfa78833b75bd193f57a27aba42bfab083262841afb1047ee7ce
+OCPP_INTEROP_MOBILITYHOUSE_IMAGE ?= ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:9b5449c6fdeeb9809348f772b9967676cc1831d3c0a664b357cbdc1b9b53b979
+OCPP_INTEROP_CHARGETIME_IMAGE    ?= ghcr.io/otfabric/ocpp-interop-chargetime@sha256:1dbe44f9a04d6afced3740485dc2a8429b3c5eb2f274392a32b7e1094996681c
+OCPP_INTEROP_LORENZODONINI_IMAGE ?= ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:6adb1e6b39ee0a35bfdb85ac37e5cfed61f614231097b0ad4edda1fc0376e38e
 
 test-interop: ## Run the interop suite against the ocpp-interop reference images (needs Docker)
 	@echo "Running interop tests against $(OCPP_INTEROP_MOBILITYHOUSE_IMAGE), $(OCPP_INTEROP_CHARGETIME_IMAGE) and $(OCPP_INTEROP_LORENZODONINI_IMAGE)"

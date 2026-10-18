@@ -15,7 +15,7 @@ Order: go-ocpp foundations → OCPP 1.6J → two interop adapters → OCPP 2.0.1
 | 3 | OCPP 1.6J | **Done** |
 | 4 | Initial interoperability (1.6J) | **Done** (ocpp-interop v0.0.1) |
 | 5 | OCPP 2.0.1 | **Done** (ocpp-interop v0.1.0) |
-| 6 | OCPP 2.1 | Done, interop pending ocpp-interop v0.2.0 |
+| 6 | OCPP 2.1 | **Done** (ocpp-interop v0.2.0; 2.1 against The Mobility House only) |
 | 7 | Production hardening | Open |
 | 8 | ocppctl | Open |
 
@@ -160,9 +160,10 @@ directions for the features the adapters support.
 - [x] e2e: typed 2.1 in both roles, a SEND while a CALL is outstanding, a
       CALLRESULTERROR for an invalid response
 - [x] Example `examples/ocpp21` (version negotiation, periodic event stream)
-- [ ] Interop against the 2.1-capable adapters (ocpp-interop v0.2.0:
-      Mobility House 2.1.0 and ChargeTimeEU). A feature with only one
-      independent implementation is reported as such
+- [x] Interop against the 2.1-capable adapters, pinned to ocpp-interop
+      v0.2.0: Mobility House 2.1.0, 87 scenarios, 0 failures. ChargeTimeEU
+      has 2.1 on master only. SEND and CALLRESULTERROR have no independent
+      implementation to test against and are reported as such
 
 Gate: 2.1 coverage is documented, and every claimed feature has been
 verified against an independent implementation.
@@ -195,8 +196,8 @@ verified against an independent implementation.
       by design or planned; `ocpptest`, `ocppcert`, `WithHeader`,
       `WithOriginPatterns`, `WithIncomingRateLimit`, `Client.Shutdown`,
       `Client.SetReconnect`
-- [ ] Interop with 2.1 against released references: pin ocpp-interop
-      v0.2.0 (passes against its local build)
+- [x] Interop with 2.1 against released references: pinned to
+      ocpp-interop v0.2.0
 - [x] Settle S1 (licensing of generated code): ADR 0007
 - [ ] v0.1.0 of go-ocpp
 

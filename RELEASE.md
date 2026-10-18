@@ -136,14 +136,13 @@ Found by the hardening tests before release:
   valid and mutated, against the OCA schemas and an independent JSON Schema
   validator.
 - **Interoperability** (INTEROPERABILITY.md) against otfabric/ocpp-interop
-  v0.1.0, pinned by digest: OCPP 1.6J and 2.0.1 in both roles against The
+  v0.2.0, pinned by digest: OCPP 1.6J and 2.0.1 in both roles against The
   Mobility House ocpp 2.1.0, ChargeTimeEU Java-OCA-OCPP v2.0 and
-  lorenzodonini/ocpp-go v0.19.0 — every fixture scenario in both
-  directions, unknown actions, close, security profile 1 — with 0
-  failures; three upstream defects documented with evidence and skipped,
-  never counted as passed. OCPP 2.1 passes in both roles against The
-  Mobility House ocpp 2.1.0 in ocpp-interop's next release, built locally
-  (87 scenarios, 0 failures; one upstream defect).
+  lorenzodonini/ocpp-go v0.19.0, and OCPP 2.1 in both roles against The
+  Mobility House — every fixture scenario in both directions, unknown
+  actions, close, security profile 1: 465 scenarios pass, 0 fail. Skipped
+  scenarios (upstream defects documented with evidence, features a
+  reference does not support) are never counted as passed.
 - **Hardening**: a seeded chaos proxy that fragments, delays and cuts
   connections while stations of every version call and SEND (minutes of
   chaos with thousands of cuts and no wrong answer, error or leak);
@@ -162,11 +161,9 @@ Found by the hardening tests before release:
 
 ## Known limitations
 
-- **OCPP 2.1 against released reference images**: the 2.1 interop runs
-  pass against ocpp-interop's unreleased next version; go-ocpp's pinned
-  images (v0.1.0) carry no 2.1, so CI skips 2.1 interop until
-  ocpp-interop v0.2.0 is released and pinned. Only The Mobility House
-  supports 2.1 among the references.
+- **OCPP 2.1 against one independent implementation**: of the references,
+  only The Mobility House supports 2.1 (ChargeTimeEU has it on master
+  only).
 - **SEND and CALLRESULTERROR** are verified against go-ocpp only: no
   released reference implements them.
 - **Actions without a reference scenario**: 30 of 39 (1.6J), 27 of 64

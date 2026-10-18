@@ -24,15 +24,17 @@ import (
 )
 
 // The reference images this version of go-ocpp is qualified against:
-// otfabric/ocpp-interop v0.1.0 (The Mobility House ocpp 2.1.0, ChargeTimeEU
-// Java-OCA-OCPP v2.0, lorenzodonini/ocpp-go v0.19.0; OCPP 1.6J and 2.0.1),
-// pinned by multi-arch index digest so that a run is reproducible. Moving to another release of ocpp-interop means changing
-// these constants; the Makefile and .github/workflows/interop.yml follow.
+// otfabric/ocpp-interop v0.2.0 (The Mobility House ocpp 2.1.0, ChargeTimeEU
+// Java-OCA-OCPP v2.0, lorenzodonini/ocpp-go v0.19.0; OCPP 1.6J and 2.0.1 in
+// all three, 2.1 in The Mobility House), pinned by multi-arch index digest
+// so that a run is reproducible. Moving to another release of ocpp-interop
+// means changing these constants; the Makefile and
+// .github/workflows/interop.yml follow.
 const (
-	interopRelease            = "v0.1.0"
-	defaultMobilityHouseImage = "ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:fff81e3cfd67a135acf63994f1622a141a9150a6973ee668e4a06a4e0aeb65ec"
-	defaultChargeTimeImage    = "ghcr.io/otfabric/ocpp-interop-chargetime@sha256:01b3d8d3fa12de8acbd170434fc6a04fa0e0ec11f7d5a53c93d84e512a892cc7"
-	defaultLorenzodoniniImage = "ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:27801a6ae636cfa78833b75bd193f57a27aba42bfab083262841afb1047ee7ce"
+	interopRelease            = "v0.2.0"
+	defaultMobilityHouseImage = "ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:9b5449c6fdeeb9809348f772b9967676cc1831d3c0a664b357cbdc1b9b53b979"
+	defaultChargeTimeImage    = "ghcr.io/otfabric/ocpp-interop-chargetime@sha256:1dbe44f9a04d6afced3740485dc2a8429b3c5eb2f274392a32b7e1094996681c"
+	defaultLorenzodoniniImage = "ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:6adb1e6b39ee0a35bfdb85ac37e5cfed61f614231097b0ad4edda1fc0376e38e"
 )
 
 // adapter is one reference implementation: a container image that follows

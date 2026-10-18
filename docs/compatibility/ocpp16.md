@@ -12,9 +12,9 @@ their results are in [INTEROPERABILITY.md](../../INTEROPERABILITY.md).
 
 | Reference | Upstream | Image | Contract | OCPP 1.6 |
 |---|---|---|---|---|
-| mobilityhouse | The Mobility House ocpp 2.1.0 | `ghcr.io/otfabric/ocpp-interop-mobilityhouse:dev` | 0.4 | station yes, CSMS yes |
-| chargetime | ChargeTimeEU Java-OCA-OCPP v2.0 | `ghcr.io/otfabric/ocpp-interop-chargetime:dev` | 0.4 | station yes, CSMS yes |
-| lorenzodonini | lorenzodonini ocpp-go v0.19.0 | `ghcr.io/otfabric/ocpp-interop-lorenzodonini:dev` | 0.4 | station yes, CSMS yes |
+| mobilityhouse | The Mobility House ocpp 2.1.0 | `ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:9b5449c6fdee…` | 0.4 | station yes, CSMS yes |
+| chargetime | ChargeTimeEU Java-OCA-OCPP v2.0 | `ghcr.io/otfabric/ocpp-interop-chargetime@sha256:1dbe44f9a04d…` | 0.4 | station yes, CSMS yes |
+| lorenzodonini | lorenzodonini ocpp-go v0.19.0 | `ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:6adb1e6b39ee…` | 0.4 | station yes, CSMS yes |
 
 Cells: **sends** / **handles** as declared; — not declared; n/a the
 reference does not support the version. go-ocpp: every action is typed,

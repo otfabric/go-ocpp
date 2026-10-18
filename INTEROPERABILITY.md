@@ -27,22 +27,22 @@ Both are required. In each, CALLs are sent from both ends of the connection.
 
 ## Status
 
-Qualified against **otfabric/ocpp-interop v0.1.0** (contract 0.3), pinned
+Qualified against **otfabric/ocpp-interop v0.2.0** (contract 0.4), pinned
 by digest in `interop/harness.go`, the Makefile and
 `.github/workflows/interop.yml`:
 
 | Reference | Upstream | OCPP | Image |
 |---|---|---|---|
-| `mobilityhouse` | The Mobility House ocpp 2.1.0 (Python) | 1.6J, 2.0.1 | `ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:fff81e3c…` |
-| `chargetime` | ChargeTimeEU Java-OCA-OCPP v2.0 (Java) | 1.6J, 2.0.1 | `ghcr.io/otfabric/ocpp-interop-chargetime@sha256:01b3d8d3…` |
-| `lorenzodonini` | lorenzodonini/ocpp-go v0.19.0 (Go) | 1.6J, 2.0.1 | `ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:27801a6a…` |
+| `mobilityhouse` | The Mobility House ocpp 2.1.0 (Python) | 1.6J, 2.0.1, 2.1 | `ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:9b5449c6…` |
+| `chargetime` | ChargeTimeEU Java-OCA-OCPP v2.0 (Java) | 1.6J, 2.0.1 | `ghcr.io/otfabric/ocpp-interop-chargetime@sha256:1dbe44f9…` |
+| `lorenzodonini` | lorenzodonini/ocpp-go v0.19.0 (Go) | 1.6J, 2.0.1 | `ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:6adb1e6b…` |
 
 `TestReferences` checks that each pinned image reports this release.
 
 ### What runs
 
-For each reference, OCPP version (1.6J and 2.0.1) and direction, on one
-connection:
+For each reference, OCPP version it declares (1.6J, 2.0.1, 2.1) and
+direction, on one connection:
 
 - every station sample of the image's fixture, sent by the station;
 - every CSMS sample, sent by the CSMS;
@@ -54,11 +54,16 @@ Each answer is compared with the one the fixture defines, read from the
 image (`print-fixture`), including the derived answers: authorization by
 id token and the device model of GetVariables and SetVariables. Every
 request a reference sends to go-ocpp, and every response go-ocpp receives,
-must also pass go-ocpp's typed validation (`ocpp16`, `ocpp201`); for CALLs
+must also pass go-ocpp's typed validation (`ocpp16`, `ocpp201`, `ocpp21`); for CALLs
 the reference sends, the request must also keep every field of the sample.
 Security profile 1 (HTTP Basic) is tested in both roles.
 
-### Results (2026-10-18, linux/arm64; CI runs amd64 and arm64)
+### Results (v0.2.0 images, 2026-10-18, linux/arm64; CI runs amd64 and arm64)
+
+All three versions, all three references, both roles: 465 scenarios pass,
+13 are skipped (known upstream defects, a SEND the reference cannot
+receive, an action it does not declare), 0 fail. By version: 1.6J 196
+pass / 2 skipped, 2.0.1 182 / 4, 2.1 87 / 7.
 
 | Test | Reference | 1.6J station / CSMS | 2.0.1 station / CSMS |
 |---|---|---|---|
@@ -72,13 +77,10 @@ Security profile 1 (HTTP Basic) is tested in both roles.
 "Station" counts the CALLs the station sends, "CSMS" those the CSMS sends.
 Unknown action, close and security profile 1 pass in every combination.
 
-### OCPP 2.1 (against ocpp-interop's unreleased Phase 6 build)
+### OCPP 2.1
 
-The harness runs 2.1 wherever a reference declares it; the pinned v0.1.0
-images declare none, so CI skips 2.1 until ocpp-interop v0.2.0 is released
-and pinned. Against a local build of its `phase-6-ocpp21` branch (b13c25b,
-contract 0.4; 2026-10-18, linux/arm64), with all three references and every
-version (1.6J and 2.0.1 unchanged from the table above, 0 failures):
+The harness runs 2.1 wherever a reference declares it. Of the v0.2.0
+references only The Mobility House does:
 
 | Test | Reference | 2.1 station / CSMS |
 |---|---|---|
@@ -112,8 +114,8 @@ passed.
 
 ### Not covered yet
 
-- OCPP 2.1 against released images (ocpp-interop v0.2.0), and against a
-  second independent implementation.
+- OCPP 2.1 against a second independent implementation: ChargeTimeEU has
+  2.1 on its master branch only, ocpp-go not at all.
 - SEND and CALLRESULTERROR against any independent implementation.
 - Actions no reference adapter declares: per version, the matrices in
   [docs/compatibility](docs/compatibility) list which actions are
