@@ -308,6 +308,9 @@ func (s *suiteSchema) mutations(n map[string]any, inst any, path string) []mutat
 			if req[name] {
 				out = append(out, mutation{path + "." + name + ": missing", without(obj, name), "occurrence"})
 			}
+			if s.resolve(p)["type"] != nil {
+				out = append(out, mutation{path + "." + name + ": null", with(obj, name, nil), "type"})
+			}
 			for _, m := range s.mutations(p, obj[name], path+"."+name) {
 				m.inst = with(obj, name, m.inst)
 				out = append(out, m)

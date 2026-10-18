@@ -141,10 +141,11 @@ implementations.
 - [x] Certificate and security messages, security events (as messages; key
       and certificate storage stay with the application)
 - [x] Example `examples/ocpp201` (compression, device model, TransactionEvent)
-- [ ] ocpp-interop: `lorenzodonini` adapter (Go, ocpp-go) and 2.0.1 in all
-      adapters: built on its branch, to be released (ocpp-interop v0.1.0)
-- [ ] Interop matrix extended to 2.0.1 in both roles: harness ready, pinned
-      once ocpp-interop v0.1.0 is published
+- [x] ocpp-interop: `lorenzodonini` adapter (Go, ocpp-go) and 2.0.1 in all
+      adapters (its Phase 5); to be released as ocpp-interop v0.1.0
+- [x] Interop matrix extended to 2.0.1 in both roles, with the third
+      reference: passes against the unreleased images (INTEROPERABILITY.md);
+      pinned once ocpp-interop v0.1.0 is published
 
 Gate: 2.0.1 message coverage is complete, and interop passes in both
 directions for the features the adapters support.

@@ -31,6 +31,10 @@ const (
 	interopRelease            = "v0.0.1"
 	defaultMobilityHouseImage = "ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:6243da691f8682398a8cd420fb91b68a4d0f6aa42267961f8d04d097d172fd00"
 	defaultChargeTimeImage    = "ghcr.io/otfabric/ocpp-interop-chargetime@sha256:beeb0e2b34d3c56b5835ed280b38e52ab4d1eba86251552e72e33bf12b7e3b2e"
+	// lorenzodonini/ocpp-go has no released ocpp-interop image yet (it
+	// arrives with ocpp-interop v0.1.0): it runs only when
+	// OCPP_INTEROP_LORENZODONINI_IMAGE names one.
+	defaultLorenzodoniniImage = ""
 )
 
 // adapter is one reference implementation: a container image that follows
@@ -43,7 +47,8 @@ type adapter struct {
 // adapters returns the references to test against. The image of each can be
 // overridden, for example to try a local build or a candidate:
 //
-//	OCPP_INTEROP_MOBILITYHOUSE_IMAGE, OCPP_INTEROP_CHARGETIME_IMAGE
+//	OCPP_INTEROP_MOBILITYHOUSE_IMAGE, OCPP_INTEROP_CHARGETIME_IMAGE,
+//	OCPP_INTEROP_LORENZODONINI_IMAGE
 //
 // OCPP_INTEROP_ADAPTERS restricts the run to a comma-separated subset.
 // Without Docker the tests skip, unless OCPP_INTEROP_REQUIRE=1, which
@@ -57,9 +62,15 @@ func adapters(t testing.TB) []adapter {
 		}
 		t.Skipf("Docker is not available: %v", err)
 	}
-	all := []adapter{
+	var all []adapter
+	for _, a := range []adapter{
 		image("mobilityhouse", "OCPP_INTEROP_MOBILITYHOUSE_IMAGE", defaultMobilityHouseImage),
 		image("chargetime", "OCPP_INTEROP_CHARGETIME_IMAGE", defaultChargeTimeImage),
+		image("lorenzodonini", "OCPP_INTEROP_LORENZODONINI_IMAGE", defaultLorenzodoniniImage),
+	} {
+		if a.image != "" {
+			all = append(all, a)
+		}
 	}
 	only := os.Getenv("OCPP_INTEROP_ADAPTERS")
 	if only == "" {
@@ -160,6 +171,13 @@ var versions = []ocpp.Version{ocpp.V16, ocpp.V201}
 var knownIssues = map[string]string{
 	// ocpp.v16.call.SecurityEventNotification.tech_info has no default, so the
 	// upstream cannot send the optional techInfo left out.
+	// ocpp-go v0.19.0: ResetResponse.StatusInfo has no omitempty, so the
+	// station answers "statusInfo": null, which the schema does not allow
+	// and go-ocpp's validation refuses.
+	"lorenzodonini/2.0.1/resetImmediate": "https://github.com/lorenzodonini/ocpp-go/blob/a1eec917af884db0585752f909a61893aa667480/ocpp2.0.1/provisioning/reset.go#L61-L64",
+	// ocpp-go v0.19.0: NotifyReportRequest.Tbc is a bool with omitempty, so
+	// "tbc": false is dropped from the request.
+	"lorenzodonini/2.0.1/notifyReport":       "https://github.com/lorenzodonini/ocpp-go/blob/a1eec917af884db0585752f909a61893aa667480/ocpp2.0.1/provisioning/notify_report.go#L98-L104",
 	"mobilityhouse/1.6/securityEventMinimal": "https://github.com/mobilityhouse/ocpp/blob/91f4f89140a2198dc5a300cfea88d947ac91ae28/ocpp/v16/call.py#L232-L236",
 }
 

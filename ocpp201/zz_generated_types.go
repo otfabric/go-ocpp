@@ -2724,7 +2724,7 @@ func (x CustomData) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON reads the vendorId and keeps the other properties.
 func (x *CustomData) UnmarshalJSON(b []byte) error {
-	if err := wire.Object(b, "", codes, nil, []string{"vendorId"}, false); err != nil {
+	if err := wire.Object(b, "", codes, []string{"vendorId"}, []string{"vendorId"}, false); err != nil {
 		return err
 	}
 	var m map[string]json.RawMessage

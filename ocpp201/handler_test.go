@@ -86,3 +86,20 @@ func TestHandler(t *testing.T) {
 		t.Fatal("a string was accepted as customData")
 	}
 }
+
+// null is no value of any schema type: an optional property is left out,
+// not null. Vendor properties of customData are free.
+func TestNull(t *testing.T) {
+	var cd CustomData
+	if err := json.Unmarshal([]byte(`{"vendorId":"v","extra":null}`), &cd); err != nil {
+		t.Fatalf("null vendor property refused: %v", err)
+	}
+	if err := json.Unmarshal([]byte(`{"vendorId":null}`), &cd); err == nil {
+		t.Fatal("null vendorId accepted")
+	}
+	err := ValidateResponse("Reset", json.RawMessage(`{"status":"Accepted","statusInfo":null}`))
+	var ve *ocpp.ValidationError
+	if !errors.As(err, &ve) || ve.Code != ocpp.TypeConstraintViolation || ve.Field != "statusInfo" {
+		t.Fatalf("statusInfo null: %v", err)
+	}
+}

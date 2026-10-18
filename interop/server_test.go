@@ -94,6 +94,9 @@ func TestReferenceStationAgainstCSMS(t *testing.T) {
 					for _, name := range f.samplesFrom("csms") {
 						s := f.Samples[name]
 						t.Run(name, func(t *testing.T) {
+							if evidence, ok := knownIssues[a.name+"/"+v.String()+"/"+name]; ok {
+								t.Skipf("known upstream defect of %s: %s", a.name, evidence)
+							}
 							var resp json.RawMessage
 							err := sess.Call(ctx, s.Action, s.Payload, &resp)
 							checkGoCall(t, f, s, resp, err)

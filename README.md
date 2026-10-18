@@ -16,9 +16,9 @@ connected.
 > **Status: Phase 5 of 8.** OCPP 1.6J (with the Security Whitepaper
 > extensions) and OCPP 2.0.1 are complete at the message level: every action
 > is typed, validated against the OCA schemas, and dispatchable in both
-> roles. 1.6J is tested against two independent implementations; 2.0.1
-> interop testing waits for the next ocpp-interop release. OCPP 2.1 is next
-> (Phase 6). No release yet. See
+> roles. Both versions pass against three independent implementations in
+> both roles; the 2.0.1 results are pinned once the next ocpp-interop
+> release is published. OCPP 2.1 is next (Phase 6). No release yet. See
 > [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
 
 Docs: [Architecture](ARCHITECTURE.md) · [Requirements](REQUIREMENTS.md) ·

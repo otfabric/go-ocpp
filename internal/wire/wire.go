@@ -60,8 +60,10 @@ func Field(path, name string) string {
 func Index(path string, i int) string { return path + "[" + strconv.Itoa(i) + "]" }
 
 // Object checks the keys of the JSON object b at path: every required key
-// is present, and, when strict (additionalProperties false), no key is
-// unknown. It does not decode the values.
+// is present, no value is null (no OCPP schema allows null: an absent
+// optional property is left out, not null), and, when strict
+// (additionalProperties false), no key is unknown. It does not decode the
+// values.
 func Object(b []byte, path string, c Codes, known, required []string, strict bool) error {
 	trimmed := bytes.TrimSpace(b)
 	if len(trimmed) == 0 || trimmed[0] != '{' {
@@ -81,6 +83,11 @@ func Object(b []byte, path string, c Codes, known, required []string, strict boo
 	for _, k := range required {
 		if _, ok := keys[k]; !ok {
 			return Invalid(c.Occurrence, Field(path, k), "required")
+		}
+	}
+	for k, v := range keys {
+		if string(bytes.TrimSpace(v)) == "null" && contains(known, k) {
+			return Invalid(c.Type, Field(path, k), "null, which the schema does not allow")
 		}
 	}
 	return nil

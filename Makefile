@@ -132,11 +132,15 @@ fuzz: ## Run the fuzz targets for FUZZTIME each (default 30s)
 #   make interop OCPP_INTEROP_MOBILITYHOUSE_IMAGE=ghcr.io/otfabric/ocpp-interop-mobilityhouse:dev
 OCPP_INTEROP_MOBILITYHOUSE_IMAGE ?= ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:6243da691f8682398a8cd420fb91b68a4d0f6aa42267961f8d04d097d172fd00
 OCPP_INTEROP_CHARGETIME_IMAGE    ?= ghcr.io/otfabric/ocpp-interop-chargetime@sha256:beeb0e2b34d3c56b5835ed280b38e52ab4d1eba86251552e72e33bf12b7e3b2e
+# lorenzodonini/ocpp-go has no released image yet (ocpp-interop v0.1.0):
+# it runs only when this names one.
+OCPP_INTEROP_LORENZODONINI_IMAGE ?=
 
 test-interop: ## Run the interop suite against the ocpp-interop reference images (needs Docker)
 	@echo "Running interop tests against $(OCPP_INTEROP_MOBILITYHOUSE_IMAGE) and $(OCPP_INTEROP_CHARGETIME_IMAGE)"
 	@OCPP_INTEROP_MOBILITYHOUSE_IMAGE="$(OCPP_INTEROP_MOBILITYHOUSE_IMAGE)" \
 		OCPP_INTEROP_CHARGETIME_IMAGE="$(OCPP_INTEROP_CHARGETIME_IMAGE)" \
+		OCPP_INTEROP_LORENZODONINI_IMAGE="$(OCPP_INTEROP_LORENZODONINI_IMAGE)" \
 		OCPP_INTEROP_REQUIRE=1 \
 		go test -tags=interop -count=1 -timeout=20m ./interop/...
 
@@ -146,10 +150,17 @@ gen: ## Generate the version packages from the OCA schemas (internal/gen)
 	@echo "Generating ocpp16 and ocpp201"
 	@go generate ./ocpp16 ./ocpp201
 
-gen-check: gen ## Fail if the generated code differs from what is committed
-	@if ! git diff --quiet -- ocpp16 ocpp201; then \
-		echo "Generated code is out of date: run 'make gen' and commit."; git --no-pager diff --stat -- ocpp16 ocpp201; exit 1; \
-	fi
+GENERATED := ocpp16/zz_generated_types.go ocpp16/zz_generated_actions.go ocpp16/coverage.json \
+	ocpp201/zz_generated_types.go ocpp201/zz_generated_actions.go ocpp201/coverage.json
+
+gen-check: ## Fail if regenerating changes the generated files (they are then updated)
+	@echo "Checking the generated code"
+	@tmp="$$(mktemp -d)"; \
+	for f in $(GENERATED); do mkdir -p "$$tmp/$$(dirname $$f)"; cp "$$f" "$$tmp/$$f"; done; \
+	go generate ./ocpp16 ./ocpp201 || exit 1; \
+	stale=""; for f in $(GENERATED); do cmp -s "$$f" "$$tmp/$$f" || stale="$$stale $$f"; done; \
+	rm -rf "$$tmp"; \
+	if [ -n "$$stale" ]; then echo "Generated code was out of date:$$stale (now regenerated: review and commit)"; exit 1; fi
 
 schemas-sync: ## Refresh schemas/ from the OCA download page (review the diff; see schemas/README.md)
 	@go run ./internal/specsync
