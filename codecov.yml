@@ -5,11 +5,11 @@ coverage:
   status:
     project:
       default:
-        target: 90%
-        threshold: 1%
+        target: 97%
+        threshold: 0.5%
     patch:
       default:
-        target: 70%
+        target: 95%
 
 ignore:
   - "examples/**"

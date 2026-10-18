@@ -142,3 +142,52 @@ func TestPipe(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// A client that offers no subprotocol gets none from coder/websocket; Accept
+// refuses such a connection.
+func TestAcceptWithoutSubprotocol(t *testing.T) {
+	accepted := make(chan error, 1)
+	hs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, err := Accept(w, r, AcceptOptions{Subprotocol: "ocpp1.6"})
+		accepted <- err
+	}))
+	defer hs.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	c, _, err := Dial(ctx, "ws"+strings.TrimPrefix(hs.URL, "http"), DialOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The client reads, so that it answers the server's close frame.
+	read := make(chan error, 1)
+	go func() { _, err := c.ReadMessage(ctx); read <- err }()
+	if err := <-accepted; err == nil || !strings.Contains(err.Error(), "not negotiated") {
+		t.Fatalf("Accept: %v", err)
+	}
+	if err := <-read; !errors.Is(err, ErrClosed) {
+		t.Fatalf("client: %v", err)
+	}
+}
+
+func TestPipeContexts(t *testing.T) {
+	a, b := Pipe("")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	// Nobody reads: a write with an ended context returns its error.
+	if err := a.WriteMessage(ctx, []byte("x")); !errors.Is(err, context.Canceled) {
+		t.Fatalf("write: %v", err)
+	}
+	// A read with an ended context closes the pipe, as coder/websocket does.
+	if _, err := b.ReadMessage(ctx); !errors.Is(err, ErrClosed) {
+		t.Fatalf("read: %v", err)
+	}
+	if _, err := a.ReadMessage(context.Background()); !errors.Is(err, ErrClosed) {
+		t.Fatalf("other end after the close: %v", err)
+	}
+}
+
+func TestCloseErrorText(t *testing.T) {
+	if got := (&CloseError{Code: 1000}).Error(); got != "transport: closed by peer with status 1000" {
+		t.Errorf("%q", got)
+	}
+}

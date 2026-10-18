@@ -242,8 +242,10 @@ func (c *Client) dial(ctx context.Context) (*engine.Endpoint, ocpp.Version, erro
 		c.log.Warn("connect failed", "error", err)
 		return nil, 0, err
 	}
+	// coder/websocket refuses a subprotocol that was not offered, so what
+	// remains to refuse is a CSMS that selected none.
 	v, ok := ocpp.ParseSubprotocol(conn.Subprotocol())
-	if !ok || !c.offers(v) {
+	if !ok {
 		_ = conn.Close(transport.StatusPolicy, "no OCPP subprotocol")
 		err := fmt.Errorf("%w: %w: the CSMS selected subprotocol %q", ocpp.ErrConnectFailed, ocpp.ErrUnsupportedVersion, conn.Subprotocol())
 		c.o.metrics.OnConnectFailed(c.info(0), err)
@@ -264,15 +266,6 @@ func (c *Client) dial(ctx context.Context) (*engine.Endpoint, ocpp.Version, erro
 		FrameObserver:      c.o.frameObserver,
 	})
 	return ep, v, nil
-}
-
-func (c *Client) offers(v ocpp.Version) bool {
-	for _, o := range c.o.versions {
-		if o == v {
-			return true
-		}
-	}
-	return false
 }
 
 // supervise waits for the connection to end and, with WithReconnect,
@@ -351,10 +344,10 @@ func (c *Client) backoff(attempt int) time.Duration {
 	return lo + rand.N(ceil-lo)
 }
 
+// setStateLocked records a state change and reports it. Every caller
+// changes the state: the transitions are Disconnected → Connecting →
+// Connected → Disconnected (→ Connecting …), and any → Closed once.
 func (c *Client) setStateLocked(s ocpp.State, err error) {
-	if c.state == s {
-		return
-	}
 	c.state = s
 	if c.o.stateHandler != nil {
 		c.o.stateHandler(s, err)

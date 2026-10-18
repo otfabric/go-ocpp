@@ -9,6 +9,7 @@ package transport
 import (
 	"context"
 	"errors"
+	"strconv"
 )
 
 // Close status codes of RFC 6455 §7.4.1 that go-ocpp sends.
@@ -53,32 +54,10 @@ type CloseError struct {
 // Error implements error.
 func (e *CloseError) Error() string {
 	if e.Reason == "" {
-		return "transport: closed by peer with status " + itoa(e.Code)
+		return "transport: closed by peer with status " + strconv.Itoa(e.Code)
 	}
-	return "transport: closed by peer with status " + itoa(e.Code) + ": " + e.Reason
+	return "transport: closed by peer with status " + strconv.Itoa(e.Code) + ": " + e.Reason
 }
 
 // Unwrap returns ErrClosed.
 func (e *CloseError) Unwrap() error { return ErrClosed }
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	neg := n < 0
-	if neg {
-		n = -n
-	}
-	var b [20]byte
-	i := len(b)
-	for n > 0 {
-		i--
-		b[i] = byte('0' + n%10)
-		n /= 10
-	}
-	if neg {
-		i--
-		b[i] = '-'
-	}
-	return string(b[i:])
-}

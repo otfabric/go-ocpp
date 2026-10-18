@@ -230,81 +230,91 @@ func Encode(f Frame) ([]byte, error) {
 	if utf8.RuneCountInString(f.ID) > MaxMessageIDLength {
 		return nil, fmt.Errorf("ocppj: message ID %q exceeds %d characters", f.ID, MaxMessageIDLength)
 	}
-	obj := func(m json.RawMessage, what string) (json.RawMessage, error) {
-		if len(m) == 0 {
-			return json.RawMessage("{}"), nil
-		}
-		if !isObject(m) || !json.Valid(m) {
-			return nil, fmt.Errorf("ocppj: %s is not a JSON object", what)
-		}
-		return m, nil
-	}
-	var elems []any
+	var buf bytes.Buffer
+	buf.WriteByte('[')
+	buf.WriteString(strconv.Itoa(int(f.Type)))
+	buf.WriteByte(',')
+	appendString(&buf, f.ID)
+	var err error
 	switch f.Type {
 	case Call, Send:
 		if f.Action == "" {
 			return nil, errors.New("ocppj: empty action")
 		}
-		p, err := obj(f.Payload, "payload")
-		if err != nil {
-			return nil, err
-		}
-		elems = []any{int(f.Type), f.ID, f.Action, p}
+		buf.WriteByte(',')
+		appendString(&buf, f.Action)
+		err = appendObject(&buf, f.Payload, "payload")
 	case CallResult:
-		p, err := obj(f.Payload, "payload")
-		if err != nil {
-			return nil, err
-		}
-		elems = []any{int(f.Type), f.ID, p}
+		err = appendObject(&buf, f.Payload, "payload")
 	case CallError, CallResultError:
 		if f.ErrorCode == "" {
 			return nil, errors.New("ocppj: empty error code")
 		}
-		d, err := obj(f.Details, "error details")
-		if err != nil {
-			return nil, err
-		}
-		elems = []any{int(f.Type), f.ID, string(f.ErrorCode), f.Description, d}
+		buf.WriteByte(',')
+		appendString(&buf, string(f.ErrorCode))
+		buf.WriteByte(',')
+		appendString(&buf, f.Description)
+		err = appendObject(&buf, f.Details, "error details")
 	default:
 		return nil, fmt.Errorf("ocppj: cannot encode %s", f.Type)
 	}
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(elems); err != nil {
-		return nil, fmt.Errorf("ocppj: %w", err)
+	if err != nil {
+		return nil, err
 	}
-	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil
+	buf.WriteByte(']')
+	return buf.Bytes(), nil
 }
 
-// parseType accepts a JSON integer only: 2, not 2.0, "2" or 2e0.
-func parseType(raw json.RawMessage) (MessageType, bool) {
-	s := string(bytes.TrimSpace(raw))
-	if s == "" || len(s) > 3 {
-		return 0, false
+// appendString writes s as a JSON string, without HTML escaping. Encoding
+// a string cannot fail.
+func appendString(buf *bytes.Buffer, s string) {
+	enc := json.NewEncoder(buf)
+	enc.SetEscapeHTML(false)
+	_ = enc.Encode(s)
+	buf.Truncate(buf.Len() - 1) // the newline Encode adds
+}
+
+// appendObject writes ",", then m compacted, or {} for an empty m. m must
+// be a JSON object.
+func appendObject(buf *bytes.Buffer, m json.RawMessage, what string) error {
+	buf.WriteByte(',')
+	if len(m) == 0 {
+		buf.WriteString("{}")
+		return nil
 	}
+	n := buf.Len()
+	if !isObject(m) || json.Compact(buf, m) != nil {
+		buf.Truncate(n)
+		return fmt.Errorf("ocppj: %s is not a JSON object", what)
+	}
+	return nil
+}
+
+// parseType accepts a JSON integer only: 2, not 2.0, "2" or 2e0. Values
+// above 255 are not message types; they are refused, not truncated.
+func parseType(raw json.RawMessage) (MessageType, bool) {
+	s := bytes.TrimSpace(raw)
+	n := 0
 	for _, c := range s {
-		if c < '0' || c > '9' {
+		if c < '0' || c > '9' || n > 255 {
 			return 0, false
 		}
+		n = n*10 + int(c-'0')
 	}
-	n, err := strconv.Atoi(s)
-	if err != nil {
-		return 0, false
-	}
-	return MessageType(n), true
+	return MessageType(n), len(s) > 0 && n <= 255
 }
 
+// parseString accepts a JSON string only. The frame as a whole is valid JSON
+// when it is called, so only the type needs checking; null, which would
+// unmarshal into a string without error, is refused by the quote check.
 func parseString(raw json.RawMessage) (string, bool) {
 	raw = bytes.TrimSpace(raw)
 	if len(raw) == 0 || raw[0] != '"' {
 		return "", false
 	}
 	var s string
-	if err := json.Unmarshal(raw, &s); err != nil {
-		return "", false
-	}
-	return s, true
+	err := json.Unmarshal(raw, &s)
+	return s, err == nil
 }
 
 func isObject(raw json.RawMessage) bool {

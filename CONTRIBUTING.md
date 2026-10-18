@@ -45,6 +45,11 @@ under that gofmt and under the local one: run `make fmt`, then
 - Run tests with `-race`. Do not depend on timing: use contexts and
   channels, not sleeps.
 - A test that fails must not be skipped to make CI pass.
+- Coverage is held from the start: Codecov requires 97% of the library and
+  95% of every change (`codecov.yml`). `make coverage` measures what CI
+  measures. A branch no test can reach is a reason to simplify the code,
+  not to lower the target; the few that only a race can reach are named in
+  the pull request.
 
 ## Documentation
 

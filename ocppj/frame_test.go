@@ -75,6 +75,10 @@ func TestDecodeInvalid(t *testing.T) {
 		{"type as float", ocpp.V16, `[2.0,"1","Heartbeat",{}]`, true, "1", false},
 		{"type with exponent", ocpp.V16, `[2e0,"1","Heartbeat",{}]`, true, "1", false},
 		{"negative type", ocpp.V16, `[-2,"1","Heartbeat",{}]`, true, "1", false},
+		{"type out of range", ocpp.V16, `[1002,"1","Heartbeat",{}]`, true, "1", false},
+		{"type far out of range", ocpp.V16, `[99999999999999999999,"1","Heartbeat",{}]`, true, "1", false},
+		{"type 258 is not 2", ocpp.V16, `[258,"1","Heartbeat",{}]`, true, "1", false},
+		{"null id", ocpp.V16, `[2,null,"Heartbeat",{}]`, false, "", false},
 		{"unknown type", ocpp.V16, `[7,"1","Heartbeat",{}]`, true, "1", true},
 		{"send in 1.6", ocpp.V16, `[6,"1","Heartbeat",{}]`, true, "1", true},
 		{"send in 2.0.1", ocpp.V201, `[6,"1","Heartbeat",{}]`, true, "1", true},
@@ -174,6 +178,7 @@ func TestEncodeRejects(t *testing.T) {
 		{Type: Call, ID: strings.Repeat("x", 37), Action: "Heartbeat"},
 		{Type: Call, ID: "1", Action: "Heartbeat", Payload: json.RawMessage(`[]`)},
 		{Type: Call, ID: "1", Action: "Heartbeat", Payload: json.RawMessage(`{`)},
+		{Type: CallResult, ID: "1", Payload: json.RawMessage(`[]`)},
 		{Type: CallError, ID: "1"},
 		{Type: CallError, ID: "1", ErrorCode: ocpp.GenericError, Details: json.RawMessage(`"x"`)},
 	} {
