@@ -212,10 +212,17 @@ var knownIssues = map[string]string{
 	"mobilityhouse/1.6/securityEventMinimal": "https://github.com/mobilityhouse/ocpp/blob/91f4f89140a2198dc5a300cfea88d947ac91ae28/ocpp/v16/call.py#L232-L236",
 	// mobilityhouse 2.1.0: ChargePoint._raise_key_error knows 1.6, 2.0 and
 	// 2.0.1 only, so a 2.1 CALL without a handler is never answered (fixed
-	// on master in ae716a1, #744, not released).
-	"mobilityhouse/2.1/reservationStatusUpdate": mobilityhouse21NoAnswer,
-	"mobilityhouse/2.1/cancelReservation":       mobilityhouse21NoAnswer,
-	"mobilityhouse/2.1/unknown-action":          mobilityhouse21NoAnswer,
+	// on master in ae716a1, #744, not released). The fixtures answer every
+	// action; only an unknown action is left unanswered.
+	"mobilityhouse/2.1/unknown-action": mobilityhouse21NoAnswer,
+	// ocpp-go v0.19.0: GetCompositeScheduleResponse does not have the OCA
+	// structure: a top-level evseId the schema does not allow, no
+	// statusInfo, and a schedule of {startDateTime, chargingSchedule}
+	// instead of CompositeScheduleType, sent empty.
+	"lorenzodonini/2.0.1/getCompositeSchedule": "https://github.com/lorenzodonini/ocpp-go/blob/a1eec917af884db0585752f909a61893aa667480/ocpp2.0.1/smartcharging/get_composite_schedule.go#L31-L50",
+	// ocpp-go v0.19.0: SetNetworkProfileResponse.StatusInfo has no
+	// omitempty, so the station answers "statusInfo": null.
+	"lorenzodonini/2.0.1/setNetworkProfile": "https://github.com/lorenzodonini/ocpp-go/blob/a1eec917af884db0585752f909a61893aa667480/ocpp2.0.1/provisioning/set_network_profile.go#L170-L172",
 	// Java-OCA-OCPP v2.0 with Java-WebSocket 1.6.0, OCPP 2.0.1: the CSMS
 	// announces server_no_context_takeover but keeps its compression
 	// context, so a station cannot decompress the second message.
