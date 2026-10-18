@@ -59,17 +59,24 @@ func (f AuthenticatorFunc) Authenticate(ctx context.Context, r ConnectRequest) e
 // ErrUnauthorized is what BasicAuth returns for refused credentials.
 var ErrUnauthorized = errors.New("ocpp: unauthorized")
 
+// ErrUnknownStation is what an Authenticator returns, wrapped or not, for
+// an identity the CSMS does not recognise. The connection is then refused
+// with HTTP 404, as OCPP-J recommends, instead of 401.
+var ErrUnknownStation = errors.New("ocpp: unknown station")
+
 // BasicAuth returns an Authenticator for security profiles 1 and 2: the
 // station must send HTTP Basic credentials whose user name is its identity,
-// with the password that lookup returns for that identity. Passwords are
-// compared in constant time.
+// with the password that lookup returns for that identity (1.6 Security
+// Whitepaper A00.FR.204, .207, .324; 2.x Part 2 A00). Passwords are
+// compared in constant time. An identity lookup does not know is refused
+// with ErrUnknownStation (HTTP 404).
 func BasicAuth(lookup func(ctx context.Context, stationID string) (password string, ok bool)) Authenticator {
 	return AuthenticatorFunc(func(ctx context.Context, r ConnectRequest) error {
-		if !r.HasBasicAuth || r.Username != r.StationID {
-			return ErrUnauthorized
+		want, known := lookup(ctx, r.StationID)
+		if !known {
+			return ErrUnknownStation
 		}
-		want, ok := lookup(ctx, r.StationID)
-		if !ok || subtle.ConstantTimeCompare([]byte(want), []byte(r.Password)) != 1 {
+		if !r.HasBasicAuth || r.Username != r.StationID || subtle.ConstantTimeCompare([]byte(want), []byte(r.Password)) != 1 {
 			return ErrUnauthorized
 		}
 		return nil

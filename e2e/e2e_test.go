@@ -112,9 +112,11 @@ func TestVersionNegotiation(t *testing.T) {
 		t.Errorf("%d stations, want 3", got)
 	}
 
+	// No common version: the server completes the handshake without a
+	// subprotocol and closes (OCPP-J §3.2); the client refuses that.
 	c := station(t, base+"D", client.WithInsecureTransport(), client.WithVersions(ocpp.V21))
 	err := c.Connect(context.Background())
-	if !errors.Is(err, ocpp.ErrConnectFailed) || !strings.Contains(err.Error(), "400") {
+	if !errors.Is(err, ocpp.ErrConnectFailed) || !errors.Is(err, ocpp.ErrUnsupportedVersion) {
 		t.Fatalf("unsupported version: %v", err)
 	}
 	if c.State() != ocpp.Disconnected {
@@ -134,7 +136,7 @@ func TestClientOptions(t *testing.T) {
 		{"wss://localhost/ocpp/A", nil},                                                      // no version
 		{"wss://localhost/ocpp/A", []client.Option{client.WithVersions(ocpp.V16, ocpp.V16)}}, // repeated
 		{"wss://localhost/ocpp/A", []client.Option{client.WithVersions(ocpp.V16), client.WithHandler(ocpp.V201, ocpp.DispatcherFunc(echo))}},
-		{"wss://localhost/ocpp/A", []client.Option{client.WithVersions(ocpp.V16), client.WithReconnect(client.Reconnect{MinDelay: time.Second, MaxDelay: time.Millisecond})}},
+		{"wss://localhost/ocpp/A", []client.Option{client.WithVersions(ocpp.V16), client.WithReconnect(client.Reconnect{WaitMinimum: 0})}},
 	} {
 		if _, err := client.New(tt.url, tt.opts...); !errors.Is(err, ocpp.ErrInvalidOption) {
 			t.Errorf("New(%q): err = %v, want ErrInvalidOption", tt.url, err)
@@ -192,14 +194,14 @@ func TestBasicAuth(t *testing.T) {
 		t.Errorf("password printed: %s", s)
 	}
 
-	for _, tt := range []struct{ id, user, pass string }{
-		{"CS1", "CS1", "wrong"},
-		{"CS1", "CS2", "correct horse battery staple"}, // user name is not the identity
-		{"CS2", "CS2", "anything"},                     // unknown station
+	for _, tt := range []struct{ id, user, pass, status string }{
+		{"CS1", "CS1", "wrong", "401"},
+		{"CS1", "CS2", "correct horse battery staple", "401"}, // user name is not the identity
+		{"CS2", "CS2", "anything", "404"},                     // unknown station (OCPP-J §3.2)
 	} {
 		c := station(t, base+tt.id, client.WithInsecureTransport(), client.WithVersions(ocpp.V16), client.WithBasicAuth(tt.user, tt.pass))
 		err := c.Connect(context.Background())
-		if !errors.Is(err, ocpp.ErrConnectFailed) || !strings.Contains(err.Error(), "401") {
+		if !errors.Is(err, ocpp.ErrConnectFailed) || !strings.Contains(err.Error(), tt.status) {
 			t.Errorf("%+v: %v", tt, err)
 		}
 		if strings.Contains(fmt.Sprint(err), tt.pass) {
@@ -328,7 +330,7 @@ func TestReconnect(t *testing.T) {
 	log := &stateLog{}
 	var attempts atomic.Int64
 	c := station(t, base+"RC", client.WithInsecureTransport(), client.WithVersions(ocpp.V201),
-		client.WithReconnect(client.Reconnect{MinDelay: 5 * time.Millisecond, MaxDelay: 20 * time.Millisecond}),
+		client.WithReconnect(client.Reconnect{WaitMinimum: 5 * time.Millisecond, RandomRange: 5 * time.Millisecond, RepeatTimes: 2}),
 		client.WithStateHandler(log.handler), client.WithMetrics(&reconnectMetrics{n: &attempts}))
 	connect(t, c)
 	first := waitStation(t, srv, "RC")
@@ -367,7 +369,7 @@ func TestReconnectStopsOnClose(t *testing.T) {
 	srv, base := csms(t, nil, server.WithHandler(ocpp.V16, ocpp.DispatcherFunc(echo)), server.WithoutAuthentication())
 	var attempts atomic.Int64
 	c := station(t, base+"X", client.WithInsecureTransport(), client.WithVersions(ocpp.V16),
-		client.WithReconnect(client.Reconnect{MinDelay: time.Millisecond, MaxDelay: 2 * time.Millisecond}),
+		client.WithReconnect(client.Reconnect{WaitMinimum: time.Millisecond, RandomRange: time.Millisecond, RepeatTimes: 1}),
 		client.WithMetrics(&reconnectMetrics{n: &attempts}))
 	connect(t, c)
 	_ = srv.Close() // refuses new connections from now on
@@ -507,10 +509,11 @@ func TestBadRequests(t *testing.T) {
 		header map[string]string
 		status int
 	}{
-		{"", nil, 404},  // no identity
-		{"A", nil, 400}, // no subprotocol
-		{"A", map[string]string{"Sec-WebSocket-Protocol": "ocpp2.0.1"}, 400},
-		{"A", map[string]string{"Sec-WebSocket-Protocol": "ocpp1.6"}, 426}, // not a WebSocket upgrade
+		{"", nil, 404}, // no identity
+		// Not WebSocket upgrades, with and without a supported subprotocol.
+		{"A", nil, 426},
+		{"A", map[string]string{"Sec-WebSocket-Protocol": "ocpp2.0.1"}, 426},
+		{"A", map[string]string{"Sec-WebSocket-Protocol": "ocpp1.6"}, 426},
 	} {
 		status, err := httpGet(httpBase+tt.path, tt.header)
 		if err != nil {

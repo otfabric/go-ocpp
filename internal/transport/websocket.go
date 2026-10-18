@@ -42,7 +42,8 @@ func Dial(ctx context.Context, url string, o DialOptions) (Conn, *http.Response,
 // AcceptOptions configure Accept.
 type AcceptOptions struct {
 	// Subprotocol is the subprotocol to select. The caller has already
-	// chosen it from the client's offers.
+	// chosen it from the client's offers. Empty selects none: the
+	// handshake completes without a Sec-WebSocket-Protocol header.
 	Subprotocol string
 	ReadLimit   int64
 }
@@ -50,7 +51,11 @@ type AcceptOptions struct {
 // Accept upgrades an HTTP request to a WebSocket. On failure it has written
 // an HTTP error response.
 func Accept(w http.ResponseWriter, r *http.Request, o AcceptOptions) (Conn, error) {
-	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{Subprotocols: []string{o.Subprotocol}})
+	var subprotocols []string
+	if o.Subprotocol != "" {
+		subprotocols = []string{o.Subprotocol}
+	}
+	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{Subprotocols: subprotocols})
 	if err != nil {
 		return nil, err
 	}

@@ -11,6 +11,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log/slog"
+	"math"
 	"math/rand/v2"
 	"net/http"
 	"net/url"
@@ -113,14 +114,8 @@ func New(rawURL string, opts ...Option) (*Client, error) {
 		o.metrics = ocpp.NopMetrics{}
 	}
 	if r := o.reconnect; r != nil {
-		if r.MinDelay <= 0 {
-			r.MinDelay = DefaultReconnectMin
-		}
-		if r.MaxDelay <= 0 {
-			r.MaxDelay = DefaultReconnectMax
-		}
-		if r.MaxDelay < r.MinDelay {
-			return nil, fmt.Errorf("%w: reconnect MaxDelay below MinDelay", ocpp.ErrInvalidOption)
+		if r.WaitMinimum <= 0 || r.RandomRange < 0 || r.RepeatTimes < 0 {
+			return nil, fmt.Errorf("%w: reconnect: WaitMinimum must be positive, RandomRange and RepeatTimes not negative", ocpp.ErrInvalidOption)
 		}
 	}
 	log := o.logger
@@ -331,17 +326,18 @@ func (c *Client) supervise(ep *engine.Endpoint, done chan struct{}) {
 	}
 }
 
+// backoff returns the delay before reconnection attempt n (OCPP 2.x Part 4
+// §5.4; see Reconnect). The doubling saturates instead of overflowing.
 func (c *Client) backoff(attempt int) time.Duration {
-	lo, hi := c.o.reconnect.MinDelay, c.o.reconnect.MaxDelay
-	ceil := lo
-	for i := 0; i < attempt && ceil < hi; i++ {
-		ceil *= 2
+	r := c.o.reconnect
+	d := r.WaitMinimum
+	for i := 1; i < attempt && i <= r.RepeatTimes && d < math.MaxInt64/2; i++ {
+		d *= 2
 	}
-	ceil = min(ceil, hi)
-	if ceil <= lo {
-		return lo
+	if r.RandomRange > 0 {
+		d += rand.N(r.RandomRange + 1)
 	}
-	return lo + rand.N(ceil-lo)
+	return d
 }
 
 // setStateLocked records a state change and reports it. Every caller

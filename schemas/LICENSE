@@ -1,0 +1,11 @@
+The JSON schema files in this directory (ocpp16/, ocpp201/, ocpp21/) are
+published by the Open Charge Alliance and are reproduced here unmodified.
+
+    Copyright © Open Charge Alliance.
+    Licensed under the Creative Commons Attribution-NoDerivatives 4.0
+    International Public License (CC BY-ND 4.0):
+    https://creativecommons.org/licenses/by-nd/4.0/legalcode
+
+They are NOT covered by the MIT licence of the rest of this repository.
+They must not be modified; a new edition or erratum replaces them whole.
+Sources and checksums: README.md and SHA256SUMS in this directory.

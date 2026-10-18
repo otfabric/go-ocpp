@@ -52,21 +52,36 @@ func (e *Endpoint) readLoop() {
 	}
 }
 
-// malformed handles a frame that does not decode. A CALL whose message ID
-// could be read is answered with a CALLERROR. Anything else is dropped,
-// including frames of an unknown message type (SPECIFICATIONS.md T9),
-// because there is nothing a response could be correlated with.
+// malformed handles a frame that does not decode (SPECIFICATIONS.md T3, T9):
+//
+//   - A frame of an unknown message type is ignored (2.x Part 4 §4.1.3 as
+//     amended by errata 1161 and 1163; OCPP-J 1.6 says nothing else).
+//   - A corrupt CALL, or a frame whose message type cannot be read, is
+//     answered with a CALLERROR: with its message ID, or, in OCPP 2.x, with
+//     "-1" when the ID cannot be read either (2.x Part 4 §4.2.3). OCPP-J 1.6
+//     defines no ID for that case, so on 1.6 such a frame is dropped.
+//   - A malformed CALLRESULT or CALLERROR is dropped: a CALLERROR in reply
+//     would answer a message that is not a CALL.
 func (e *Endpoint) malformed(err error) {
 	err = fmt.Errorf("%w: %w", ocpp.ErrProtocol, err)
 	e.cfg.Metrics.OnProtocolError(e.cfg.Info, err)
 	var de *ocppj.DecodeError
-	if errors.As(err, &de) && de.Type == ocppj.Call && de.IDKnown && !de.UnknownType {
-		e.log.Warn("malformed CALL answered with CALLERROR", "message_id", de.ID, "error", err)
-		e.sendResult(ocppj.Frame{Type: ocppj.CallError, ID: de.ID,
-			ErrorCode: ocppj.RPCErrorCode(e.cfg.Info.Version), Description: de.Reason})
+	errors.As(err, &de)
+	if de == nil || de.UnknownType || (de.Type != ocppj.Call && de.Type != 0) {
+		e.log.Warn("malformed frame dropped", "error", err)
 		return
 	}
-	e.log.Warn("malformed frame dropped", "error", err)
+	id := de.ID
+	if !de.IDKnown {
+		if e.cfg.Info.Version == ocpp.V16 {
+			e.log.Warn("malformed frame dropped", "error", err)
+			return
+		}
+		id = "-1"
+	}
+	e.log.Warn("malformed frame answered with CALLERROR", "message_id", id, "error", err)
+	e.sendResult(ocppj.Frame{Type: ocppj.CallError, ID: id,
+		ErrorCode: ocppj.RPCErrorCode(e.cfg.Info.Version), Description: de.Reason})
 }
 
 func (e *Endpoint) writeLoop() {

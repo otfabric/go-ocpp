@@ -88,7 +88,7 @@ func TestCloseDuringBackoff(t *testing.T) {
 	noLeak(t)
 	srv, base := csms(t, nil, server.WithHandler(ocpp.V16, ocpp.DispatcherFunc(echo)), server.WithoutAuthentication())
 	c := station(t, base+"BO", client.WithInsecureTransport(), client.WithVersions(ocpp.V16),
-		client.WithReconnect(client.Reconnect{MinDelay: time.Hour, MaxDelay: time.Hour}))
+		client.WithReconnect(client.Reconnect{WaitMinimum: time.Hour}))
 	connect(t, c)
 	_ = waitStation(t, srv, "BO").Close()
 	eventually(t, "the client to wait for its next attempt", func() bool { return c.State() == ocpp.Connecting })
@@ -167,7 +167,7 @@ func TestCloseDuringRedial(t *testing.T) {
 	srv, base := csms(t, nil, server.WithHandler(ocpp.V16, ocpp.DispatcherFunc(echo)), server.WithAuthenticator(auth))
 	defer close(release)
 	c := station(t, base+"RD", client.WithInsecureTransport(), client.WithVersions(ocpp.V16),
-		client.WithReconnect(client.Reconnect{MinDelay: time.Millisecond, MaxDelay: time.Millisecond}))
+		client.WithReconnect(client.Reconnect{WaitMinimum: time.Millisecond}))
 	connect(t, c)
 	block.Store(true)
 	_ = waitStation(t, srv, "RD").Close()
