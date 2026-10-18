@@ -14,7 +14,7 @@ Order: go-ocpp foundations → OCPP 1.6J → two interop adapters → OCPP 2.0.1
 | 2 | Shared OCPP-J engine | **Done**, except the check against the OCA text (S4) |
 | 3 | OCPP 1.6J | **Done** |
 | 4 | Initial interoperability (1.6J) | **Done** (ocpp-interop v0.0.1) |
-| 5 | OCPP 2.0.1 | **Done** in go-ocpp; interop with the third stack pending its ocpp-interop release |
+| 5 | OCPP 2.0.1 | **Done** (ocpp-interop v0.1.0) |
 | 6 | OCPP 2.1 | Open |
 | 7 | Production hardening | Open |
 | 8 | ocppctl | Open |
@@ -142,10 +142,9 @@ implementations.
       and certificate storage stay with the application)
 - [x] Example `examples/ocpp201` (compression, device model, TransactionEvent)
 - [x] ocpp-interop: `lorenzodonini` adapter (Go, ocpp-go) and 2.0.1 in all
-      adapters (its Phase 5); to be released as ocpp-interop v0.1.0
+      adapters (its Phase 5), released as ocpp-interop v0.1.0
 - [x] Interop matrix extended to 2.0.1 in both roles, with the third
-      reference: passes against the unreleased images (INTEROPERABILITY.md);
-      pinned once ocpp-interop v0.1.0 is published
+      reference, pinned to ocpp-interop v0.1.0 (INTEROPERABILITY.md)
 
 Gate: 2.0.1 message coverage is complete, and interop passes in both
 directions for the features the adapters support.

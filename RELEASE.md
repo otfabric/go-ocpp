@@ -60,8 +60,10 @@ Phases 3 and 5 (OCPP 1.6J and 2.0.1):
 - Examples `ocpp16` and `ocpp201`
 - Incoming payloads with a `null` property are refused
   (TypeConstraintViolation): no OCPP schema allows null
-- Interop: per OCPP version, typed validation of every reference payload,
-  and the third reference (lorenzodonini/ocpp-go) when its image is given
+- Interop: pinned to otfabric/ocpp-interop v0.1.0, with OCPP 1.6J and 2.0.1
+  against three references (The Mobility House ocpp 2.1.0, ChargeTimeEU
+  Java-OCA-OCPP v2.0, lorenzodonini/ocpp-go v0.19.0) in both roles; typed
+  validation of every reference payload
 - `internal/specsync` and the weekly `spec-check` workflow: the vendored
   OCA documents are compared with the newest published editions, errata and
   appendices, and a `spec-update` issue is opened when they differ

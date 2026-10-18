@@ -122,22 +122,21 @@ fuzz: ## Run the fuzz targets for FUZZTIME each (default 30s)
 		go test -run='^$$' -fuzz="^$${t#*:}$$" -fuzztime=$(FUZZTIME) "./$${t%%:*}" || exit 1; \
 	done
 
-# Reference implementations for 'make interop': otfabric/ocpp-interop v0.0.1
-# (The Mobility House ocpp 2.1.0, ChargeTimeEU Java-OCA-OCPP v2.0), pinned by
-# multi-arch index digest. Keep in step with interop/harness.go and
+# Reference implementations for 'make interop': otfabric/ocpp-interop v0.1.0
+# (The Mobility House ocpp 2.1.0, ChargeTimeEU Java-OCA-OCPP v2.0,
+# lorenzodonini/ocpp-go v0.19.0; OCPP 1.6J and 2.0.1), pinned by multi-arch
+# index digest. Keep in step with interop/harness.go and
 # .github/workflows/interop.yml.
 # A reference image that cannot be had fails the run: asked to test against
 # it, passing by skipping would say nothing.
 # Override to test other builds, e.g. the local ones of an ocpp-interop checkout:
 #   make interop OCPP_INTEROP_MOBILITYHOUSE_IMAGE=ghcr.io/otfabric/ocpp-interop-mobilityhouse:dev
-OCPP_INTEROP_MOBILITYHOUSE_IMAGE ?= ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:6243da691f8682398a8cd420fb91b68a4d0f6aa42267961f8d04d097d172fd00
-OCPP_INTEROP_CHARGETIME_IMAGE    ?= ghcr.io/otfabric/ocpp-interop-chargetime@sha256:beeb0e2b34d3c56b5835ed280b38e52ab4d1eba86251552e72e33bf12b7e3b2e
-# lorenzodonini/ocpp-go has no released image yet (ocpp-interop v0.1.0):
-# it runs only when this names one.
-OCPP_INTEROP_LORENZODONINI_IMAGE ?=
+OCPP_INTEROP_MOBILITYHOUSE_IMAGE ?= ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:fff81e3cfd67a135acf63994f1622a141a9150a6973ee668e4a06a4e0aeb65ec
+OCPP_INTEROP_CHARGETIME_IMAGE    ?= ghcr.io/otfabric/ocpp-interop-chargetime@sha256:01b3d8d3fa12de8acbd170434fc6a04fa0e0ec11f7d5a53c93d84e512a892cc7
+OCPP_INTEROP_LORENZODONINI_IMAGE ?= ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:27801a6ae636cfa78833b75bd193f57a27aba42bfab083262841afb1047ee7ce
 
 test-interop: ## Run the interop suite against the ocpp-interop reference images (needs Docker)
-	@echo "Running interop tests against $(OCPP_INTEROP_MOBILITYHOUSE_IMAGE) and $(OCPP_INTEROP_CHARGETIME_IMAGE)"
+	@echo "Running interop tests against $(OCPP_INTEROP_MOBILITYHOUSE_IMAGE), $(OCPP_INTEROP_CHARGETIME_IMAGE) and $(OCPP_INTEROP_LORENZODONINI_IMAGE)"
 	@OCPP_INTEROP_MOBILITYHOUSE_IMAGE="$(OCPP_INTEROP_MOBILITYHOUSE_IMAGE)" \
 		OCPP_INTEROP_CHARGETIME_IMAGE="$(OCPP_INTEROP_CHARGETIME_IMAGE)" \
 		OCPP_INTEROP_LORENZODONINI_IMAGE="$(OCPP_INTEROP_LORENZODONINI_IMAGE)" \

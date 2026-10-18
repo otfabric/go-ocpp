@@ -30,4 +30,4 @@ Cells we have not verified are marked "unverified".
 | Reconnection | yes, backoff with jitter | unverified | unverified | unverified |
 | Logging | slog | unverified | unverified | unverified |
 | Metrics | callbacks | unverified | unverified | unverified |
-| Tested interoperability | 1.6J, both roles, against mobilityhouse and chargetime (INTEROPERABILITY.md) | — | — | — |
+| Tested interoperability | 1.6J and 2.0.1, both roles, against mobilityhouse, chargetime and lorenzodonini (INTEROPERABILITY.md) | — | — | — |

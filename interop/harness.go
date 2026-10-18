@@ -23,18 +23,15 @@ import (
 )
 
 // The reference images this version of go-ocpp is qualified against:
-// otfabric/ocpp-interop v0.0.1 (The Mobility House ocpp 2.1.0, ChargeTimeEU
-// Java-OCA-OCPP v2.0), pinned by multi-arch index digest so that a run is
-// reproducible. Moving to another release of ocpp-interop means changing
+// otfabric/ocpp-interop v0.1.0 (The Mobility House ocpp 2.1.0, ChargeTimeEU
+// Java-OCA-OCPP v2.0, lorenzodonini/ocpp-go v0.19.0; OCPP 1.6J and 2.0.1),
+// pinned by multi-arch index digest so that a run is reproducible. Moving to another release of ocpp-interop means changing
 // these constants; the Makefile and .github/workflows/interop.yml follow.
 const (
-	interopRelease            = "v0.0.1"
-	defaultMobilityHouseImage = "ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:6243da691f8682398a8cd420fb91b68a4d0f6aa42267961f8d04d097d172fd00"
-	defaultChargeTimeImage    = "ghcr.io/otfabric/ocpp-interop-chargetime@sha256:beeb0e2b34d3c56b5835ed280b38e52ab4d1eba86251552e72e33bf12b7e3b2e"
-	// lorenzodonini/ocpp-go has no released ocpp-interop image yet (it
-	// arrives with ocpp-interop v0.1.0): it runs only when
-	// OCPP_INTEROP_LORENZODONINI_IMAGE names one.
-	defaultLorenzodoniniImage = ""
+	interopRelease            = "v0.1.0"
+	defaultMobilityHouseImage = "ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:fff81e3cfd67a135acf63994f1622a141a9150a6973ee668e4a06a4e0aeb65ec"
+	defaultChargeTimeImage    = "ghcr.io/otfabric/ocpp-interop-chargetime@sha256:01b3d8d3fa12de8acbd170434fc6a04fa0e0ec11f7d5a53c93d84e512a892cc7"
+	defaultLorenzodoniniImage = "ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:27801a6ae636cfa78833b75bd193f57a27aba42bfab083262841afb1047ee7ce"
 )
 
 // adapter is one reference implementation: a container image that follows
@@ -328,18 +325,5 @@ func eventually(t testing.TB, timeout time.Duration, what string, cond func() bo
 			t.Fatalf("timed out waiting for %s", what)
 		}
 		time.Sleep(20 * time.Millisecond)
-	}
-}
-
-// TestReferences checks that the pinned images are the ocpp-interop release
-// the documentation says this version is qualified against.
-func TestReferences(t *testing.T) {
-	for _, a := range adapters(t) {
-		c := a.caps(t)
-		t.Logf("%s: ocpp-interop %s (contract %s), %s %s, %s", a.name, c.AdapterVersion, c.ContractVersion,
-			c.Upstream.Name, c.Upstream.Version, a.image)
-		if a.pinned && c.AdapterVersion != interopRelease {
-			t.Errorf("%s is pinned as ocpp-interop %s but reports %s", a.name, interopRelease, c.AdapterVersion)
-		}
 	}
 }

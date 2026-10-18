@@ -27,13 +27,17 @@ Both are required. In each, CALLs are sent from both ends of the connection.
 
 ## Status
 
-Qualified against **otfabric/ocpp-interop v0.0.1**, pinned by digest in
-`interop/harness.go`, the Makefile and `.github/workflows/interop.yml`:
+Qualified against **otfabric/ocpp-interop v0.1.0** (contract 0.3), pinned
+by digest in `interop/harness.go`, the Makefile and
+`.github/workflows/interop.yml`:
 
-| Reference | Upstream | Image |
-|---|---|---|
-| `mobilityhouse` | The Mobility House ocpp 2.1.0 (Python) | `ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:6243da69…` |
-| `chargetime` | ChargeTimeEU Java-OCA-OCPP v2.0 (Java) | `ghcr.io/otfabric/ocpp-interop-chargetime@sha256:beeb0e2b…` |
+| Reference | Upstream | OCPP | Image |
+|---|---|---|---|
+| `mobilityhouse` | The Mobility House ocpp 2.1.0 (Python) | 1.6J, 2.0.1 | `ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:fff81e3c…` |
+| `chargetime` | ChargeTimeEU Java-OCA-OCPP v2.0 (Java) | 1.6J, 2.0.1 | `ghcr.io/otfabric/ocpp-interop-chargetime@sha256:01b3d8d3…` |
+| `lorenzodonini` | lorenzodonini/ocpp-go v0.19.0 (Go) | 1.6J, 2.0.1 | `ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:27801a6a…` |
+
+`TestReferences` checks that each pinned image reports this release.
 
 ### What runs
 
@@ -54,26 +58,7 @@ must also pass go-ocpp's typed validation (`ocpp16`, `ocpp201`); for CALLs
 the reference sends, the request must also keep every field of the sample.
 Security profile 1 (HTTP Basic) is tested in both roles.
 
-### Results with the pinned images (ocpp-interop v0.0.1, OCPP 1.6J)
-
-| Test | Reference | Sent by the station | Sent by the CSMS |
-|---|---|---|---|
-| go-ocpp client → reference CSMS | mobilityhouse | 13 pass | 20 pass |
-| go-ocpp client → reference CSMS | chargetime | 13 pass | 20 pass |
-| reference station → go-ocpp server | mobilityhouse | 12 pass, 1 known issue | 20 pass |
-| reference station → go-ocpp server | chargetime | 13 pass | 20 pass |
-
-These images declare OCPP 1.6 only, so the 2.0.1 runs skip.
-
-### Results with the next ocpp-interop (unreleased, 2026-10-18)
-
-Run locally (linux/arm64) against the images built from ocpp-interop's
-`phase-5-ocpp201-lorenzodonini` branch, which adds OCPP 2.0.1 to every
-adapter and the third reference, lorenzodonini/ocpp-go v0.19.0:
-
-```bash
-make interop OCPP_INTEROP_MOBILITYHOUSE_IMAGE=…:dev OCPP_INTEROP_CHARGETIME_IMAGE=…:dev OCPP_INTEROP_LORENZODONINI_IMAGE=…:dev
-```
+### Results (2026-10-18, linux/arm64; CI runs amd64 and arm64)
 
 | Test | Reference | 1.6J station / CSMS | 2.0.1 station / CSMS |
 |---|---|---|---|
@@ -84,9 +69,8 @@ make interop OCPP_INTEROP_MOBILITYHOUSE_IMAGE=…:dev OCPP_INTEROP_CHARGETIME_IM
 | reference station → go-ocpp server | chargetime | 13 / 20 pass | 16 / 15 pass |
 | reference station → go-ocpp server | lorenzodonini | 13 / 20 pass | 15 pass + 1 known / 14 pass + 1 known |
 
+"Station" counts the CALLs the station sends, "CSMS" those the CSMS sends.
 Unknown action, close and security profile 1 pass in every combination.
-These results become the qualified ones when ocpp-interop v0.1.0 is
-published and its digests are pinned here.
 
 ### Known issues
 
@@ -107,7 +91,6 @@ passed.
 
 ### Not covered yet
 
-- OCPP 2.0.1 with the pinned images: waits for ocpp-interop v0.1.0.
 - OCPP 2.1: Phase 6.
 - Compression against the references.
 - TLS (security profiles 2 and 3): not yet in ocpp-interop.

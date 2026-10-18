@@ -19,21 +19,25 @@ on:
       chargetime_image:
         description: "ChargeTimeEU reference image (default: the pinned release)"
         required: false
+      lorenzodonini_image:
+        description: "lorenzodonini/ocpp-go reference image (default: the pinned release)"
+        required: false
 
 permissions:
   contents: read
   packages: read
 
 env:
-  # otfabric/ocpp-interop v0.0.1: The Mobility House ocpp 2.1.0,
-  # ChargeTimeEU Java-OCA-OCPP v2.0.
+  # otfabric/ocpp-interop v0.1.0: The Mobility House ocpp 2.1.0,
+  # ChargeTimeEU Java-OCA-OCPP v2.0, lorenzodonini/ocpp-go v0.19.0.
   # Keep in step with the Makefile and interop/harness.go.
-  OCPP_INTEROP_MOBILITYHOUSE_IMAGE: ${{ inputs.mobilityhouse_image || 'ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:6243da691f8682398a8cd420fb91b68a4d0f6aa42267961f8d04d097d172fd00' }}
-  OCPP_INTEROP_CHARGETIME_IMAGE: ${{ inputs.chargetime_image || 'ghcr.io/otfabric/ocpp-interop-chargetime@sha256:beeb0e2b34d3c56b5835ed280b38e52ab4d1eba86251552e72e33bf12b7e3b2e' }}
+  OCPP_INTEROP_MOBILITYHOUSE_IMAGE: ${{ inputs.mobilityhouse_image || 'ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:fff81e3cfd67a135acf63994f1622a141a9150a6973ee668e4a06a4e0aeb65ec' }}
+  OCPP_INTEROP_CHARGETIME_IMAGE: ${{ inputs.chargetime_image || 'ghcr.io/otfabric/ocpp-interop-chargetime@sha256:01b3d8d3fa12de8acbd170434fc6a04fa0e0ec11f7d5a53c93d84e512a892cc7' }}
+  OCPP_INTEROP_LORENZODONINI_IMAGE: ${{ inputs.lorenzodonini_image || 'ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:27801a6ae636cfa78833b75bd193f57a27aba42bfab083262841afb1047ee7ce' }}
 
 jobs:
   interop:
-    name: Mobility House + ChargeTimeEU (${{ matrix.arch }})
+    name: Mobility House + ChargeTimeEU + ocpp-go (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     strategy:
@@ -55,7 +59,7 @@ jobs:
 
       - name: Pull reference images
         run: |
-          images=("${OCPP_INTEROP_MOBILITYHOUSE_IMAGE}" "${OCPP_INTEROP_CHARGETIME_IMAGE}")
+          images=("${OCPP_INTEROP_MOBILITYHOUSE_IMAGE}" "${OCPP_INTEROP_CHARGETIME_IMAGE}" "${OCPP_INTEROP_LORENZODONINI_IMAGE}")
           # GHCR is occasionally slow or rate limiting: try each pull a few times.
           for image in "${images[@]}"; do
             for attempt in 1 2 3 4 5; do
