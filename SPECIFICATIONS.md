@@ -153,5 +153,5 @@ the OCA text before the code that depends on it is merged.
 | ~~S1~~ | ~~Licensing status of generated Go types, and whether to vendor the schemas verbatim~~ Settled 2026-10-18: generated code is MIT; schemas are vendored verbatim (ADR 0007) | — |
 | S2 | Version of the errata inside the current OCPP 1.6 bundle, and the OCPP-J 1.6 document edition | Phase 3 |
 | S3 | Changes in Security Whitepaper Edition 4 relative to Edition 3, in particular any new messages | Phase 3 (security) |
-| S4 | T1–T10 against the 2.0.1 Edition 4 and 2.1 Edition 2 Part 4 text and the 2026-09 errata | Phase 2 (T1–T3, T6, T7); Phase 5 (T8, T9); Phase 6 (T4, T5) |
+| S4 | T1–T10 against the 2.0.1 Edition 4 and 2.1 Edition 2 Part 4 text and the 2026-09 errata. Phase 2 implements T1–T3, T6, T7 and T9 as listed; the OCA documents were not available while it was written, so the rules remain "secondary" until this check is done | Before Phase 3 is merged (T1–T3, T6, T7, T9); Phase 5 (T8); Phase 6 (T4, T5) |
 | S5 | Diff of the 2.1 Edition 1 schemas (as shipped by third parties) against the Edition 2 / 2026-09 schemas | Phase 6 |

@@ -16,6 +16,11 @@ var (
 	// connection, including while it reconnects. Nothing is queued.
 	ErrNotConnected = errors.New("ocpp: not connected")
 
+	// ErrConnectFailed is returned when a client cannot open a connection:
+	// the dial, the TLS handshake, the WebSocket handshake or the
+	// subprotocol negotiation failed.
+	ErrConnectFailed = errors.New("ocpp: connect failed")
+
 	// ErrConnectionLost is returned to calls that were pending or queued
 	// when the connection broke.
 	ErrConnectionLost = errors.New("ocpp: connection lost")
@@ -41,3 +46,8 @@ var (
 	// ErrInvalidOption is returned by constructors given an invalid option.
 	ErrInvalidOption = errors.New("ocpp: invalid option")
 )
+
+// ErrUnexpectedResponse is reported through Metrics.OnProtocolError for a
+// CALLRESULT or CALLERROR that matches no pending CALL: a late response
+// after a timeout, a duplicate, or an unknown message ID.
+var ErrUnexpectedResponse = errors.New("ocpp: unexpected response")

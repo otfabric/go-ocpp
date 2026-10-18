@@ -111,25 +111,33 @@ cover: coverage ## Open coverage report in browser
 	@go tool cover -html=coverage.out
 
 # Duration each fuzz target runs. Override with FUZZTIME=... (e.g. FUZZTIME=5m).
-# Targets are added with the code they fuzz: ocppj.Decode in Phase 2, the
-# dispatchers of the version packages in Phases 3, 5 and 6.
+# Each entry is <package dir>:<fuzz target>. The dispatchers of the version
+# packages are added in Phases 3, 5 and 6.
 FUZZTIME ?= 30s
-FUZZ_TARGETS :=
+FUZZ_TARGETS := ocppj:FuzzDecode
 fuzz: ## Run the fuzz targets for FUZZTIME each (default 30s)
 	@echo "Fuzzing (FUZZTIME=$(FUZZTIME))"
 	@for t in $(FUZZ_TARGETS); do \
 		go test -run='^$$' -fuzz="^$${t#*:}$$" -fuzztime=$(FUZZTIME) "./$${t%%:*}" || exit 1; \
 	done
 
-# Reference implementations for 'make interop': otfabric/ocpp-interop images,
-# pinned by multi-arch index digest, from its first release (Phase 4).
-# Keep in step with interop/harness.go and .github/workflows/interop.yml.
-test-interop: ## Run the interop suite against the ocpp-interop images (needs Docker)
-	@if [ -d interop ]; then \
-		OCPP_INTEROP_REQUIRE=1 go test -tags=interop -count=1 -timeout=20m ./interop/...; \
-	else \
-		echo "no interop suite yet (Phase 4)"; \
-	fi
+# Reference implementations for 'make interop': otfabric/ocpp-interop v0.0.1
+# (The Mobility House ocpp 2.1.0, ChargeTimeEU Java-OCA-OCPP v2.0), pinned by
+# multi-arch index digest. Keep in step with interop/harness.go and
+# .github/workflows/interop.yml.
+# A reference image that cannot be had fails the run: asked to test against
+# it, passing by skipping would say nothing.
+# Override to test other builds, e.g. the local ones of an ocpp-interop checkout:
+#   make interop OCPP_INTEROP_MOBILITYHOUSE_IMAGE=ghcr.io/otfabric/ocpp-interop-mobilityhouse:dev
+OCPP_INTEROP_MOBILITYHOUSE_IMAGE ?= ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:6243da691f8682398a8cd420fb91b68a4d0f6aa42267961f8d04d097d172fd00
+OCPP_INTEROP_CHARGETIME_IMAGE    ?= ghcr.io/otfabric/ocpp-interop-chargetime@sha256:beeb0e2b34d3c56b5835ed280b38e52ab4d1eba86251552e72e33bf12b7e3b2e
+
+test-interop: ## Run the interop suite against the ocpp-interop reference images (needs Docker)
+	@echo "Running interop tests against $(OCPP_INTEROP_MOBILITYHOUSE_IMAGE) and $(OCPP_INTEROP_CHARGETIME_IMAGE)"
+	@OCPP_INTEROP_MOBILITYHOUSE_IMAGE="$(OCPP_INTEROP_MOBILITYHOUSE_IMAGE)" \
+		OCPP_INTEROP_CHARGETIME_IMAGE="$(OCPP_INTEROP_CHARGETIME_IMAGE)" \
+		OCPP_INTEROP_REQUIRE=1 \
+		go test -tags=interop -count=1 -timeout=20m ./interop/...
 
 interop: test-interop ## Alias for test-interop
 

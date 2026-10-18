@@ -23,7 +23,8 @@ No release has been made yet.
 
 ## Security Considerations
 
-The design is in [ARCHITECTURE.md](ARCHITECTURE.md#security). In summary:
+Implemented in the client and server (Phase 2); see
+[ARCHITECTURE.md](ARCHITECTURE.md#security). In summary:
 
 | Profile | Transport | Authentication |
 |---|---|---|
@@ -39,5 +40,26 @@ The design is in [ARCHITECTURE.md](ARCHITECTURE.md#security). In summary:
 - Frame size, station count, queue lengths and handshake time are bounded by
   default.
 
-Deployment guidance, including certificate rotation and the limits, will be
-written with the implementation (Phases 2 and 3).
+### Deployment
+
+- Use profile 2 or 3. Profile 1 sends the password in clear text.
+- With `server.BasicAuth`, the user name must equal the station identity in
+  the URL, and passwords are compared in constant time. For profile 3, check
+  in the authenticator that the client certificate belongs to the identity
+  in the URL (`ConnectRequest.TLS.PeerCertificates`); the TLS handshake only
+  proves that the certificate is trusted.
+- When the server is mounted in an application's `http.Server`, that server
+  does the TLS: set its `TLSConfig` (`ClientAuth`, `ClientCAs` for profile 3)
+  and `ReadHeaderTimeout`.
+- Certificate rotation: supply a `tls.Config` with `GetCertificate`
+  (server), `GetClientCertificate` (client) or `GetConfigForClient`. The
+  library keeps no certificates of its own.
+- Limits and their defaults: 10 000 stations, 64 KiB per message, 64 queued
+  calls per connection, 30 s response timeout, 10 s for request headers on
+  the server's own listener. Refusals are HTTP errors before the upgrade.
+- Session replacement (`ReplaceExisting`, the default) happens only after
+  authentication succeeds, so an unauthenticated client cannot evict a
+  station.
+- Origin checks: browsers send an `Origin` header; a WebSocket upgrade whose
+  origin differs from the host is refused (coder/websocket's default).
+  Stations do not send one.

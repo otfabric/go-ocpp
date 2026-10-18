@@ -11,7 +11,7 @@ Order: go-ocpp foundations → OCPP 1.6J → two interop adapters → OCPP 2.0.1
 |---|---|---|
 | 0 | Research and architecture | **Done** (2026-10-18) |
 | 1 | Repository foundations | **Done** (2026-10-18). CI has not run on GitHub yet |
-| 2 | Shared OCPP-J engine | Open |
+| 2 | Shared OCPP-J engine | **Done**, except the check against the OCA text (S4) |
 | 3 | OCPP 1.6J | Open |
 | 4 | Initial interoperability (1.6J) | Open |
 | 5 | OCPP 2.0.1 | Open |
@@ -53,23 +53,27 @@ Gate: both repositories build cleanly and pass their initial CI.
 
 ## Phase 2 - Shared OCPP-J engine
 
-- [ ] Confirm T1–T3, T6 and T7 against the OCA text (S4)
-- [ ] `ocppj`: frames, per-version error codes, limits, fuzz targets with a
-      seed corpus
-- [ ] `internal/transport`: coder/websocket adapter and in-memory
+- [ ] Confirm T1–T3, T6, T7 and T9 against the OCA text (S4). Not done:
+      the OCA documents were not available. Must happen before Phase 3 is
+      merged
+- [x] `ocppj`: frames, per-version error codes, limits, fuzz target
+      (`FuzzDecode`) with seeds
+- [x] `internal/transport`: coder/websocket adapter and in-memory
       transport (ADR 0002)
-- [ ] `internal/engine`: correlation, a single outgoing slot with a bounded
+- [x] `internal/engine`: correlation, a single outgoing slot with a bounded
       queue, timeouts, late and duplicate responses, sequential dispatch,
       lifecycle, goroutine-leak tests (ADR 0004)
-- [ ] Root contracts: `Peer`, `Caller`, `Dispatcher`, `CallError`,
+- [x] Root contracts: `Peer`, `Caller`, `Dispatcher`, `CallError`,
       `Metrics`, interceptors, `State`
-- [ ] `client`: dial, subprotocol offer, Basic auth, TLS, reconnect with
+- [x] `client`: dial, subprotocol offer, Basic auth, TLS, reconnect with
       backoff and jitter, state handler
-- [ ] `server`: `http.Handler`, authenticator, version selection, session
+- [x] `server`: `http.Handler`, authenticator, version selection, session
       registry, replacement policy, limits, `Shutdown`
-- [ ] A test of the import rules in ARCHITECTURE.md
-- [ ] e2e with a raw 1.6 dispatcher: requests in both directions,
-      concurrency, close during a call
+- [x] A test of the import rules in ARCHITECTURE.md
+- [x] e2e with raw dispatchers on every version: requests in both
+      directions, a handler calling back, 40 concurrent stations, close
+      during a call, Basic auth, TLS profiles 2 and 3, replacement,
+      reconnect, limits, observability, no credentials in logs
 
 Gate: a Go client and a Go server exchange requests in both directions over
 WebSockets, under `-race`, with no leaked goroutines.
@@ -97,23 +101,25 @@ handlers.
 
 In ocpp-interop:
 
-- [ ] Contract 1.0 (from draft 0.1), and fixtures for 1.6
-- [ ] Adapters `mobilityhouse` (Python) and `chargetime` (Java), both roles,
+- [ ] Contract 1.0 (draft 0.2 so far; ChargeTimeEU cannot implement all of
+      it), fixtures for 1.6 done
+- [x] Adapters `mobilityhouse` (Python) and `chargetime` (Java), both roles,
       1.6J
-- [ ] Container images for amd64 and arm64, pinned bases, non-root,
+- [x] Container images for amd64 and arm64, pinned bases, non-root,
       licences
-- [ ] Smoke tests and the cross-adapter matrix; reports in the result
+- [x] Smoke tests and the cross-adapter matrix; reports in the result
       schema
-- [ ] Release v0.1.0, published to GHCR with digests
+- [x] Released as v0.0.1, published to GHCR with digests
 
 In go-ocpp:
 
-- [ ] `interop/` harness (build tag), pinned digests in three places,
-      `interop.yml`
-- [ ] go-ocpp client against both reference servers, and both reference
-      clients against the go-ocpp server
-- [ ] INTEROPERABILITY.md and COMPATIBILITY.md with real results
-- [ ] Interop badge in README.md, added once `interop.yml` exists
+- [x] `interop/` harness (build tag), pinned digests in three places
+      (ocpp-interop v0.0.1), `interop.yml` on amd64 and arm64
+- [x] go-ocpp client against both reference servers, and both reference
+      clients against the go-ocpp server (1.6J, raw payloads, profiles 0
+      and 1)
+- [x] INTEROPERABILITY.md and COMPATIBILITY.md with real results
+- [x] Interop badge in README.md
 
 Gate: 1.6J interoperates in both roles with two independent
 implementations.

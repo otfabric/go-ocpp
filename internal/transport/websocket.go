@@ -1,0 +1,107 @@
+// SPDX-License-Identifier: MIT
+
+package transport
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net/http"
+
+	"github.com/coder/websocket"
+)
+
+// DialOptions configure Dial.
+type DialOptions struct {
+	HTTPClient   *http.Client // nil: http.DefaultClient
+	Header       http.Header
+	Subprotocols []string
+	// ReadLimit is the largest message accepted, in bytes; a larger one
+	// closes the connection with StatusTooBig.
+	ReadLimit int64
+}
+
+// Dial opens a WebSocket to url. The *http.Response is returned when the
+// server answered the handshake, also on failure, so that its status can be
+// reported.
+func Dial(ctx context.Context, url string, o DialOptions) (Conn, *http.Response, error) {
+	c, resp, err := websocket.Dial(ctx, url, &websocket.DialOptions{
+		HTTPClient:   o.HTTPClient,
+		HTTPHeader:   o.Header,
+		Subprotocols: o.Subprotocols,
+	})
+	if err != nil {
+		return nil, resp, err
+	}
+	if o.ReadLimit > 0 {
+		c.SetReadLimit(o.ReadLimit)
+	}
+	return &wsConn{c: c}, resp, nil
+}
+
+// AcceptOptions configure Accept.
+type AcceptOptions struct {
+	// Subprotocol is the subprotocol to select. The caller has already
+	// chosen it from the client's offers.
+	Subprotocol string
+	ReadLimit   int64
+}
+
+// Accept upgrades an HTTP request to a WebSocket. On failure it has written
+// an HTTP error response.
+func Accept(w http.ResponseWriter, r *http.Request, o AcceptOptions) (Conn, error) {
+	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{Subprotocols: []string{o.Subprotocol}})
+	if err != nil {
+		return nil, err
+	}
+	if c.Subprotocol() != o.Subprotocol {
+		_ = c.Close(StatusPolicy, "subprotocol not negotiated")
+		return nil, fmt.Errorf("transport: subprotocol %q not negotiated", o.Subprotocol)
+	}
+	if o.ReadLimit > 0 {
+		c.SetReadLimit(o.ReadLimit)
+	}
+	return &wsConn{c: c}, nil
+}
+
+type wsConn struct{ c *websocket.Conn }
+
+func (w *wsConn) ReadMessage(ctx context.Context) ([]byte, error) {
+	typ, p, err := w.c.Read(ctx)
+	if err != nil {
+		return nil, convert(err)
+	}
+	if typ != websocket.MessageText {
+		_ = w.c.Close(StatusUnsupported, "OCPP-J uses text messages only")
+		return nil, errors.New("transport: binary message received")
+	}
+	return p, nil
+}
+
+func (w *wsConn) WriteMessage(ctx context.Context, p []byte) error {
+	return convert(w.c.Write(ctx, websocket.MessageText, p))
+}
+
+// Close runs the closing handshake, which coder/websocket bounds to a few
+// seconds. Closing an already closed connection is not an error.
+func (w *wsConn) Close(code int, reason string) error {
+	_ = w.c.Close(websocket.StatusCode(code), reason)
+	return nil
+}
+
+func (w *wsConn) Subprotocol() string { return w.c.Subprotocol() }
+
+func convert(err error) error {
+	if err == nil {
+		return nil
+	}
+	if code := websocket.CloseStatus(err); code != -1 {
+		var ce websocket.CloseError
+		reason := ""
+		if errors.As(err, &ce) {
+			reason = ce.Reason
+		}
+		return &CloseError{Code: int(code), Reason: reason}
+	}
+	return fmt.Errorf("%w: %w", ErrClosed, err)
+}

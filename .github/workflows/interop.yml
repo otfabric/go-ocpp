@@ -1,0 +1,94 @@
+name: Interop
+run-name: "Interop (${{ github.event_name }}) on ${{ github.ref_name }} by @${{ github.actor }}"
+
+# Runs go-ocpp against the reference implementations published by
+# otfabric/ocpp-interop: its client against each reference CSMS, and each
+# reference station against its server. The images are consumed as
+# published: nothing of ocpp-interop is cloned or built here.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+  workflow_dispatch:
+    inputs:
+      mobilityhouse_image:
+        description: "Mobility House reference image (default: the pinned release)"
+        required: false
+      chargetime_image:
+        description: "ChargeTimeEU reference image (default: the pinned release)"
+        required: false
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  # otfabric/ocpp-interop v0.0.1: The Mobility House ocpp 2.1.0,
+  # ChargeTimeEU Java-OCA-OCPP v2.0.
+  # Keep in step with the Makefile and interop/harness.go.
+  OCPP_INTEROP_MOBILITYHOUSE_IMAGE: ${{ inputs.mobilityhouse_image || 'ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:6243da691f8682398a8cd420fb91b68a4d0f6aa42267961f8d04d097d172fd00' }}
+  OCPP_INTEROP_CHARGETIME_IMAGE: ${{ inputs.chargetime_image || 'ghcr.io/otfabric/ocpp-interop-chargetime@sha256:beeb0e2b34d3c56b5835ed280b38e52ab4d1eba86251552e72e33bf12b7e3b2e' }}
+
+jobs:
+  interop:
+    name: Mobility House + ChargeTimeEU (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Pull reference images
+        run: |
+          images=("${OCPP_INTEROP_MOBILITYHOUSE_IMAGE}" "${OCPP_INTEROP_CHARGETIME_IMAGE}")
+          # GHCR is occasionally slow or rate limiting: try each pull a few times.
+          for image in "${images[@]}"; do
+            for attempt in 1 2 3 4 5; do
+              docker pull "${image}" && break
+              [[ "${attempt}" == 5 ]] && { echo "::error::cannot pull ${image}"; exit 1; }
+              sleep $((attempt * 15))
+            done
+          done
+          {
+            echo "| Reference | Image | Upstream |"
+            echo "|---|---|---|"
+            for image in "${images[@]}"; do
+              docker run --rm "${image}" print-capabilities \
+                | jq -r --arg image "${image}" '"| \(.adapter) \(.adapterVersion) | `\($image)` | \(.upstream.name) \(.upstream.version) |"'
+            done
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Run the interop suite
+        run: make interop
+
+      - name: Collect container logs on failure
+        if: failure()
+        run: |
+          mkdir -p artifacts
+          docker ps -a > artifacts/docker-ps.txt || true
+          for c in $(docker ps -aq); do
+            docker logs "$c" > "artifacts/${c}.log" 2>&1 || true
+          done
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: interop-logs-${{ matrix.arch }}
+          path: artifacts/
+          if-no-files-found: ignore
