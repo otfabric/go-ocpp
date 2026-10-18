@@ -1,0 +1,44 @@
+const DefaultHandshakeTimeout = 30 * time.Second
+const DefaultMaxMessageSize = 64 << 10
+const DefaultMaxQueuedCalls = 64
+const DefaultResponseTimeout = 30 * time.Second
+func (c *Client) Call(ctx context.Context, action string, req, resp any) error
+func (c *Client) Close() error
+func (c *Client) Connect(ctx context.Context) error
+func (c *Client) ID() string
+func (c *Client) Role() ocpp.Role
+func (c *Client) Send(ctx context.Context, action string, req any) error
+func (c *Client) SetReconnect(r *Reconnect) error
+func (c *Client) Shutdown(ctx context.Context) error
+func (c *Client) State() ocpp.State
+func (c *Client) Version() ocpp.Version
+func (e *HandshakeError) Error() string
+func DefaultReconnect() Reconnect
+func New(rawURL string, opts ...Option) (*Client, error)
+func WithBasicAuth(username, password string) Option
+func WithCallInterceptor(i ocpp.Interceptor) Option
+func WithCompression() Option
+func WithFrameObserver(f ocpp.FrameObserver) Option
+func WithHTTPClient(c *http.Client) Option
+func WithHandler(v ocpp.Version, d ocpp.Dispatcher) Option
+func WithHandlerInterceptor(i ocpp.Interceptor) Option
+func WithHandshakeTimeout(d time.Duration) Option
+func WithHeader(name, value string) Option
+func WithIncomingRateLimit(perSecond float64, burst int) Option
+func WithInsecureTransport() Option
+func WithLogger(l *slog.Logger) Option
+func WithMaxBadMessages(n int) Option
+func WithMaxMessageSize(n int) Option
+func WithMaxQueuedCalls(n int) Option
+func WithMetrics(m ocpp.Metrics) Option
+func WithPingInterval(d time.Duration) Option
+func WithReconnect(r Reconnect) Option
+func WithResponseTimeout(d time.Duration) Option
+func WithStateHandler(f func(state ocpp.State, err error)) Option
+func WithTLS(cfg *tls.Config) Option
+func WithVersions(v ...ocpp.Version) Option
+func WithWriteTimeout(d time.Duration) Option
+type Client struct { }
+type HandshakeError struct { StatusCode int }
+type Option func(*options)
+type Reconnect struct { WaitMinimum time.Duration RandomRange time.Duration RepeatTimes int }

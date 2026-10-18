@@ -1,9 +1,10 @@
 # Architecture
 
-Status: **Phase 5**. The root package, `ocppj`, the engine, the transport,
+Status: **Phase 6**. The root package, `ocppj`, the engine, the transport,
 `client`, `server`, and the version packages `ocpp16` (OCPP 1.6J with the
-Security Whitepaper extensions) and `ocpp201` (OCPP 2.0.1) are implemented
-as described here. `ocpp21` is Phase 6. Decisions that are hard to reverse are
+Security Whitepaper extensions), `ocpp201` (OCPP 2.0.1) and `ocpp21` (OCPP
+2.1, with SEND and CALLRESULTERROR) are implemented as described here.
+Decisions that are hard to reverse are
 recorded as ADRs in [docs/adr](docs/adr). Choices this document makes where
 the specifications are silent are collected in
 [Implementation choices](#implementation-choices).
@@ -200,8 +201,10 @@ validation belong to the version packages.
 - **Outgoing CALLs.** At most one CALL is outstanding at a time (T6). Other
   callers wait in a bounded queue, in FIFO order, until the slot is free,
   their context ends, or the endpoint closes. A full queue returns `ErrBusy`.
-  SEND frames (2.1) do not take the slot (T5). The slot is released when the
-  response arrives, the request times out, or the connection closes.
+  SEND frames (2.1) do not take the slot (T5): they have their own bounded
+  queue and are written as soon as the writer is free. The slot is released
+  when the response arrives, the request times out, or the connection
+  closes.
 - **Timeouts.** Each CALL has a response timeout (default 30 s, configurable
   per client or server). A CALL that times out returns `ErrTimeout`, and the
   slot is free again. A response that arrives later is dropped with a log
@@ -214,6 +217,18 @@ validation belong to the version packages.
   handler sends a CALL of its own: for example, a CSMS that sends
   GetConfiguration from inside its BootNotification handler. The handler
   context is cancelled when the connection closes.
+- **Incoming SENDs (2.1).** SENDs are dispatched in the same queue as CALLs,
+  so a handler sees them in arrival order, to the dispatcher's
+  `ocpp.SendDispatcher` method. Nothing is sent back (T5): an invalid SEND,
+  an unknown action or a handler error is logged and passed to
+  `Metrics.OnCallHandled`. A dispatcher without `DispatchSend` drops SENDs
+  with a log entry.
+- **CALLRESULTERROR (2.1).** When the response to a CALL does not decode or
+  fails `Validate`, the endpoint answers it with a CALLRESULTERROR carrying
+  the CALL's message ID and the violation's error code (T4), and the CALL
+  fails. On 1.6 and 2.0.1 the CALL just fails. A CALLRESULTERROR received
+  is logged and counted with `OnProtocolError`; the CALL it refers to has
+  already completed.
 - **Lifecycle.** An endpoint is created, then started once its owner has
   made it reachable, so that a handler calling back during the first frame
   finds it. `Close` is idempotent. It runs the WebSocket closing handshake
@@ -357,7 +372,7 @@ c, err := client.New("wss://csms.example.com/ocpp/STATION001",
     client.WithHandler(ocpp.V201, ocpp201.ChargingStation(h201)),
     client.WithHandler(ocpp.V16, ocpp16.ChargePoint(h16)),
     client.WithBasicAuth("STATION001", password),       // profile 2 with wss
-    client.WithReconnect(client.DefaultReconnect),
+    client.WithReconnect(client.DefaultReconnect()),
     client.WithStateHandler(func(s ocpp.State, err error) { ... }),
     client.WithLogger(logger),
 )
@@ -374,7 +389,7 @@ resp, err := ocpp201.BootNotification(ctx, c, &ocpp201.BootNotificationRequest{.
   `ctx` ends. With reconnect enabled, a dropped connection is re-dialled
   with the back-off of 2.x Part 4 §5.4: RetryBackOffWaitMinimum plus up to
   RetryBackOffRandomRange, doubled up to RetryBackOffRepeatTimes times
-  (`client.Reconnect`; `client.DefaultReconnect` when the CSMS has set none).
+  (`client.Reconnect`; `client.DefaultReconnect()` when the CSMS has set none).
   `Close` stops this.
 - While disconnected, `Call` fails immediately with `ErrNotConnected`. The
   library has no queue of its own. The state handler tells the application
@@ -507,7 +522,10 @@ if ok {
 | version packages | generated round-trip tests per message; valid and invalid payloads; fuzzing of each dispatcher |
 | `internal/engine` | in-memory transport; ordering, timeouts, late responses, cancellation, close during a call; goroutine-leak check |
 | `client`, `server` | `httptest` servers; handshake, auth, TLS, reconnect, session replacement, limits |
-| `e2e` | every version, both directions, many concurrent stations, `-race` |
+| `e2e` | every action of every version in both directions with full and minimal payloads (`TestMatrix`); many concurrent stations; parallel calls, close and shutdown under load, replacement storms; resource exhaustion (slow handshakes, station floods, oversized messages, compression bombs, call floods, queue saturation, slow readers, half-open links); TLS and authentication refusals; all with `-race` |
+| chaos | a seeded TCP proxy that fragments, delays and cuts connections while stations of every version call and SEND (`TestChaos`; `make chaos`, `make soak`, nightly in `hardening.yml`) |
+| fuzzing | `ocppj.Decode`, the engine (`FuzzEndpoint`: frame sequences), the server handshake, and each version's dispatchers seeded with every action's payloads; 10 s per target in CI, 10 min nightly |
+| API | `TestAPI` compares the exported API of `ocpp`, `ocppj`, `client` and `server` with `testdata/api` |
 | `interop` | build tag `interop`; images of `otfabric/ocpp-interop` pinned by digest; both roles |
 
 The interop harness follows go-iec104's: images are consumed only as
@@ -539,7 +557,9 @@ until checked against the OCA text (S4).
 | A malformed CALL whose message ID can be read is answered with a CALLERROR | all | T3 | `malformed` |
 | A frame of an unknown message type is dropped without an answer | all | T9 (to confirm) | `malformed` |
 | Subprotocol: the server selects the first of the station's offers it supports; no common one refuses the upgrade | all | T1 | `server.selectVersion` |
-| SEND neither answered nor counted against the CALL slot | 2.1 | T5 | Phase 6 |
+| SEND neither answered nor counted against the CALL slot | 2.1 | T5 | `engine.Send`, `handleSend` |
+| A CALLRESULT that does not decode or validate is answered with a CALLRESULTERROR, and the CALL fails | 2.1 | T4 | `refuseResult` |
+| An incoming CALLRESULTERROR fails nothing: it is logged and counted as a protocol error | 2.1 | T4 | `readLoop` |
 
 ## Implementation choices
 
@@ -558,5 +578,14 @@ Each choice can be revisited if an edition or erratum settles it.
 | Session replacement registers the new session first, then closes the old one | No moment without a session for a reconnecting station; never two that `Station` can return |
 | Binary WebSocket messages close the connection with 1003 | OCPP-J uses text messages only |
 | Compression without context takeover, accepted for every version | Lower memory per connection; supporting it on 1.6 connections is allowed and harmless |
-| `client.DefaultReconnect`: 5 s, plus up to 10 s, doubled up to 5 times | Part 4 §5.4 defines the algorithm, not default values |
+| `client.DefaultReconnect()`: 5 s, plus up to 10 s, doubled up to 5 times | Part 4 §5.4 defines the algorithm, not default values |
 | An action the version defines but the role does not receive is answered with `NotSupported`, an unhandled one too (Unimplemented handlers) | "Recognized but not supported", where `NotImplemented` means "not known" |
+| No WebSocket pings unless `WithPingInterval` is set; a pong must arrive within the interval | 2.x and 1.6 configure WebSocketPingInterval on the station; the application passes the value in. A CSMS may ping too |
+| A connection whose peer stopped responding (no pong, a write timed out) is aborted without the closing handshake | A peer that answers no ping answers no close frame; waiting for it would only delay noticing the loss |
+| No limit on malformed frames unless `WithMaxBadMessages` is set; then the connection is closed with 1008 | The specifications answer each malformed frame and say nothing about repeated ones |
+| On 2.x connections the server refuses (HTTP 400) a station identity that is not an identifierString of at most 48 characters without ":" | 2.x Part 4 §3.1.1 forbids such identities but does not say what the CSMS does; refusing keeps Basic authentication unambiguous. 1.6 sets no rule, so 1.6 identities are not checked |
+| A session replaced by a new connection reports `server.ErrReplaced` to `OnDisconnect` and the session handler; a local `Close` or `Shutdown` reports nil | The application did not close it: it should be able to tell |
+| SENDs are dispatched in the queue of incoming CALLs, in arrival order | Handlers see messages in the order the peer sent them; a SEND waits while a CALL's handler runs |
+| Station identities are matched exactly, case included | identifierString is case-insensitive as a data type, but the identity is also a URL path segment and the Basic authentication user name, both case-sensitive; exact matching never merges two stations |
+| `WithIncomingRateLimit` delays messages over the rate, never refuses them | OCPP has no CALLERROR for "too many"; delaying keeps backpressure on the connection without inventing protocol behaviour |
+| Without `WithOriginPatterns`, a request whose Origin names another host is refused (403) | Cross-site WebSocket hijacking by a browser; stations send no Origin |

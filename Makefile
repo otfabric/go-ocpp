@@ -4,7 +4,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help all build examples fmt fmt-check lint lint-ci vet vuln test test-min coverage cover fuzz check cross clean interop test-interop e2e deps gen gen-check schemas-check schemas-sync
+.PHONY: compat help all build examples fmt fmt-check lint lint-ci vet vuln test test-min coverage cover fuzz fuzz-long chaos soak check cross clean interop test-interop e2e deps gen gen-check schemas-check schemas-sync
 help: ## This help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_-]+:.*?## / {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
@@ -40,7 +40,7 @@ build: ## Build the library and the examples into ./bin
 	done
 
 # The self-contained examples: each starts both sides and exits by itself.
-RUN_EXAMPLES := ocpp16 ocpp201
+RUN_EXAMPLES := ocpp16 ocpp201 ocpp21 observability csms station-simulator smart-charging security-profiles device-model remote-management vendor-extensions
 
 examples: ## Run the self-contained examples (each must exit successfully)
 	@for e in $(RUN_EXAMPLES); do \
@@ -118,28 +118,51 @@ cover: coverage ## Open coverage report in browser
 	@go tool cover -html=coverage.out
 
 # Duration each fuzz target runs. Override with FUZZTIME=... (e.g. FUZZTIME=5m).
-# Each entry is <package dir>:<fuzz target>. The dispatchers of the version
-# packages are added in Phases 3, 5 and 6.
+# Each entry is <package dir>:<fuzz target>. An input that fails is written
+# to <package>/testdata/fuzz/<target>/ by go test: commit it, so that every
+# later test run checks it as a regression.
 FUZZTIME ?= 30s
-FUZZ_TARGETS := ocppj:FuzzDecode ocpp16:FuzzDispatch ocpp201:FuzzDispatch
+FUZZ_TARGETS := ocppj:FuzzDecode internal/engine:FuzzEndpoint server:FuzzHandshake \
+	ocpp16:FuzzDispatch ocpp201:FuzzDispatch ocpp21:FuzzDispatch
 fuzz: ## Run the fuzz targets for FUZZTIME each (default 30s)
 	@echo "Fuzzing (FUZZTIME=$(FUZZTIME))"
 	@for t in $(FUZZ_TARGETS); do \
 		go test -run='^$$' -fuzz="^$${t#*:}$$" -fuzztime=$(FUZZTIME) "./$${t%%:*}" || exit 1; \
 	done
 
-# Reference implementations for 'make interop': otfabric/ocpp-interop v0.1.0
+fuzz-long: ## Run every fuzz target for 10 minutes (what the nightly Hardening workflow runs)
+	@$(MAKE) --no-print-directory fuzz FUZZTIME=10m
+
+# Chaos and soak: the seeded chaos proxy test (e2e/chaos_test.go) and the
+# parallel and exhaustion tests, with the race detector. Replay a failure
+# with the seed it logged: make chaos CHAOS_SEED=<seed>.
+CHAOS_DURATION ?= 30s
+CHAOS_SEED ?=
+SOAKTIME ?= 10m
+chaos: ## Run the chaos test for CHAOS_DURATION (default 30s), optionally with CHAOS_SEED
+	@echo "Chaos for $(CHAOS_DURATION)"
+	@OCPP_CHAOS_DURATION=$(CHAOS_DURATION) OCPP_CHAOS_SEED=$(CHAOS_SEED) \
+		go test -race -count=1 -timeout=0 -run '^TestChaos$$' -v ./e2e
+
+soak: ## Chaos for SOAKTIME (default 10m), then the parallel and exhaustion tests 20 times
+	@$(MAKE) --no-print-directory chaos CHAOS_DURATION=$(SOAKTIME)
+	@echo "Parallel and exhaustion tests, 20 times"
+	@go test -race -count=20 -timeout=0 \
+		-run '^(TestParallel.*|TestCloseUnderLoad|TestReplacementStorm|TestShutdownUnderLoad|TestSlowHandshake|TestStationFlood|TestOversizedMessage|TestCompressionBomb|TestIncomingFlood|TestQueueSaturation|TestSlowReader|TestKeepalive|TestMatrix)$$' ./e2e
+	@go test -race -count=20 -timeout=0 -run '^(TestCallRacingClose|TestPing|TestMaxBadMessages)$$' ./internal/engine
+
+# Reference implementations for 'make interop': otfabric/ocpp-interop v0.2.0
 # (The Mobility House ocpp 2.1.0, ChargeTimeEU Java-OCA-OCPP v2.0,
-# lorenzodonini/ocpp-go v0.19.0; OCPP 1.6J and 2.0.1), pinned by multi-arch
-# index digest. Keep in step with interop/harness.go and
+# lorenzodonini/ocpp-go v0.19.0; OCPP 1.6J and 2.0.1 in all three, 2.1 in
+# The Mobility House), pinned by multi-arch index digest. Keep in step with interop/harness.go and
 # .github/workflows/interop.yml.
 # A reference image that cannot be had fails the run: asked to test against
 # it, passing by skipping would say nothing.
 # Override to test other builds, e.g. the local ones of an ocpp-interop checkout:
 #   make interop OCPP_INTEROP_MOBILITYHOUSE_IMAGE=ghcr.io/otfabric/ocpp-interop-mobilityhouse:dev
-OCPP_INTEROP_MOBILITYHOUSE_IMAGE ?= ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:fff81e3cfd67a135acf63994f1622a141a9150a6973ee668e4a06a4e0aeb65ec
-OCPP_INTEROP_CHARGETIME_IMAGE    ?= ghcr.io/otfabric/ocpp-interop-chargetime@sha256:01b3d8d3fa12de8acbd170434fc6a04fa0e0ec11f7d5a53c93d84e512a892cc7
-OCPP_INTEROP_LORENZODONINI_IMAGE ?= ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:27801a6ae636cfa78833b75bd193f57a27aba42bfab083262841afb1047ee7ce
+OCPP_INTEROP_MOBILITYHOUSE_IMAGE ?= ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:9b5449c6fdeeb9809348f772b9967676cc1831d3c0a664b357cbdc1b9b53b979
+OCPP_INTEROP_CHARGETIME_IMAGE    ?= ghcr.io/otfabric/ocpp-interop-chargetime@sha256:1dbe44f9a04d6afced3740485dc2a8429b3c5eb2f274392a32b7e1094996681c
+OCPP_INTEROP_LORENZODONINI_IMAGE ?= ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:6adb1e6b39ee0a35bfdb85ac37e5cfed61f614231097b0ad4edda1fc0376e38e
 
 test-interop: ## Run the interop suite against the ocpp-interop reference images (needs Docker)
 	@echo "Running interop tests against $(OCPP_INTEROP_MOBILITYHOUSE_IMAGE), $(OCPP_INTEROP_CHARGETIME_IMAGE) and $(OCPP_INTEROP_LORENZODONINI_IMAGE)"
@@ -151,18 +174,26 @@ test-interop: ## Run the interop suite against the ocpp-interop reference images
 
 interop: test-interop ## Alias for test-interop
 
+compat: ## Rewrite docs/compatibility (one action matrix per OCPP version) from the reference images (needs Docker)
+	@OCPP_WRITE_COMPAT=1 OCPP_INTEROP_REQUIRE=1 \
+		OCPP_INTEROP_MOBILITYHOUSE_IMAGE=$(OCPP_INTEROP_MOBILITYHOUSE_IMAGE) \
+		OCPP_INTEROP_CHARGETIME_IMAGE=$(OCPP_INTEROP_CHARGETIME_IMAGE) \
+		OCPP_INTEROP_LORENZODONINI_IMAGE=$(OCPP_INTEROP_LORENZODONINI_IMAGE) \
+		go test -tags=interop -count=1 -run '^TestWriteCompatibility$$' ./interop/
+
 gen: ## Generate the version packages from the OCA schemas (internal/gen)
-	@echo "Generating ocpp16 and ocpp201"
-	@go generate ./ocpp16 ./ocpp201
+	@echo "Generating ocpp16, ocpp201 and ocpp21"
+	@go generate ./ocpp16 ./ocpp201 ./ocpp21
 
 GENERATED := ocpp16/zz_generated_types.go ocpp16/zz_generated_actions.go ocpp16/coverage.json \
-	ocpp201/zz_generated_types.go ocpp201/zz_generated_actions.go ocpp201/coverage.json
+	ocpp201/zz_generated_types.go ocpp201/zz_generated_actions.go ocpp201/coverage.json \
+	ocpp21/zz_generated_types.go ocpp21/zz_generated_actions.go ocpp21/coverage.json
 
 gen-check: ## Fail if regenerating changes the generated files (they are then updated)
 	@echo "Checking the generated code"
 	@tmp="$$(mktemp -d)"; \
 	for f in $(GENERATED); do mkdir -p "$$tmp/$$(dirname $$f)"; cp "$$f" "$$tmp/$$f"; done; \
-	go generate ./ocpp16 ./ocpp201 || exit 1; \
+	go generate ./ocpp16 ./ocpp201 ./ocpp21 || exit 1; \
 	stale=""; for f in $(GENERATED); do cmp -s "$$f" "$$tmp/$$f" || stale="$$stale $$f"; done; \
 	rm -rf "$$tmp"; \
 	if [ -n "$$stale" ]; then echo "Generated code was out of date:$$stale (now regenerated: review and commit)"; exit 1; fi

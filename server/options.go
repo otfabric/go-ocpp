@@ -52,6 +52,12 @@ type options struct {
 	responseTimeout    time.Duration
 	maxQueuedCalls     int
 	maxMessageSize     int
+	writeTimeout       time.Duration
+	pingInterval       time.Duration
+	maxBadMessages     int
+	originPatterns     []string
+	incomingRate       float64
+	incomingBurst      int
 	callInterceptor    ocpp.Interceptor
 	handlerInterceptor ocpp.Interceptor
 	frameObserver      ocpp.FrameObserver
@@ -81,7 +87,8 @@ func WithAuthenticator(a Authenticator) Option { return func(o *options) { o.aut
 func WithoutAuthentication() Option { return func(o *options) { o.noAuth = true } }
 
 // WithSessionHandler sets functions called when a session starts and when
-// it ends (with nil after a local Close, or the cause). onConnect runs
+// it ends (with nil after a local Close or Shutdown, ErrReplaced when a new
+// connection of the station replaced it, or the cause). onConnect runs
 // after the connection is registered, while the station may already be
 // sending; onDisconnect runs after the session is removed. Either may be
 // nil. They must not block for long.
@@ -128,6 +135,41 @@ func WithMaxQueuedCalls(n int) Option { return func(o *options) { o.maxQueuedCal
 // WithMaxMessageSize sets the largest message accepted, in bytes. A larger
 // one closes the connection.
 func WithMaxMessageSize(n int) Option { return func(o *options) { o.maxMessageSize = n } }
+
+// WithWriteTimeout bounds writing one message to a station. A station
+// that stops reading makes the write fail, and its connection is closed as
+// lost. Default 10 s.
+func WithWriteTimeout(d time.Duration) Option { return func(o *options) { o.writeTimeout = d } }
+
+// WithPingInterval makes the server send a WebSocket ping to every station
+// every d, and treat a connection as lost when the pong does not arrive
+// within d. Stations usually ping (WebSocketPingInterval); a CSMS that
+// pings too notices half-open connections from its side. Zero (the
+// default) sends no pings.
+func WithPingInterval(d time.Duration) Option { return func(o *options) { o.pingInterval = d } }
+
+// WithMaxBadMessages closes a station's connection with status 1008 once n
+// malformed frames have been received on it. Each is still answered or
+// dropped as the version requires. Zero (the default) sets no limit.
+func WithMaxBadMessages(n int) Option { return func(o *options) { o.maxBadMessages = n } }
+
+// WithOriginPatterns lets browsers on other origins connect, by host
+// pattern (path.Match syntax, e.g. "*.example.com"). By default a request
+// with an Origin header whose host differs from the request's is refused
+// (cross-site WebSocket hijacking). Stations send no Origin header and are
+// not affected.
+func WithOriginPatterns(patterns ...string) Option {
+	return func(o *options) { o.originPatterns = append(o.originPatterns, patterns...) }
+}
+
+// WithIncomingRateLimit dispatches at most perSecond of a station's incoming
+// CALLs and SENDs a second, in bursts of up to burst. Messages over the
+// rate wait: none is refused, since OCPP has no error for "too many";
+// once the bounded incoming queue is full, reading from the connection
+// waits too. Zero (the default) sets no limit.
+func WithIncomingRateLimit(perSecond float64, burst int) Option {
+	return func(o *options) { o.incomingRate, o.incomingBurst = perSecond, burst }
+}
 
 // WithCallInterceptor wraps every CALL sent to a station.
 func WithCallInterceptor(i ocpp.Interceptor) Option {

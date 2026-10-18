@@ -13,10 +13,12 @@ import (
 )
 
 // Action is an action of OCPP 2.0.1 and the role that sends it; From is zero
-// for an action both roles send.
+// for an action both roles send. Send is true for an action sent as an
+// unconfirmed SEND (OCPP 2.1), which has no response.
 type Action struct {
 	Name string
 	From ocpp.Role
+	Send bool
 }
 
 // ValidateRequest decodes and validates a request payload of action, as a

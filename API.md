@@ -1,17 +1,34 @@
 # API Reference: otfabric/go-ocpp
 
-The reference for the root package, the version packages `ocpp16` and
-`ocpp201`, `client`, `server` and `ocppj`. pkg.go.dev has every generated
-type; this file describes the shape. The design is in
-[ARCHITECTURE.md](ARCHITECTURE.md#messages-handlers-and-calls).
+go-ocpp has one package per role and shared packages for everything both
+roles use:
+
+| Role or concern | Package | Reference |
+|---|---|---|
+| Charging Station (OCPP 1.6: Charge Point) | `client` | [API_CLIENT.md](API_CLIENT.md) |
+| CSMS (OCPP 1.6: Central System) | `server` | [API_SERVER.md](API_SERVER.md) |
+| Shared types: versions, calls, handlers, errors, observability | `ocpp` | [below](#package-ocpp) |
+| Typed messages, validation, call functions, handlers | `ocpp16`, `ocpp201`, `ocpp21` | [below](#packages-ocpp16-ocpp201-and-ocpp21) |
+| OCPP-J frame codec | `ocppj` | [below](#package-ocppj) |
+| Testing an application's handlers | `ocpptest` | [below](#package-ocpptest) |
+| Certificate hash data | `ocppcert` | [below](#package-ocppcert) |
+
+Errors are in [ERRORS.md](ERRORS.md), logs and metrics in
+[OBSERVABILITY.md](OBSERVABILITY.md), the design in
+[ARCHITECTURE.md](ARCHITECTURE.md). pkg.go.dev has every generated type.
+The exported API of `ocpp`, `ocppj`, `client`, `server`, `ocpptest` and
+`ocppcert` is recorded in [testdata/api](testdata/api); `TestAPI` fails on
+any change that is not recorded there, and every change is listed in
+[RELEASE.md](RELEASE.md). Stability rules are in
+[COMPATIBILITY.md](COMPATIBILITY.md#api-stability).
 
 ## Contents
 
 - [Package ocpp](#package-ocpp)
-- [Packages ocpp16 and ocpp201](#packages-ocpp16-and-ocpp201)
-- [Package client](#package-client)
-- [Package server](#package-server)
+- [Packages ocpp16, ocpp201 and ocpp21](#packages-ocpp16-ocpp201-and-ocpp21)
 - [Package ocppj](#package-ocppj)
+- [Package ocpptest](#package-ocpptest)
+- [Package ocppcert](#package-ocppcert)
 - [Concurrency](#concurrency)
 - [Departures from other OTFabric libraries](#departures-from-other-otfabric-libraries)
 
@@ -30,6 +47,7 @@ func ParseVersion(s string) (Version, bool)
 func ParseSubprotocol(s string) (Version, bool) // exact: subprotocol tokens are case-sensitive
 
 type Role uint8 // ChargingStation, CSMS
+func (r Role) String() string
 ```
 
 ### Calls and handlers
@@ -49,27 +67,65 @@ type Dispatcher interface {
     Dispatch(ctx context.Context, p Peer, action string, payload json.RawMessage) (json.RawMessage, error)
 }
 type DispatcherFunc func(ctx context.Context, p Peer, action string, payload json.RawMessage) (json.RawMessage, error)
+
+// OCPP 2.1 SEND: implemented by *client.Client and *server.Session.
+type Sender interface {
+    Send(ctx context.Context, action string, req any) error
+}
+// Implemented by a Dispatcher that also receives SENDs (the ocpp21 dispatchers do).
+type SendDispatcher interface {
+    DispatchSend(ctx context.Context, p Peer, action string, payload json.RawMessage) error
+}
 ```
 
-- `req` is marshalled with `encoding/json`. A `json.RawMessage` is sent as is,
-  and nil as `{}`.
+- `req` is marshalled with `encoding/json`. A `json.RawMessage` is sent as
+  is, and nil as `{}`.
 - `resp` receives the CALLRESULT payload. It must be a pointer, a
   `*json.RawMessage` (to receive the payload unchanged), or nil (to discard
   it).
-- A `Dispatcher` returns the CALLRESULT payload, which must be a JSON object.
-  Errors become a CALLERROR: a `*CallError` with a code the version defines
-  is sent as is. Anything else is sent as `InternalError` without its text.
+- A `Dispatcher` returns the CALLRESULT payload, which must be a JSON
+  object. Errors become a CALLERROR: a `*CallError` with a code the version
+  defines is sent as is. Anything else is sent as `InternalError` without
+  its text.
 - A handler's context ends when the connection closes. A handler may call
   the peer (`p.Call`) while it handles a CALL.
+- `AfterResponse(ctx, f)` runs `f` once the handler's response is on its
+  way: what a handler sends there goes out after the response. Use it for
+  the messages a use case sends after answering (NotifyReport after
+  GetBaseReport, status notifications after UpdateFirmware or GetLog, the
+  triggered message after TriggerMessage, a reboot after Reset).
+
+```go
+func AfterResponse(ctx context.Context, f func()) bool // false outside a CALL handler
+
+func (h station) GetBaseReport(ctx context.Context, p ocpp.Peer, req *ocpp201.GetBaseReportRequest) (*ocpp201.GetBaseReportResponse, error) {
+    ocpp.AfterResponse(ctx, func() { h.sendReport(p, req.RequestID) }) // NotifyReport after the response
+    return &ocpp201.GetBaseReportResponse{Status: ocpp201.GenericDeviceModelStatusAccepted}, nil
+}
+```
+- `Send` (OCPP 2.1 only; `ErrUnsupportedVersion` otherwise) queues a SEND
+  and returns: nothing comes back. It does not wait for the outgoing CALL
+  slot. `DispatchSend` is called for incoming SENDs, in arrival order with
+  the CALLs; its error is logged and counted, never sent. A dispatcher
+  without `DispatchSend` drops SENDs with a log entry, so a wrapper around
+  an ocpp21 dispatcher implements `SendDispatcher` too and forwards to it.
+- On 2.1 a CALLRESULT that fails decoding or `Validate` is answered with a
+  CALLRESULTERROR, and the call returns the error.
+- Raw calls (`Call` with `json.RawMessage`, a `DispatcherFunc`) bypass the
+  typed validation: that is how vendor actions, and messages of stations
+  that do not conform, are handled where an application chooses to.
 
 ### CALLERROR
 
 ```go
-type ErrorCode string // NotImplemented, NotSupported, InternalError, ProtocolError, SecurityError,
-                      // FormationViolation (1.6) / FormatViolation (2.x),
-                      // OccurenceConstraintViolation (1.6) / OccurrenceConstraintViolation (2.x),
-                      // PropertyConstraintViolation, TypeConstraintViolation, GenericError,
-                      // MessageTypeNotSupported (2.x), RpcFrameworkError (2.x)
+type ErrorCode string // ERRORS.md says which version defines each and when go-ocpp sends it
+const (
+    NotImplemented, NotSupported, InternalError, ProtocolError, SecurityError,
+    PropertyConstraintViolation, TypeConstraintViolation, GenericError ErrorCode // all versions
+    FormationViolation, OccurenceConstraintViolation ErrorCode                    // 1.6 spellings
+    FormatViolation, OccurrenceConstraintViolation,
+    MessageTypeNotSupported, RpcFrameworkError ErrorCode                          // 2.x
+)
 
 type CallError struct {
     Code        ErrorCode
@@ -77,6 +133,23 @@ type CallError struct {
     Details     json.RawMessage // a JSON object, or nil for {}
 }
 func NewCallError(code ErrorCode, description string) *CallError
+func (e *CallError) Error() string
+```
+
+### Validation
+
+```go
+type ValidationError struct {
+    Code   ErrorCode // the CALLERROR code, spelt as the version spells it
+    Field  string    // e.g. "meterValue[0].sampledValue[1].measurand"
+    Reason string
+}
+func (e *ValidationError) CallError() *CallError
+func (e *ValidationError) Error() string
+func (e *ValidationError) Unwrap() error // ErrInvalidMessage
+var ErrInvalidMessage error // wrapped by every *ValidationError
+
+func Ptr[T any](v T) *T // for optional fields
 ```
 
 ### Observability
@@ -89,29 +162,27 @@ type CallInfo struct{ ConnInfo; Action, MessageID string; Direction Direction }
 
 type Interceptor func(ctx context.Context, info CallInfo, next func(context.Context) error) error
 type FrameObserver func(info ConnInfo, dir Direction, frame []byte)
-type Metrics interface { /* see OBSERVABILITY.md */ }
-type NopMetrics struct{}
-```
-
-### Validation
-
-```go
-type ValidationError struct {
-    Code   ErrorCode // the CALLERROR code, spelt as the version spells it
-    Field  string    // e.g. "meterValue[0].sampledValue[1].measurand"
-    Reason string
-}
-func (e *ValidationError) CallError() *CallError
-var ErrInvalidMessage error // wrapped by every *ValidationError
-
-func Ptr[T any](v T) *T // for optional fields
+type Metrics interface { /* OnConnect, OnConnectFailed, OnDisconnect, OnReconnectAttempt,
+                            OnCallDone, OnCallHandled, OnProtocolError: see OBSERVABILITY.md */ }
+type NopMetrics struct{} // embed it
 ```
 
 ### Errors
 
-The sentinels are described in [ERRORS.md](ERRORS.md).
+```go
+// How the peer closed the connection, wrapped next to ErrConnectionLost.
+type CloseError struct{ Code int; Reason string }
+func (e *CloseError) Error() string
+func (e *CloseError) Normal() bool // 1000 or 1001: closed on purpose
+```
 
-## Packages ocpp16 and ocpp201
+The sentinels (`ErrClosed`, `ErrNotConnected`, `ErrConnectFailed`,
+`ErrConnectionLost`, `ErrTimeout`, `ErrBusy`, `ErrWrongDirection`,
+`ErrUnsupportedVersion`, `ErrProtocol`, `ErrInvalidOption`,
+`ErrHandlerPanic`, `ErrUnexpectedResponse`, `ErrInvalidMessage`) are
+described in [ERRORS.md](ERRORS.md).
+
+## Packages ocpp16, ocpp201 and ocpp21
 
 Generated from the OCA schemas (`schemas/`). Each holds, for every action
 `X` of its version:
@@ -125,145 +196,42 @@ func X(ctx context.Context, c ocpp.Caller, req *XRequest) (*XResponse, error)
 
 and for the version as a whole:
 
-| | ocpp16 | ocpp201 |
-|---|---|---|
-| Charging station handlers | `ChargePointHandler`, `UnimplementedChargePointHandler`, `ChargePoint(h) ocpp.Dispatcher` | `ChargingStationHandler`, `UnimplementedChargingStationHandler`, `ChargingStation(h)` |
-| CSMS handlers | `CentralSystemHandler`, `UnimplementedCentralSystemHandler`, `CentralSystem(h)` | `CSMSHandler`, `UnimplementedCSMSHandler`, `CSMS(h)` |
-| Actions | 39 (28 core, 11 security) | 64 |
+| | ocpp16 | ocpp201 | ocpp21 |
+|---|---|---|---|
+| Charging station handlers | `ChargePointHandler`, `UnimplementedChargePointHandler`, `ChargePoint(h) ocpp.Dispatcher` | `ChargingStationHandler`, `UnimplementedChargingStationHandler`, `ChargingStation(h)` | as ocpp201 |
+| CSMS handlers | `CentralSystemHandler`, `UnimplementedCentralSystemHandler`, `CentralSystem(h)` | `CSMSHandler`, `UnimplementedCSMSHandler`, `CSMS(h)` | as ocpp201; the dispatchers also implement `ocpp.SendDispatcher` |
+| Actions | 39 (28 core, 11 security) | 64 | 91, one of them a SEND |
 
 ```go
-var Actions []Action // {Name string; From ocpp.Role}, From zero for DataTransfer
+type Action struct{ Name string; From ocpp.Role; Send bool } // From zero for DataTransfer
+var Actions []Action
 func ValidateRequest(action string, payload json.RawMessage) error
 func ValidateResponse(action string, payload json.RawMessage) error
 ```
 
+The SEND action of 2.1, NotifyPeriodicEventStream, has no response:
+
+```go
+func NotifyPeriodicEventStream(ctx context.Context, s ocpp.Sender, req *NotifyPeriodicEventStreamRequest) error
+// CSMSHandler method:
+NotifyPeriodicEventStream(ctx context.Context, p ocpp.Peer, req *NotifyPeriodicEventStreamRequest) error
+```
+
+- Call functions check, before sending, that the connection is of their
+  version (`ErrUnsupportedVersion`), that the role sends the action
+  (`ErrWrongDirection`) and that the request is valid
+  (`*ocpp.ValidationError`); the response is validated on arrival.
 - Handler methods are `X(ctx, p ocpp.Peer, req *XRequest) (*XResponse, error)`.
   `p` is the other end: call it to send a CALL back while handling.
 - Field names follow Go's initialisms: `idTag` is `IDTag`, `evseId` is
   `EVSEID`. Enumeration constants are the type name without "EnumType" or
   "Type", then the value: `ocpp201.RegistrationStatusAccepted`,
   `ocpp16.ResetSoft`, `ocpp16.MeasurandEnergyActiveImportRegister`.
-- Optional fields are pointers; required arrays must not be nil (an empty
-  array is `[]T{}`).
-- `ocpp201.CustomData{VendorID, Fields}` keeps vendor properties as raw JSON.
-
-## Package client
-
-The Charging Station role.
-
-```go
-func New(url string, opts ...Option) (*Client, error)
-
-func (c *Client) Connect(ctx context.Context) error
-func (c *Client) Call(ctx context.Context, action string, req, resp any) error
-func (c *Client) Close() error
-func (c *Client) ID() string
-func (c *Client) Role() ocpp.Role // ocpp.ChargingStation
-func (c *Client) Version() ocpp.Version
-func (c *Client) State() ocpp.State
-```
-
-- `url` is `wss://host/path/<identity>`, or `ws://` with
-  `WithInsecureTransport`. Credentials in the URL are refused; use
-  `WithBasicAuth`.
-- `Connect` dials once. It returns `nil` when the connection is open, or an
-  error wrapping `ocpp.ErrConnectFailed`, which includes the HTTP status
-  when the server answered.
-- `Call` fails at once with `ErrNotConnected` while the client is not
-  connected; nothing is queued.
-- `Close` is idempotent. It stops reconnecting, and pending calls fail with
-  `ErrClosed`.
-
-| Option | Default | Meaning |
-|---|---|---|
-| `WithVersions(v...)` | versions with a handler, newest first | Versions offered, in order of preference |
-| `WithHandler(v, d)` | none: CALLs get `NotImplemented` | Dispatcher for the CSMS's CALLs on version `v` |
-| `WithBasicAuth(user, pass)` | none | HTTP Basic credentials (profiles 1 and 2) |
-| `WithTLS(cfg)` | system roots | Trust roots, client certificate (profile 3); MinVersion raised to TLS 1.2 |
-| `WithHTTPClient(c)` | `http.DefaultClient` | Handshake HTTP client (proxies); not with `WithTLS` |
-| `WithInsecureTransport()` | off | Allow `ws://` |
-| `WithReconnect(Reconnect{WaitMinimum, RandomRange, RepeatTimes})` | off | Redial after a lost connection with the back-off of 2.x Part 4 §5.4; `DefaultReconnect` is 5 s + up to 10 s, doubled up to 5 times |
-| `WithCompression()` | off | Offer RFC 7692 compression |
-| `WithStateHandler(f)` | none | Called on every state change; must not block or call `Close` |
-| `WithLogger(l)` | silent | `*slog.Logger` |
-| `WithMetrics(m)` | none | `ocpp.Metrics` |
-| `WithHandshakeTimeout(d)` | 30 s | Dial, TLS and WebSocket handshakes |
-| `WithResponseTimeout(d)` | 30 s | Wait for a CALL's response |
-| `WithMaxQueuedCalls(n)` | 64 | Calls waiting for the outgoing slot before `ErrBusy` |
-| `WithMaxMessageSize(n)` | 64 KiB | Largest message accepted |
-| `WithCallInterceptor(i)`, `WithHandlerInterceptor(i)` | none | Wrap outgoing and incoming calls |
-| `WithFrameObserver(f)` | none | See every frame |
-
-## Package server
-
-The CSMS role.
-
-```go
-func New(opts ...Option) (*Server, error)
-
-func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) // mount anywhere; identity = last path segment
-func (s *Server) ListenAndServe(addr string) error                // returns ocpp.ErrClosed after Shutdown/Close
-func (s *Server) Serve(ln net.Listener) error
-func (s *Server) Shutdown(ctx context.Context) error
-func (s *Server) Close() error
-func (s *Server) Station(id string) (*Session, bool)
-func (s *Server) Stations() []*Session
-func (s *Server) Versions() []ocpp.Version
-
-func (s *Session) ID() string
-func (s *Session) Role() ocpp.Role // ocpp.CSMS
-func (s *Session) Version() ocpp.Version
-func (s *Session) Call(ctx context.Context, action string, req, resp any) error
-func (s *Session) Close() error
-func (s *Session) Done() <-chan struct{}
-func (s *Session) Err() error // ocpp.ErrClosed, server.ErrReplaced, or wraps ocpp.ErrConnectionLost
-func (s *Session) SessionID() string
-func (s *Session) RemoteAddr() string
-func (s *Session) ConnectedAt() time.Time
-```
-
-### Authentication
-
-```go
-type Authenticator interface {
-    Authenticate(ctx context.Context, r ConnectRequest) error
-}
-type AuthenticatorFunc func(ctx context.Context, r ConnectRequest) error
-
-type ConnectRequest struct {
-    StationID    string
-    Username     string
-    Password     Secret // prints as [redacted]; string(p) for the value
-    HasBasicAuth bool
-    TLS          *tls.ConnectionState
-    RemoteAddr   string
-    Request      *http.Request
-}
-
-func BasicAuth(lookup func(ctx context.Context, stationID string) (password string, ok bool)) Authenticator
-
-var ErrUnknownStation error // an authenticator's error for an unknown identity: HTTP 404
-var ErrUnauthorized error   // BasicAuth's error for refused credentials: HTTP 401
-```
-
-`BasicAuth` requires the user name to equal the station identity, and
-compares passwords in constant time. An identity `lookup` does not know is
-refused with 404 (OCPP-J §3.2), others with 401. The server supports
-compression whenever a station offers it.
-
-| Option | Default | Meaning |
-|---|---|---|
-| `WithHandler(v, d)` | required | Dispatcher for stations' CALLs; the versions accepted are those with one |
-| `WithAuthenticator(a)` or `WithoutAuthentication()` | required, exactly one | Decide before the upgrade |
-| `WithSessionHandler(onConnect, onDisconnect)` | none | Session start and end |
-| `WithMaxStations(n)` | 10 000 | Then HTTP 503 |
-| `WithReplacePolicy(p)` | `ReplaceExisting` | Or `RejectNew` (HTTP 409) |
-| `WithTLS(cfg)` | none | TLS for `ListenAndServe` and `Serve` |
-| `WithLogger`, `WithMetrics`, `WithCallInterceptor`, `WithHandlerInterceptor`, `WithFrameObserver` | none | As for the client |
-| `WithHandshakeTimeout(d)` | 10 s | Reading the request headers (own listener only) |
-| `WithResponseTimeout(d)` | 30 s | Wait for a station's response |
-| `WithMaxQueuedCalls(n)` | 64 | Per session |
-| `WithMaxMessageSize(n)` | 64 KiB | Largest message accepted |
+- Optional fields are pointers (`ocpp.Ptr`); required arrays must not be
+  nil (an empty array is `[]T{}`).
+- `CustomData{VendorID, Fields}` (2.x) keeps vendor properties as raw JSON.
+- `coverage.json` in each package lists every action with its schemas and
+  their SHA-256.
 
 ## Package ocppj
 
@@ -272,6 +240,7 @@ The frame codec, with no I/O.
 ```go
 type MessageType uint8 // Call=2, CallResult=3, CallError=4, CallResultError=5 (2.1), Send=6 (2.1)
 func (t MessageType) Allowed(v ocpp.Version) bool
+func (t MessageType) String() string
 
 type Frame struct {
     Type        MessageType
@@ -283,9 +252,15 @@ type Frame struct {
     Details     json.RawMessage
 }
 type Limits struct{ MaxFrameSize int } // 0: DefaultMaxFrameSize (64 KiB)
+const MaxMessageIDLength = 36
 
 func Decode(data []byte, v ocpp.Version, l Limits) (Frame, error) // errors are *DecodeError, wrapping ErrMalformed
 func Encode(f Frame) ([]byte, error)
+
+type DecodeError struct{ Type MessageType; ID string; IDKnown, UnknownType bool; Reason string }
+func (e *DecodeError) Error() string
+func (e *DecodeError) Unwrap() error // ErrMalformed
+var ErrMalformed error
 
 func ErrorCodes(v ocpp.Version) []ocpp.ErrorCode
 func ValidErrorCode(v ocpp.Version, code ocpp.ErrorCode) bool
@@ -294,11 +269,65 @@ func OccurrenceErrorCode(v ocpp.Version) ocpp.ErrorCode // spelt per version
 func RPCErrorCode(v ocpp.Version) ocpp.ErrorCode        // FormationViolation / RpcFrameworkError
 ```
 
+## Package ocpptest
+
+Testing an application's handlers against a real go-ocpp peer over a
+loopback WebSocket, as `net/http/httptest` does for HTTP handlers.
+Everything it starts stops when the test ends.
+
+```go
+func CSMS(t testing.TB, opts ...server.Option) (*server.Server, string) // base URL "ws://127.0.0.1:port/ocpp/"
+func Station(t testing.TB, url string, opts ...client.Option) *client.Client // connected
+func Session(t testing.TB, srv *server.Server, id string) *server.Session  // waits for it
+const Timeout = 10 * time.Second
+
+type Recorder struct{ ... } // ocpp.Dispatcher and ocpp.SendDispatcher
+func NewRecorder() *Recorder
+func (r *Recorder) Answer(action, payload string) *Recorder        // CALLRESULT payload
+func (r *Recorder) AnswerError(action string, err *ocpp.CallError) *Recorder
+func (r *Recorder) Received(action string) []json.RawMessage
+func (r *Recorder) Wait(t testing.TB, action string) json.RawMessage
+```
+
+```go
+func TestMyCSMS(t *testing.T) {
+    stationSide := ocpptest.NewRecorder().Answer("Reset", `{"status":"Accepted"}`)
+    srv, url := ocpptest.CSMS(t, server.WithHandler(ocpp.V201, ocpp201.CSMS(myCSMS{})))
+    c := ocpptest.Station(t, url+"CS1", client.WithHandler(ocpp.V201, stationSide))
+    boot, err := ocpp201.BootNotification(ctx, c, &ocpp201.BootNotificationRequest{...})
+    ...
+    reset, err := ocpp201.Reset(ctx, ocpptest.Session(t, srv, "CS1"), &ocpp201.ResetRequest{...})
+}
+```
+
+`CSMS` adds `server.WithoutAuthentication` when no authentication option
+is given, and `Station` adds `client.WithInsecureTransport`: the test
+server is plain WebSocket on loopback. A `Recorder` does not validate;
+wrap it in a version package's dispatcher where validation matters.
+
+## Package ocppcert
+
+Certificate identifiers, with the standard library only; the library
+keeps no certificates.
+
+```go
+type HashData struct{ HashAlgorithm, IssuerNameHash, IssuerKeyHash, SerialNumber string }
+func Hash(cert, issuer *x509.Certificate, alg crypto.Hash) (HashData, error) // SHA-256, -384, -512
+var ErrUnsupportedHash error
+```
+
+`HashData` is CertificateHashDataType (2.x Part 2 §2.6; 1.6 Security
+Whitepaper): the issuer name hash over the DER of the certificate's issuer
+field, the issuer key hash over the issuer's subject public key (as in
+OCSP), the serial number in hexadecimal without leading zeroes. Copy the
+fields into `ocpp201.CertificateHashDataType` and its siblings.
+
 ## Concurrency
 
-- `Client`, `Server` and `Session` are safe for concurrent use. Any number of
-  goroutines may call `Call` at the same time. Their CALLs are sent one at a
-  time, because OCPP allows one outstanding CALL per direction.
+- `Client`, `Server`, `Session` and `Recorder` are safe for concurrent use.
+  Any number of goroutines may call `Call` at the same time. Their CALLs are
+  sent one at a time, because OCPP allows one outstanding CALL per
+  direction. SENDs do not wait for the slot.
 - Handlers of one connection run one at a time, in arrival order, on a
   goroutine of their own. Handlers of different connections run
   concurrently.

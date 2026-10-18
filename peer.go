@@ -5,6 +5,8 @@ package ocpp
 import (
 	"context"
 	"encoding/json"
+
+	"github.com/otfabric/go-ocpp/internal/after"
 )
 
 // Role is one of the two OCPP roles.
@@ -61,6 +63,20 @@ type Dispatcher interface {
 	Dispatch(ctx context.Context, p Peer, action string, payload json.RawMessage) (json.RawMessage, error)
 }
 
+// Sender sends a SEND (OCPP 2.1): a message that is never answered and may
+// be sent while a CALL is outstanding (2.1 Part 4 §4.1.1, §4.2.4). The
+// client and server sessions implement it.
+type Sender interface {
+	Send(ctx context.Context, action string, req any) error
+}
+
+// SendDispatcher is implemented by a Dispatcher that also handles incoming
+// SEND messages (OCPP 2.1). They are never answered, so DispatchSend
+// returns only an error, which is logged.
+type SendDispatcher interface {
+	DispatchSend(ctx context.Context, p Peer, action string, payload json.RawMessage) error
+}
+
 // DispatcherFunc adapts a function to a Dispatcher.
 type DispatcherFunc func(ctx context.Context, p Peer, action string, payload json.RawMessage) (json.RawMessage, error)
 
@@ -68,3 +84,14 @@ type DispatcherFunc func(ctx context.Context, p Peer, action string, payload jso
 func (f DispatcherFunc) Dispatch(ctx context.Context, p Peer, action string, payload json.RawMessage) (json.RawMessage, error) {
 	return f(ctx, p, action, payload)
 }
+
+// AfterResponse registers f to run once the response to the CALL being
+// handled is on its way: for what a handler must do after answering, such
+// as sending the NotifyReport messages after accepting GetBaseReport, the
+// FirmwareStatusNotifications after accepting UpdateFirmware, or the
+// triggered message after TriggerMessage. ctx must be the context the
+// handler received; f runs on a goroutine of its own, after the response
+// (CALLRESULT or CALLERROR) has been queued ahead of any CALL f sends. It
+// reports false, and f does not run, when ctx is not a handler's context
+// (a SEND handler's included: a SEND has no response).
+func AfterResponse(ctx context.Context, f func()) bool { return after.Add(ctx, f) }

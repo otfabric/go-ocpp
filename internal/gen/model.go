@@ -122,6 +122,7 @@ type field struct {
 type message struct {
 	Action       string
 	From         string // fromStation, fromCSMS, fromBoth
+	Send         bool   // a SEND (OCPP 2.1): no response, Response is nil
 	Request      *goType
 	Response     *goType
 	RequestFile  string
@@ -155,28 +156,34 @@ func loadVersion(version, pkg string, dirs []string) (*model, error) {
 				continue
 			}
 			action := strings.TrimSuffix(base, "Request")
-			if !dir16 && action == base {
+			respFile := filepath.Join(dir, action+"Response.json")
+			_, statErr := os.Stat(respFile)
+			// A 2.1 SEND, NotifyPeriodicEventStream, has one schema named
+			// after the action and no response.
+			send := version == "2.1" && action == base && statErr != nil
+			if !dir16 && action == base && !send {
 				return nil, fmt.Errorf("%s: not a Request or Response schema", f)
 			}
-			msg := &message{Action: action}
+			msg := &message{Action: action, Send: send}
 			from, ok := directions[version][action]
 			if !ok {
 				return nil, fmt.Errorf("%s: no direction known for %s in OCPP %s (directions.go)", f, action, version)
 			}
 			msg.From = from
-			respFile := filepath.Join(dir, action+"Response.json")
-			// NotifyPeriodicEventStream (2.1) is a SEND: it has no response.
-			if _, err := os.Stat(respFile); err != nil {
+			if statErr != nil && !send {
 				return nil, fmt.Errorf("%s: no response schema %s", f, respFile)
 			}
 			gen := &generator{m: m, version: version}
 			if msg.Request, msg.RequestHash, err = gen.message(f, action+"Request", base); err != nil {
 				return nil, err
 			}
-			if msg.Response, msg.ResponseHash, err = gen.message(respFile, action+"Response", action+"Response"); err != nil {
-				return nil, err
+			msg.RequestFile = f
+			if !send {
+				if msg.Response, msg.ResponseHash, err = gen.message(respFile, action+"Response", action+"Response"); err != nil {
+					return nil, err
+				}
+				msg.ResponseFile = respFile
 			}
-			msg.RequestFile, msg.ResponseFile = f, respFile
 			m.Messages = append(m.Messages, msg)
 		}
 	}

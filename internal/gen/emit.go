@@ -129,7 +129,10 @@ func emitTypes(m *model) string {
 	}
 	// Message types too.
 	for _, msg := range m.Messages {
-		names = append(names, msg.Request.Name, msg.Response.Name)
+		names = append(names, msg.Request.Name)
+		if msg.Response != nil {
+			names = append(names, msg.Response.Name)
+		}
 	}
 	sort.Strings(names)
 	seen := map[string]bool{}
@@ -138,7 +141,10 @@ func emitTypes(m *model) string {
 		types[n] = t
 	}
 	for _, msg := range m.Messages {
-		types[msg.Request.Name], types[msg.Response.Name] = msg.Request, msg.Response
+		types[msg.Request.Name] = msg.Request
+		if msg.Response != nil {
+			types[msg.Response.Name] = msg.Response
+		}
 	}
 	for _, n := range names {
 		if seen[n] {
@@ -361,14 +367,17 @@ func emitActions(m *model) string {
 	var b strings.Builder
 	r := rolesOf(m.Version)
 	vc := versionConst(m.Version)
+	sends := sendsOf(m)
 	b.WriteString(header)
 	fmt.Fprintf(&b, "package %s\n\nimport (\n\t\"context\"\n\t\"encoding/json\"\n\n\t\"github.com/otfabric/go-ocpp\"\n\t\"github.com/otfabric/go-ocpp/internal/wire\"\n)\n\n", m.Package)
 
 	fmt.Fprintf(&b, `// Action is an action of OCPP %s and the role that sends it; From is zero
-// for an action both roles send.
+// for an action both roles send. Send is true for an action sent as an
+// unconfirmed SEND (OCPP 2.1), which has no response.
 type Action struct {
 	Name string
 	From ocpp.Role
+	Send bool
 }
 
 // ValidateRequest decodes and validates a request payload of action, as a
@@ -386,16 +395,20 @@ func ValidateRequest(action string, payload json.RawMessage) error {
 func ValidateResponse(action string, payload json.RawMessage) error {
 	m := newResponse(action)
 	if m == nil {
-		return ocpp.NewCallError(ocpp.NotImplemented, action+" is not an action of OCPP %s")
+		%sreturn ocpp.NewCallError(ocpp.NotImplemented, action+" is not an action of OCPP %s")
 	}
 	return wire.Decode(payload, m, codes)
 }
 
-`, m.Version, m.Version, m.Version, m.Version)
+`, m.Version, m.Version, m.Version, sendCheck(sends), m.Version)
 	// The action table.
 	fmt.Fprintf(&b, "// Actions lists every action of OCPP %s, with the role that sends it\n// (zero for DataTransfer, which both send).\nvar Actions = []Action{\n", m.Version)
 	for _, msg := range m.Messages {
-		fmt.Fprintf(&b, "\t{Name: %q, From: %s},\n", msg.Action, roleConst(msg.From))
+		if msg.Send {
+			fmt.Fprintf(&b, "\t{Name: %q, From: %s, Send: true},\n", msg.Action, roleConst(msg.From))
+		} else {
+			fmt.Fprintf(&b, "\t{Name: %q, From: %s},\n", msg.Action, roleConst(msg.From))
+		}
 	}
 	b.WriteString("}\n\n")
 
@@ -407,6 +420,9 @@ func ValidateResponse(action string, payload json.RawMessage) error {
 	b.WriteString("\t}\n\treturn nil\n}\n\n")
 	b.WriteString("func newResponse(action string) wire.Message {\n\tswitch action {\n")
 	for _, msg := range m.Messages {
+		if msg.Send {
+			continue
+		}
 		fmt.Fprintf(&b, "\tcase %q:\n\t\treturn new(%s)\n", msg.Action, msg.Response.Name)
 	}
 	b.WriteString("\t}\n\treturn nil\n}\n\n")
@@ -414,6 +430,11 @@ func ValidateResponse(action string, payload json.RawMessage) error {
 	// Call functions.
 	for _, msg := range m.Messages {
 		who := map[string]string{fromStation: "the " + r.station, fromCSMS: "the " + r.csms, fromBoth: "either role"}[msg.From]
+		if msg.Send {
+			fmt.Fprintf(&b, "// %s sends a %s SEND (sent by %s):\n// an unconfirmed message, which is never answered. The request is validated\n// before it is sent.\n", msg.Action, msg.Action, who)
+			fmt.Fprintf(&b, "func %s(ctx context.Context, s ocpp.Sender, req *%s) error {\n\treturn wire.Send(ctx, s, %s, %s, %q, req)\n}\n\n", msg.Action, msg.Request.Name, vc, roleConst(msg.From), msg.Action)
+			continue
+		}
 		fmt.Fprintf(&b, "// %s sends a %s CALL (sent by %s) and returns its response.\n// The request is validated before it is sent, and the response when it arrives.\n", msg.Action, msg.Action, who)
 		fmt.Fprintf(&b, "func %s(ctx context.Context, c ocpp.Caller, req *%s) (*%s, error) {\n", msg.Action, msg.Request.Name, msg.Response.Name)
 		fmt.Fprintf(&b, "\tresp := new(%s)\n\tif err := wire.Call(ctx, c, %s, %s, %q, req, resp); err != nil {\n\t\treturn nil, err\n\t}\n\treturn resp, nil\n}\n\n", msg.Response.Name, vc, roleConst(msg.From), msg.Action)
@@ -422,9 +443,23 @@ func ValidateResponse(action string, payload json.RawMessage) error {
 	// Call functions by name, for raw use and tests.
 	b.WriteString("// callByName calls the call function of an action with a request of its\n// type.\nvar callByName = map[string]func(context.Context, ocpp.Caller, wire.Message) (wire.Message, error){\n")
 	for _, msg := range m.Messages {
+		if msg.Send {
+			continue
+		}
 		fmt.Fprintf(&b, "\t%q: func(ctx context.Context, c ocpp.Caller, req wire.Message) (wire.Message, error) {\n\t\treturn %s(ctx, c, req.(*%s))\n\t},\n", msg.Action, msg.Action, msg.Request.Name)
 	}
 	b.WriteString("}\n\n")
+
+	if len(sends) > 0 {
+		b.WriteString("// isSend reports whether action is sent as a SEND.\nfunc isSend(action string) bool {\n\tswitch action {\n\tcase ")
+		for i, msg := range sends {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			fmt.Fprintf(&b, "%q", msg.Action)
+		}
+		b.WriteString(":\n\t\treturn true\n\t}\n\treturn false\n}\n\n")
+	}
 
 	emitRole(&b, m, r.csms, fromStation, "CALLs a "+strings.ToLower(spaced(r.station))+" sends")
 	emitRole(&b, m, r.station, fromCSMS, "CALLs a "+spaced(r.csms)+" sends")
@@ -450,11 +485,19 @@ func emitRole(b *strings.Builder, m *model, role, from, what string) {
 	fmt.Fprintf(b, "// %sHandler handles the %s. Embed\n// Unimplemented%sHandler to answer the actions an application does not\n// handle with NotSupported, and to keep compiling when methods are added.\n", role, what, role)
 	fmt.Fprintf(b, "type %sHandler interface {\n", role)
 	for _, msg := range recv {
+		if msg.Send {
+			fmt.Fprintf(b, "\t%s(ctx context.Context, p ocpp.Peer, req *%s) error\n", msg.Action, msg.Request.Name)
+			continue
+		}
 		fmt.Fprintf(b, "\t%s(ctx context.Context, p ocpp.Peer, req *%s) (*%s, error)\n", msg.Action, msg.Request.Name, msg.Response.Name)
 	}
 	b.WriteString("}\n\n")
 	fmt.Fprintf(b, "// Unimplemented%sHandler answers every action with the CALLERROR\n// NotSupported.\ntype Unimplemented%sHandler struct{}\n\n", role, role)
 	for _, msg := range recv {
+		if msg.Send {
+			fmt.Fprintf(b, "// %s returns NotSupported. A SEND is never answered: the\n// error is only logged and counted.\nfunc (Unimplemented%sHandler) %s(context.Context, ocpp.Peer, *%s) error {\n\treturn ocpp.NewCallError(ocpp.NotSupported, \"\")\n}\n\n", msg.Action, role, msg.Action, msg.Request.Name)
+			continue
+		}
 		fmt.Fprintf(b, "// %s answers NotSupported.\nfunc (Unimplemented%sHandler) %s(context.Context, ocpp.Peer, *%s) (*%s, error) {\n\treturn nil, ocpp.NewCallError(ocpp.NotSupported, \"\")\n}\n\n", msg.Action, role, msg.Action, msg.Request.Name, msg.Response.Name)
 	}
 	lower := strings.ToLower(role[:1]) + role[1:]
@@ -474,9 +517,53 @@ func (d %sDispatcher) Dispatch(ctx context.Context, p ocpp.Peer, action string, 
 	switch action {
 `, role, spaced(role), m.Version, role, role, lower, lower, role, lower)
 	for _, msg := range recv {
+		if msg.Send {
+			continue
+		}
 		fmt.Fprintf(b, "\tcase %q:\n\t\treq := new(%s)\n\t\tif err := wire.Request(payload, req, codes); err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t\tresp, err := d.h.%s(ctx, p, req)\n\t\treturn wire.Respond(action, resp, resp == nil, err)\n", msg.Action, msg.Request.Name, msg.Action)
 	}
-	b.WriteString("\t}\n\tif newRequest(action) != nil {\n\t\treturn nil, ocpp.NewCallError(ocpp.NotSupported, action+\" is not sent to this role\")\n\t}\n\treturn nil, ocpp.NewCallError(ocpp.NotImplemented, \"\")\n}\n\n")
+	b.WriteString("\t}\n")
+	sends := sendsOf(m)
+	if len(sends) > 0 {
+		b.WriteString("\tif isSend(action) {\n\t\treturn nil, ocpp.NewCallError(ocpp.NotSupported, action+\" is sent as a SEND, not a CALL\")\n\t}\n")
+	}
+	b.WriteString("\tif newRequest(action) != nil {\n\t\treturn nil, ocpp.NewCallError(ocpp.NotSupported, action+\" is not sent to this role\")\n\t}\n\treturn nil, ocpp.NewCallError(ocpp.NotImplemented, \"\")\n}\n\n")
+	if len(sends) == 0 {
+		return
+	}
+	fmt.Fprintf(b, `// DispatchSend implements ocpp.SendDispatcher: it decodes and validates
+// an incoming SEND and calls h. A SEND is never answered, so an invalid one
+// or a handler error is only returned, for the engine to log and count.
+func (d %sDispatcher) DispatchSend(ctx context.Context, p ocpp.Peer, action string, payload json.RawMessage) error {
+	switch action {
+`, lower)
+	for _, msg := range recv {
+		if !msg.Send {
+			continue
+		}
+		fmt.Fprintf(b, "\tcase %q:\n\t\treq := new(%s)\n\t\tif err := wire.Request(payload, req, codes); err != nil {\n\t\t\treturn err\n\t\t}\n\t\treturn d.h.%s(ctx, p, req)\n", msg.Action, msg.Request.Name, msg.Action)
+	}
+	b.WriteString("\t}\n\tswitch {\n\tcase isSend(action):\n\t\treturn ocpp.NewCallError(ocpp.NotSupported, action+\" is not sent to this role\")\n\tcase newRequest(action) != nil:\n\t\treturn ocpp.NewCallError(ocpp.NotSupported, action+\" is sent as a CALL, not a SEND\")\n\t}\n\treturn ocpp.NewCallError(ocpp.NotImplemented, \"\")\n}\n\n")
+}
+
+// sendsOf returns the SEND actions of m (OCPP 2.1).
+func sendsOf(m *model) []*message {
+	var sends []*message
+	for _, msg := range m.Messages {
+		if msg.Send {
+			sends = append(sends, msg)
+		}
+	}
+	return sends
+}
+
+// sendCheck is what ValidateResponse does first, for a version with SEND
+// actions, when action has no response type.
+func sendCheck(sends []*message) string {
+	if len(sends) == 0 {
+		return ""
+	}
+	return "if isSend(action) {\n\t\t\treturn ocpp.NewCallError(ocpp.NotImplemented, action+\" is a SEND: it has no response\")\n\t\t}\n\t\t"
 }
 
 // emitCoverage writes coverage.json.
@@ -485,8 +572,13 @@ func emitCoverage(m *model, rel func(string) string) string {
 	fmt.Fprintf(&b, "{\n  \"version\": %q,\n  \"package\": %q,\n  \"actions\": [\n", m.Version, m.Package)
 	for i, msg := range m.Messages {
 		from := map[string]string{fromStation: "ChargingStation", fromCSMS: "CSMS", fromBoth: "both"}[msg.From]
-		fmt.Fprintf(&b, "    {\"action\": %q, \"from\": %q, \"request\": %q, \"response\": %q, \"requestSchema\": %q, \"requestSchemaSha256\": %q, \"responseSchema\": %q, \"responseSchemaSha256\": %q, \"typed\": true, \"validated\": true, \"dispatchable\": true}",
-			msg.Action, from, msg.Request.Name, msg.Response.Name, rel(msg.RequestFile), msg.RequestHash, rel(msg.ResponseFile), msg.ResponseHash)
+		if msg.Send {
+			fmt.Fprintf(&b, "    {\"action\": %q, \"from\": %q, \"send\": true, \"request\": %q, \"requestSchema\": %q, \"requestSchemaSha256\": %q, \"typed\": true, \"validated\": true, \"dispatchable\": true}",
+				msg.Action, from, msg.Request.Name, rel(msg.RequestFile), msg.RequestHash)
+		} else {
+			fmt.Fprintf(&b, "    {\"action\": %q, \"from\": %q, \"request\": %q, \"response\": %q, \"requestSchema\": %q, \"requestSchemaSha256\": %q, \"responseSchema\": %q, \"responseSchemaSha256\": %q, \"typed\": true, \"validated\": true, \"dispatchable\": true}",
+				msg.Action, from, msg.Request.Name, msg.Response.Name, rel(msg.RequestFile), msg.RequestHash, rel(msg.ResponseFile), msg.ResponseHash)
+		}
 		if i < len(m.Messages)-1 {
 			b.WriteString(",")
 		}

@@ -107,7 +107,7 @@ func run() error {
 		client.WithBasicAuth(stationID, password),
 		client.WithTLS(clientTLS),
 		client.WithCompression(),
-		client.WithReconnect(client.DefaultReconnect),
+		client.WithReconnect(client.DefaultReconnect()),
 	)
 	if err != nil {
 		return err

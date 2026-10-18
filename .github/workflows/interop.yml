@@ -28,12 +28,12 @@ permissions:
   packages: read
 
 env:
-  # otfabric/ocpp-interop v0.1.0: The Mobility House ocpp 2.1.0,
+  # otfabric/ocpp-interop v0.2.0: The Mobility House ocpp 2.1.0,
   # ChargeTimeEU Java-OCA-OCPP v2.0, lorenzodonini/ocpp-go v0.19.0.
   # Keep in step with the Makefile and interop/harness.go.
-  OCPP_INTEROP_MOBILITYHOUSE_IMAGE: ${{ inputs.mobilityhouse_image || 'ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:fff81e3cfd67a135acf63994f1622a141a9150a6973ee668e4a06a4e0aeb65ec' }}
-  OCPP_INTEROP_CHARGETIME_IMAGE: ${{ inputs.chargetime_image || 'ghcr.io/otfabric/ocpp-interop-chargetime@sha256:01b3d8d3fa12de8acbd170434fc6a04fa0e0ec11f7d5a53c93d84e512a892cc7' }}
-  OCPP_INTEROP_LORENZODONINI_IMAGE: ${{ inputs.lorenzodonini_image || 'ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:27801a6ae636cfa78833b75bd193f57a27aba42bfab083262841afb1047ee7ce' }}
+  OCPP_INTEROP_MOBILITYHOUSE_IMAGE: ${{ inputs.mobilityhouse_image || 'ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:9b5449c6fdeeb9809348f772b9967676cc1831d3c0a664b357cbdc1b9b53b979' }}
+  OCPP_INTEROP_CHARGETIME_IMAGE: ${{ inputs.chargetime_image || 'ghcr.io/otfabric/ocpp-interop-chargetime@sha256:1dbe44f9a04d6afced3740485dc2a8429b3c5eb2f274392a32b7e1094996681c' }}
+  OCPP_INTEROP_LORENZODONINI_IMAGE: ${{ inputs.lorenzodonini_image || 'ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:6adb1e6b39ee0a35bfdb85ac37e5cfed61f614231097b0ad4edda1fc0376e38e' }}
 
 jobs:
   interop:

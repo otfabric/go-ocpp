@@ -4,6 +4,7 @@ package client
 
 import (
 	"crypto/tls"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -39,6 +40,12 @@ type options struct {
 	responseTimeout    time.Duration
 	maxQueuedCalls     int
 	maxMessageSize     int
+	writeTimeout       time.Duration
+	pingInterval       time.Duration
+	maxBadMessages     int
+	headers            [][2]string
+	incomingRate       float64
+	incomingBurst      int
 	callInterceptor    ocpp.Interceptor
 	handlerInterceptor ocpp.Interceptor
 	frameObserver      ocpp.FrameObserver
@@ -113,19 +120,28 @@ type Reconnect struct {
 	RepeatTimes int           // RetryBackOffRepeatTimes; zero: the delay never doubles
 }
 
-// DefaultReconnect are reconnection settings for when the CSMS has not
+// DefaultReconnect returns reconnection settings for when the CSMS has not
 // configured any: 5 s, plus up to 10 s at random, doubled up to 5 times
 // (at most 160 s plus the random part). The specifications give no
 // defaults; these are an implementation choice.
-var DefaultReconnect = Reconnect{WaitMinimum: 5 * time.Second, RandomRange: 10 * time.Second, RepeatTimes: 5}
+func DefaultReconnect() Reconnect {
+	return Reconnect{WaitMinimum: 5 * time.Second, RandomRange: 10 * time.Second, RepeatTimes: 5}
+}
 
 // WithReconnect makes the client redial after an open connection is lost
 // (OCPP 2.x Part 4 §5.4: a station SHALL reconnect), with the back-off r;
-// DefaultReconnect when the CSMS has configured none. It redials
+// DefaultReconnect() when the CSMS has configured none. It redials
 // until Close. Nothing is resent: requests that were pending fail with
 // ErrConnectionLost, and the application decides what to send again.
 func WithReconnect(r Reconnect) Option {
 	return func(o *options) { o.reconnect = &r }
+}
+
+func (r Reconnect) check() error {
+	if r.WaitMinimum <= 0 || r.RandomRange < 0 || r.RepeatTimes < 0 {
+		return fmt.Errorf("%w: reconnect: WaitMinimum must be positive, RandomRange and RepeatTimes not negative", ocpp.ErrInvalidOption)
+	}
+	return nil
 }
 
 // WithStateHandler sets a function called on every state change, with the
@@ -158,6 +174,43 @@ func WithMaxQueuedCalls(n int) Option { return func(o *options) { o.maxQueuedCal
 // WithMaxMessageSize sets the largest message accepted, in bytes. A larger
 // one closes the connection.
 func WithMaxMessageSize(n int) Option { return func(o *options) { o.maxMessageSize = n } }
+
+// WithWriteTimeout bounds writing one message. A CSMS that stops reading
+// makes the write fail, and the connection is closed as lost. Default
+// 10 s.
+func WithWriteTimeout(d time.Duration) Option { return func(o *options) { o.writeTimeout = d } }
+
+// WithPingInterval makes the client send a WebSocket ping every d, and
+// treat the connection as lost when the pong does not arrive within d: a
+// half-open connection is then noticed without waiting for a CALL to time
+// out. OCPP 2.x configures it with the WebSocketPingInterval variable of
+// OCPPCommCtrlr, OCPP 1.6 with the WebSocketPingInterval configuration
+// key; the application passes the value in. Zero (the default) sends no
+// pings.
+func WithPingInterval(d time.Duration) Option { return func(o *options) { o.pingInterval = d } }
+
+// WithMaxBadMessages closes the connection with status 1008 once n
+// malformed frames have been received on it. Each is still answered or
+// dropped as the version requires. Zero (the default) sets no limit.
+func WithMaxBadMessages(n int) Option { return func(o *options) { o.maxBadMessages = n } }
+
+// WithHeader adds a header to the WebSocket handshake request, for a CSMS
+// or a proxy in front of it that expects one (a tenant or an API key, say).
+// It may be given more than once. Authorization (use WithBasicAuth), Host,
+// Connection, Upgrade and the Sec-WebSocket-* headers are set by the
+// client and refused here.
+func WithHeader(name, value string) Option {
+	return func(o *options) { o.headers = append(o.headers, [2]string{name, value}) }
+}
+
+// WithIncomingRateLimit dispatches at most perSecond of the CSMS's incoming
+// CALLs and SENDs a second, in bursts of up to burst. Messages over the
+// rate wait: none is refused, since OCPP has no error for "too many";
+// once the bounded incoming queue is full, reading from the connection
+// waits too. Zero (the default) sets no limit.
+func WithIncomingRateLimit(perSecond float64, burst int) Option {
+	return func(o *options) { o.incomingRate, o.incomingBurst = perSecond, burst }
+}
 
 // WithCallInterceptor wraps every outgoing CALL.
 func WithCallInterceptor(i ocpp.Interceptor) Option {

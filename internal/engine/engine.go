@@ -52,6 +52,17 @@ type Config struct {
 	MaxQueuedCalls  int
 	WriteTimeout    time.Duration
 	Limits          ocppj.Limits
+	// PingInterval is the time between WebSocket pings; a pong must arrive
+	// within it, or the connection is lost. Zero: no pings.
+	PingInterval time.Duration
+	// MaxBadMessages closes the connection (status 1008) once that many
+	// malformed frames have been received on it. Zero: no limit.
+	MaxBadMessages int
+	// IncomingRate limits how many incoming CALLs and SENDs are dispatched
+	// per second, with bursts of IncomingBurst (at least 1). Messages over
+	// the rate wait; none is refused. Zero: no limit.
+	IncomingRate  float64
+	IncomingBurst int
 
 	Logger             *slog.Logger // nil: discard
 	Metrics            ocpp.Metrics // nil: none
@@ -81,6 +92,7 @@ type Endpoint struct {
 
 	results  chan []byte      // CALLRESULT and CALLERROR frames to write
 	calls    chan []byte      // CALL frames to write
+	sends    chan []byte      // SEND frames to write (2.1); they do not wait for the CALL slot
 	incoming chan ocppj.Frame // CALLs to dispatch
 
 	startOnce    sync.Once
@@ -89,6 +101,8 @@ type Endpoint struct {
 	ioDone       chan struct{} // closed when the reader and the writer have exited
 	done         chan struct{} // closed when every goroutine has exited
 	inHandler    atomic.Bool
+	badMessages  atomic.Int64
+	limiter      *limiter // nil without IncomingRate
 }
 
 type pendingCall struct {
@@ -123,13 +137,21 @@ func New(conn transport.Conn, cfg Config) *Endpoint {
 	if cfg.NewMessageID == nil {
 		cfg.NewMessageID = NewUUID
 	}
+	var lim *limiter
+	if cfg.IncomingRate > 0 {
+		lim = newLimiter(cfg.IncomingRate, cfg.IncomingBurst)
+	}
 	log := cfg.Logger
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
-	log = log.With("station_id", cfg.Info.StationID, "ocpp_version", cfg.Info.Version.String(), "session_id", cfg.Info.SessionID)
+	log = log.With("station_id", cfg.Info.StationID, "ocpp_version", cfg.Info.Version.String())
+	if cfg.Info.SessionID != "" { // the server's; a client has none
+		log = log.With("session_id", cfg.Info.SessionID)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	e := &Endpoint{
+		limiter:  lim,
 		cfg:      cfg,
 		conn:     conn,
 		log:      log,
@@ -138,6 +160,7 @@ func New(conn transport.Conn, cfg Config) *Endpoint {
 		slot:     make(chan struct{}, 1),
 		results:  make(chan []byte, 8),
 		calls:    make(chan []byte, 1),
+		sends:    make(chan []byte, 16),
 		incoming: make(chan ocppj.Frame, 16),
 		ioDone:   make(chan struct{}),
 		done:     make(chan struct{}),
@@ -152,6 +175,10 @@ func (e *Endpoint) Start() {
 		io.Add(2)
 		go func() { defer io.Done(); e.readLoop() }()
 		go func() { defer io.Done(); e.writeLoop() }()
+		if e.cfg.PingInterval > 0 {
+			io.Add(1)
+			go func() { defer io.Done(); e.pingLoop() }()
+		}
 		dispatched := make(chan struct{})
 		go func() { defer close(dispatched); e.dispatchLoop() }()
 		go func() {
@@ -193,6 +220,15 @@ func (e *Endpoint) Close() error {
 	return nil
 }
 
+// Idle reports whether no outgoing CALL is outstanding or waiting for the
+// slot and no SEND is queued: what a graceful shutdown waits for.
+func (e *Endpoint) Idle() bool {
+	e.mu.Lock()
+	pending := e.pending != nil
+	e.mu.Unlock()
+	return !pending && e.waiting.Load() == 0 && len(e.calls) == 0 && len(e.sends) == 0
+}
+
 // HandlerRunning reports whether a handler is running. Owners use it to
 // avoid waiting for a handler from inside that handler.
 func (e *Endpoint) HandlerRunning() bool { return e.inHandler.Load() }
@@ -206,12 +242,20 @@ func (e *Endpoint) CloseWith(cause error, code int, reason string) {
 	}()
 }
 
+// shutdown ends the endpoint with cause. A code of zero aborts the
+// connection without the closing handshake, for a peer that no longer
+// responds (no pong, a write that timed out): waiting for its close frame
+// would only delay noticing the loss.
 func (e *Endpoint) shutdown(cause error, code int, reason string) {
 	e.shutdownOnce.Do(func() {
 		e.cause = cause
 		// Close the WebSocket before cancelling: the reader must still be
 		// reading to complete the closing handshake.
-		_ = e.conn.Close(code, reason)
+		if code == 0 {
+			e.conn.Abort()
+		} else {
+			_ = e.conn.Close(code, reason)
+		}
 		e.cancel()
 		e.mu.Lock()
 		p := e.pending

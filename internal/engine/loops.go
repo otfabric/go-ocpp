@@ -7,9 +7,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"runtime/debug"
 	"time"
 
 	"github.com/otfabric/go-ocpp"
+	"github.com/otfabric/go-ocpp/internal/after"
 	"github.com/otfabric/go-ocpp/internal/transport"
 	"github.com/otfabric/go-ocpp/ocppj"
 )
@@ -20,7 +22,7 @@ func (e *Endpoint) readLoop() {
 		if err != nil {
 			var ce *transport.CloseError
 			if errors.As(err, &ce) {
-				e.shutdown(lost(err), ce.Code, "")
+				e.shutdown(lost(&ocpp.CloseError{Code: ce.Code, Reason: ce.Reason}), ce.Code, "")
 			} else {
 				e.shutdown(lost(err), transport.StatusInternalError, "")
 			}
@@ -35,7 +37,8 @@ func (e *Endpoint) readLoop() {
 			continue
 		}
 		switch f.Type {
-		case ocppj.Call:
+		case ocppj.Call, ocppj.Send:
+			// SENDs are handled in order with the CALLs, and never answered.
 			select {
 			case e.incoming <- f:
 			case <-e.ctx.Done():
@@ -43,11 +46,13 @@ func (e *Endpoint) readLoop() {
 			}
 		case ocppj.CallResult, ocppj.CallError:
 			e.respond(f)
-		default:
-			// CALLRESULTERROR and SEND (OCPP 2.1) are handled from Phase 6.
-			err := fmt.Errorf("%w: %s frames are not supported yet", ocpp.ErrProtocol, f.Type)
+		case ocppj.CallResultError:
+			// The peer could not process a CALLRESULT of ours (2.1 Part 4
+			// §4.2.3). There is nothing to answer; it is reported.
+			ce := &ocpp.CallError{Code: f.ErrorCode, Description: f.Description, Details: f.Details}
+			err := fmt.Errorf("%w: the peer could not process the response to message %q: %w", ocpp.ErrProtocol, f.ID, ce)
 			e.cfg.Metrics.OnProtocolError(e.cfg.Info, err)
-			e.log.Warn("frame dropped", "message_id", f.ID, "error", err)
+			e.log.Warn("response refused by the peer", "message_id", f.ID, "error_code", string(f.ErrorCode), "error", err)
 		}
 	}
 }
@@ -65,6 +70,14 @@ func (e *Endpoint) readLoop() {
 func (e *Endpoint) malformed(err error) {
 	err = fmt.Errorf("%w: %w", ocpp.ErrProtocol, err)
 	e.cfg.Metrics.OnProtocolError(e.cfg.Info, err)
+	if n := e.badMessages.Add(1); e.cfg.MaxBadMessages > 0 && n >= int64(e.cfg.MaxBadMessages) {
+		if n == int64(e.cfg.MaxBadMessages) {
+			e.log.Warn("closing: too many malformed frames", "count", n, "error", err)
+			e.CloseWith(lost(fmt.Errorf("%w: %d malformed frames received", ocpp.ErrProtocol, n)),
+				transport.StatusPolicy, "too many malformed messages")
+		}
+		return
+	}
 	var de *ocppj.DecodeError
 	errors.As(err, &de)
 	if de == nil || de.UnknownType || (de.Type != ocppj.Call && de.Type != 0) {
@@ -81,7 +94,30 @@ func (e *Endpoint) malformed(err error) {
 	}
 	e.log.Warn("malformed frame answered with CALLERROR", "message_id", id, "error", err)
 	e.sendResult(ocppj.Frame{Type: ocppj.CallError, ID: id,
-		ErrorCode: ocppj.RPCErrorCode(e.cfg.Info.Version), Description: de.Reason})
+		ErrorCode: ocppj.RPCErrorCode(e.cfg.Info.Version), Description: e.limit(de.Reason)})
+}
+
+// pingLoop sends a WebSocket ping every PingInterval. A pong that does not
+// arrive within the interval means the peer is unreachable (a half-open
+// TCP connection, say), and the connection is closed as lost.
+func (e *Endpoint) pingLoop() {
+	t := time.NewTicker(e.cfg.PingInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-e.ctx.Done():
+			return
+		case <-t.C:
+		}
+		ctx, cancel := context.WithTimeout(e.ctx, e.cfg.PingInterval)
+		err := e.conn.Ping(ctx)
+		cancel()
+		if err != nil && e.ctx.Err() == nil {
+			e.log.Warn("no pong: closing", "error", err)
+			e.CloseWith(lost(fmt.Errorf("no pong within %s: %w", e.cfg.PingInterval, err)), 0, "")
+			return
+		}
+	}
 }
 
 func (e *Endpoint) writeLoop() {
@@ -94,6 +130,7 @@ func (e *Endpoint) writeLoop() {
 			select {
 			case data = <-e.results:
 			case data = <-e.calls:
+			case data = <-e.sends:
 			case <-e.ctx.Done():
 				return
 			}
@@ -102,7 +139,7 @@ func (e *Endpoint) writeLoop() {
 		err := e.conn.WriteMessage(ctx, data)
 		cancel()
 		if err != nil {
-			e.shutdown(lost(fmt.Errorf("write: %w", err)), transport.StatusInternalError, "")
+			e.shutdown(lost(fmt.Errorf("write: %w", err)), 0, "")
 			return
 		}
 		if obs := e.cfg.FrameObserver; obs != nil {
@@ -127,8 +164,15 @@ func (e *Endpoint) dispatchLoop() {
 	for {
 		select {
 		case f := <-e.incoming:
+			if e.limiter != nil && !e.limiter.wait(e.ctx) {
+				return
+			}
 			e.inHandler.Store(true)
-			e.handle(f)
+			if f.Type == ocppj.Send {
+				e.handleSend(f)
+			} else {
+				e.handle(f)
+			}
 			e.inHandler.Store(false)
 		case <-e.ctx.Done():
 			return
@@ -136,15 +180,47 @@ func (e *Endpoint) dispatchLoop() {
 	}
 }
 
+// handleSend runs the dispatcher for one incoming SEND (2.1). A SEND is
+// never answered (2.1 Part 4 §4.2.4): errors are logged and counted only.
+func (e *Endpoint) handleSend(f ocppj.Frame) {
+	start := time.Now()
+	info := ocpp.CallInfo{ConnInfo: e.cfg.Info, Action: f.Action, MessageID: f.ID, Direction: ocpp.Incoming}
+	run := func(ctx context.Context) (err error) {
+		defer func() {
+			if r := recover(); r != nil {
+				err = e.recovered(f, r)
+			}
+		}()
+		sd, ok := e.cfg.Dispatcher.(ocpp.SendDispatcher)
+		if !ok {
+			return fmt.Errorf("no handler for SEND messages")
+		}
+		return sd.DispatchSend(ctx, e.cfg.Peer, f.Action, f.Payload)
+	}
+	var err error
+	if e.cfg.HandlerInterceptor != nil {
+		err = e.cfg.HandlerInterceptor(e.ctx, info, run)
+	} else {
+		err = run(e.ctx)
+	}
+	e.cfg.Metrics.OnCallHandled(e.cfg.Info, f.Action, time.Since(start), err)
+	if err != nil {
+		e.log.Warn("SEND not processed", "action", f.Action, "message_id", f.ID, "error", err)
+		return
+	}
+	e.log.Debug("SEND handled", "action", f.Action, "message_id", f.ID, "direction", "incoming", "duration", time.Since(start))
+}
+
 // handle runs the dispatcher for one incoming CALL and sends its answer.
 func (e *Endpoint) handle(f ocppj.Frame) {
 	start := time.Now()
 	info := ocpp.CallInfo{ConnInfo: e.cfg.Info, Action: f.Action, MessageID: f.ID, Direction: ocpp.Incoming}
+	hctx, afterList := after.With(e.ctx)
 	var result json.RawMessage
 	run := func(ctx context.Context) (err error) {
 		defer func() {
 			if r := recover(); r != nil {
-				err = fmt.Errorf("handler panic: %v", r)
+				err = e.recovered(f, r)
 			}
 		}()
 		if e.cfg.Dispatcher == nil {
@@ -155,10 +231,22 @@ func (e *Endpoint) handle(f ocppj.Frame) {
 	}
 	var err error
 	if e.cfg.HandlerInterceptor != nil {
-		err = e.cfg.HandlerInterceptor(e.ctx, info, run)
+		err = e.cfg.HandlerInterceptor(hctx, info, run)
 	} else {
-		err = run(e.ctx)
+		err = run(hctx)
 	}
+	// Functions registered with ocpp.AfterResponse run once the result is
+	// queued: the writer sends queued results before new CALLs, so what
+	// they send goes out after the response.
+	defer func() {
+		if fs := afterList.Take(); len(fs) > 0 {
+			go func() {
+				for _, fn := range fs {
+					fn()
+				}
+			}()
+		}
+	}()
 	if err == nil && !isObject(result) {
 		err = errors.New("handler returned no response object")
 	}
@@ -168,7 +256,26 @@ func (e *Endpoint) handle(f ocppj.Frame) {
 		e.sendResult(ocppj.Frame{Type: ocppj.CallResult, ID: f.ID, Payload: result})
 		return
 	}
-	e.sendResult(ocppj.Frame{Type: ocppj.CallError, ID: f.ID, ErrorCode: e.errorCode(err, f), Description: e.description(err)})
+	e.sendResult(ocppj.Frame{Type: ocppj.CallError, ID: f.ID, ErrorCode: e.errorCode(err, f), Description: e.limit(e.description(err))})
+}
+
+// recovered logs a handler panic with its stack and returns the error that
+// reports it.
+func (e *Endpoint) recovered(f ocppj.Frame, r any) error {
+	e.log.Error("handler panic", "action", f.Action, "message_id", f.ID, "panic", fmt.Sprint(r), "stack", string(debug.Stack()))
+	return fmt.Errorf("%w: %v", ocpp.ErrHandlerPanic, r)
+}
+
+// limit cuts an error description to the 255 characters OCPP 2.x allows
+// (Part 4 §4.2.3, ErrorDescription string[255]). OCPP-J 1.6 sets no limit.
+func (e *Endpoint) limit(desc string) string {
+	if e.cfg.Info.Version == ocpp.V16 {
+		return desc
+	}
+	if r := []rune(desc); len(r) > 255 {
+		return string(r[:255])
+	}
+	return desc
 }
 
 // errorCode chooses the CALLERROR code for a handler error. Only a

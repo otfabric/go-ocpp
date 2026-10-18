@@ -1,0 +1,23 @@
+const Call MessageType = 2
+const CallError MessageType = 4
+const CallResult MessageType = 3
+const CallResultError MessageType = 5
+const DefaultMaxFrameSize = 64 << 10
+const MaxMessageIDLength = 36
+const Send MessageType = 6
+func (e *DecodeError) Error() string
+func (e *DecodeError) Unwrap() error
+func (t MessageType) Allowed(v ocpp.Version) bool
+func (t MessageType) String() string
+func Decode(data []byte, v ocpp.Version, l Limits) (Frame, error)
+func Encode(f Frame) ([]byte, error)
+func ErrorCodes(v ocpp.Version) []ocpp.ErrorCode
+func FormatErrorCode(v ocpp.Version) ocpp.ErrorCode
+func OccurrenceErrorCode(v ocpp.Version) ocpp.ErrorCode
+func RPCErrorCode(v ocpp.Version) ocpp.ErrorCode
+func ValidErrorCode(v ocpp.Version, code ocpp.ErrorCode) bool
+type DecodeError struct { Type MessageType ID string IDKnown bool UnknownType bool Reason string }
+type Frame struct { Type MessageType ID string Action string Payload json.RawMessage ErrorCode ocpp.ErrorCode Description string Details json.RawMessage }
+type Limits struct { MaxFrameSize int }
+type MessageType uint8
+var ErrMalformed

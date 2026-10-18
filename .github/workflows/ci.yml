@@ -21,7 +21,7 @@ jobs:
       go-versions: '["1.26", "1.27"]'
       golangci-lint-version: v2.15.0
       # Match the Makefile's COVER_PKGS: the e2e tests drive client and server.
-      coverpkg: github.com/otfabric/go-ocpp,github.com/otfabric/go-ocpp/ocppj,github.com/otfabric/go-ocpp/client,github.com/otfabric/go-ocpp/server,github.com/otfabric/go-ocpp/internal/engine,github.com/otfabric/go-ocpp/internal/transport
+      coverpkg: github.com/otfabric/go-ocpp,github.com/otfabric/go-ocpp/ocppj,github.com/otfabric/go-ocpp/client,github.com/otfabric/go-ocpp/server,github.com/otfabric/go-ocpp/internal/engine,github.com/otfabric/go-ocpp/internal/transport,github.com/otfabric/go-ocpp/ocpptest,github.com/otfabric/go-ocpp/ocppcert
     secrets: inherit
 
   # Formatting with the gofmt of the go.mod version and the latest one, the
@@ -50,6 +50,19 @@ jobs:
         with:
           go-version-file: go.mod
       - run: make schemas-check gen-check
+
+  # A short run of every fuzz target and of the chaos test on every push;
+  # the long runs are nightly (hardening.yml).
+  hardening:
+    name: Short fuzz and chaos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: make fuzz FUZZTIME=10s
+      - run: make chaos CHAOS_DURATION=10s
 
   # The library must build without cgo on every supported OS and architecture
   # (REQUIREMENTS.md R2.1), and its tests must pass natively on each OS.

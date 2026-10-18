@@ -1,0 +1,84 @@
+const CSMS
+const ChargingStation Role = iota + 1
+const Closed
+const Connected
+const Connecting
+const Disconnected State = iota
+const FormatViolation ErrorCode = "FormatViolation"
+const FormationViolation ErrorCode = "FormationViolation"
+const GenericError ErrorCode = "GenericError"
+const Incoming
+const InternalError ErrorCode = "InternalError"
+const MessageTypeNotSupported ErrorCode = "MessageTypeNotSupported"
+const NotImplemented ErrorCode = "NotImplemented"
+const NotSupported ErrorCode = "NotSupported"
+const OccurenceConstraintViolation ErrorCode = "OccurenceConstraintViolation"
+const OccurrenceConstraintViolation ErrorCode = "OccurrenceConstraintViolation"
+const Outgoing Direction = iota + 1
+const PropertyConstraintViolation ErrorCode = "PropertyConstraintViolation"
+const ProtocolError ErrorCode = "ProtocolError"
+const RpcFrameworkError ErrorCode = "RpcFrameworkError"
+const SecurityError ErrorCode = "SecurityError"
+const TypeConstraintViolation ErrorCode = "TypeConstraintViolation"
+const V16 Version = iota + 1
+const V201
+const V21
+func (NopMetrics) OnCallDone(ConnInfo, string, time.Duration, error)
+func (NopMetrics) OnCallHandled(ConnInfo, string, time.Duration, error)
+func (NopMetrics) OnConnect(ConnInfo)
+func (NopMetrics) OnConnectFailed(ConnInfo, error)
+func (NopMetrics) OnDisconnect(ConnInfo, error)
+func (NopMetrics) OnProtocolError(ConnInfo, error)
+func (NopMetrics) OnReconnectAttempt(ConnInfo, int)
+func (d Direction) String() string
+func (e *CallError) Error() string
+func (e *CloseError) Error() string
+func (e *CloseError) Normal() bool
+func (e *ValidationError) CallError() *CallError
+func (e *ValidationError) Error() string
+func (e *ValidationError) Unwrap() error
+func (f DispatcherFunc) Dispatch(ctx context.Context, p Peer, action string, payload json.RawMessage) (json.RawMessage, error)
+func (r Role) String() string
+func (s State) String() string
+func (v Version) String() string
+func (v Version) Subprotocol() string
+func (v Version) Valid() bool
+func AfterResponse(ctx context.Context, f func()) bool
+func NewCallError(code ErrorCode, description string) *CallError
+func ParseSubprotocol(s string) (Version, bool)
+func ParseVersion(s string) (Version, bool)
+func Ptr[T any](v T) *T
+func Versions() []Version
+type CallError struct { Code ErrorCode Description string Details json.RawMessage }
+type CallInfo struct { ConnInfo Action string MessageID string Direction Direction }
+type Caller interface { Call(ctx context.Context, action string, req, resp any) error }
+type CloseError struct { Code int Reason string }
+type ConnInfo struct { StationID string Version Version Role Role SessionID string }
+type Direction uint8
+type Dispatcher interface { Dispatch(ctx context.Context, p Peer, action string, payload json.RawMessage) (json.RawMessage, error) }
+type DispatcherFunc func(ctx context.Context, p Peer, action string, payload json.RawMessage) (json.RawMessage, error)
+type ErrorCode string
+type FrameObserver func(info ConnInfo, dir Direction, frame []byte)
+type Interceptor func(ctx context.Context, info CallInfo, next func(context.Context) error) error
+type Metrics interface { OnConnect(info ConnInfo) OnConnectFailed(info ConnInfo, err error) OnDisconnect(info ConnInfo, err error) OnReconnectAttempt(info ConnInfo, attempt int) OnCallDone(info ConnInfo, action string, d time.Duration, err error) OnCallHandled(info ConnInfo, action string, d time.Duration, err error) OnProtocolError(info ConnInfo, err error) }
+type NopMetrics struct{}
+type Peer interface { ID() string Version() Version Caller }
+type Role uint8
+type SendDispatcher interface { DispatchSend(ctx context.Context, p Peer, action string, payload json.RawMessage) error }
+type Sender interface { Send(ctx context.Context, action string, req any) error }
+type State uint8
+type ValidationError struct { Code ErrorCode Field string Reason string }
+type Version uint8
+var ErrBusy
+var ErrClosed
+var ErrConnectFailed
+var ErrConnectionLost
+var ErrHandlerPanic
+var ErrInvalidMessage
+var ErrInvalidOption
+var ErrNotConnected
+var ErrProtocol
+var ErrTimeout
+var ErrUnexpectedResponse
+var ErrUnsupportedVersion
+var ErrWrongDirection

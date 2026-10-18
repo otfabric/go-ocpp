@@ -20,18 +20,21 @@ import (
 	"time"
 
 	"github.com/otfabric/go-ocpp"
+	"github.com/otfabric/go-ocpp/ocpp21"
 )
 
 // The reference images this version of go-ocpp is qualified against:
-// otfabric/ocpp-interop v0.1.0 (The Mobility House ocpp 2.1.0, ChargeTimeEU
-// Java-OCA-OCPP v2.0, lorenzodonini/ocpp-go v0.19.0; OCPP 1.6J and 2.0.1),
-// pinned by multi-arch index digest so that a run is reproducible. Moving to another release of ocpp-interop means changing
-// these constants; the Makefile and .github/workflows/interop.yml follow.
+// otfabric/ocpp-interop v0.2.0 (The Mobility House ocpp 2.1.0, ChargeTimeEU
+// Java-OCA-OCPP v2.0, lorenzodonini/ocpp-go v0.19.0; OCPP 1.6J and 2.0.1 in
+// all three, 2.1 in The Mobility House), pinned by multi-arch index digest
+// so that a run is reproducible. Moving to another release of ocpp-interop
+// means changing these constants; the Makefile and
+// .github/workflows/interop.yml follow.
 const (
-	interopRelease            = "v0.1.0"
-	defaultMobilityHouseImage = "ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:fff81e3cfd67a135acf63994f1622a141a9150a6973ee668e4a06a4e0aeb65ec"
-	defaultChargeTimeImage    = "ghcr.io/otfabric/ocpp-interop-chargetime@sha256:01b3d8d3fa12de8acbd170434fc6a04fa0e0ec11f7d5a53c93d84e512a892cc7"
-	defaultLorenzodoniniImage = "ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:27801a6ae636cfa78833b75bd193f57a27aba42bfab083262841afb1047ee7ce"
+	interopRelease            = "v0.2.0"
+	defaultMobilityHouseImage = "ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:9b5449c6fdeeb9809348f772b9967676cc1831d3c0a664b357cbdc1b9b53b979"
+	defaultChargeTimeImage    = "ghcr.io/otfabric/ocpp-interop-chargetime@sha256:1dbe44f9a04d6afced3740485dc2a8429b3c5eb2f274392a32b7e1094996681c"
+	defaultLorenzodoniniImage = "ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:6adb1e6b39ee0a35bfdb85ac37e5cfed61f614231097b0ad4edda1fc0376e38e"
 )
 
 // adapter is one reference implementation: a container image that follows
@@ -107,6 +110,8 @@ type capabilities struct {
 		Server   roleCaps `json:"server"`
 		Features struct {
 			SecurityProfiles []int `json:"securityProfiles"`
+			Send             bool  `json:"send"`            // OCPP 2.1 SEND (contract 0.4)
+			CallResultError  bool  `json:"callResultError"` // OCPP 2.1 CALLRESULTERROR (contract 0.4)
 		} `json:"features"`
 	} `json:"versions"`
 }
@@ -159,8 +164,31 @@ func (a adapter) securityProfile(t testing.TB, v ocpp.Version, profile int) {
 	}
 }
 
-// versions are the OCPP versions the interop suite runs.
-var versions = []ocpp.Version{ocpp.V16, ocpp.V201}
+// versions are the OCPP versions the interop suite runs. A reference that
+// does not declare a version is skipped for it.
+var versions = []ocpp.Version{ocpp.V16, ocpp.V201, ocpp.V21}
+
+// skipKnownIssue skips a scenario that hits a known upstream defect of the
+// reference, with the evidence. It is not a pass.
+func (a adapter) skipKnownIssue(t testing.TB, v ocpp.Version, scenario string) {
+	t.Helper()
+	if evidence, ok := knownIssues[a.name+"/"+v.String()+"/"+scenario]; ok {
+		t.Skipf("known upstream defect of %s: %s", a.name, evidence)
+	}
+}
+
+// isSend reports whether action is sent as a SEND (OCPP 2.1).
+func isSend(v ocpp.Version, action string) bool {
+	if v != ocpp.V21 {
+		return false
+	}
+	for _, a := range ocpp21.Actions {
+		if a.Name == action {
+			return a.Send
+		}
+	}
+	return false
+}
 
 // knownIssues are upstream defects of a reference, by adapter and fixture
 // sample, with the evidence. Such a scenario is skipped with the link; it
@@ -176,7 +204,15 @@ var knownIssues = map[string]string{
 	// "tbc": false is dropped from the request.
 	"lorenzodonini/2.0.1/notifyReport":       "https://github.com/lorenzodonini/ocpp-go/blob/a1eec917af884db0585752f909a61893aa667480/ocpp2.0.1/provisioning/notify_report.go#L98-L104",
 	"mobilityhouse/1.6/securityEventMinimal": "https://github.com/mobilityhouse/ocpp/blob/91f4f89140a2198dc5a300cfea88d947ac91ae28/ocpp/v16/call.py#L232-L236",
+	// mobilityhouse 2.1.0: ChargePoint._raise_key_error knows 1.6, 2.0 and
+	// 2.0.1 only, so a 2.1 CALL without a handler is never answered (fixed
+	// on master in ae716a1, #744, not released).
+	"mobilityhouse/2.1/reservationStatusUpdate": mobilityhouse21NoAnswer,
+	"mobilityhouse/2.1/cancelReservation":       mobilityhouse21NoAnswer,
+	"mobilityhouse/2.1/unknown-action":          mobilityhouse21NoAnswer,
 }
+
+const mobilityhouse21NoAnswer = "https://github.com/mobilityhouse/ocpp/blob/91f4f89140a2198dc5a300cfea88d947ac91ae28/ocpp/charge_point.py#L161-L193"
 
 var seq atomic.Int64
 

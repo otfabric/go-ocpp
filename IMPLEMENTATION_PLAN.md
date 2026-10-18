@@ -15,7 +15,7 @@ Order: go-ocpp foundations → OCPP 1.6J → two interop adapters → OCPP 2.0.1
 | 3 | OCPP 1.6J | **Done** |
 | 4 | Initial interoperability (1.6J) | **Done** (ocpp-interop v0.0.1) |
 | 5 | OCPP 2.0.1 | **Done** (ocpp-interop v0.1.0) |
-| 6 | OCPP 2.1 | Open |
+| 6 | OCPP 2.1 | **Done** (ocpp-interop v0.2.0; 2.1 against The Mobility House only) |
 | 7 | Production hardening | Open |
 | 8 | ocppctl | Open |
 
@@ -151,27 +151,53 @@ directions for the features the adapters support.
 
 ## Phase 6 - OCPP 2.1
 
-- [ ] S5: diff the schemas against Edition 2 and the 2026-09 errata
-- [ ] CALLRESULTERROR and SEND in `ocppj` and the engine (T4, T5)
-- [ ] All 91 actions; periodic event streams, DER, tariffs, battery swap,
-      bidirectional charging
-- [ ] Interop against the 2.1-capable adapters (ChargeTimeEU and, after
-      verification, Mobility House 2.1.0). A feature with only one
-      independent implementation is reported as such
-- [ ] Examples `station21` and `csms21`
+- [x] S5: the schemas are the Edition 2 archive's; the 2026-09 errata change
+      none (SPECIFICATIONS.md)
+- [x] CALLRESULTERROR and SEND in `ocppj` and the engine (T4, T5);
+      `ocpp.Sender`, `ocpp.SendDispatcher`, `Client.Send`, `Session.Send`
+- [x] All 91 actions generated (`ocpp21`), with the 27 new directions taken
+      from Part 2; NotifyPeriodicEventStream as a SEND-only action
+- [x] e2e: typed 2.1 in both roles, a SEND while a CALL is outstanding, a
+      CALLRESULTERROR for an invalid response
+- [x] Example `examples/ocpp21` (version negotiation, periodic event stream)
+- [x] Interop against the 2.1-capable adapters, pinned to ocpp-interop
+      v0.2.0: Mobility House 2.1.0, 87 scenarios, 0 failures. ChargeTimeEU
+      has 2.1 on master only. SEND and CALLRESULTERROR have no independent
+      implementation to test against and are reported as such
 
 Gate: 2.1 coverage is documented, and every claimed feature has been
 verified against an independent implementation.
 
 ## Phase 7 - Production hardening
 
-- [ ] Long fuzzing runs; corpus committed
-- [ ] Resource exhaustion: many stations, slow readers, oversized and
-      compressed frames, handshake floods
-- [ ] Reconnect storms and long-running soak tests
-- [ ] TLS and authentication negative tests
-- [ ] API review against R13 (ocppctl needs); documentation review;
-      dependency audit
+- [x] Fuzzing: engine and handshake targets added; dispatchers seeded with
+      every action's payloads; 10 s per target in CI, 10 min nightly
+      (`hardening.yml`). Failing inputs are committed under testdata/fuzz;
+      none found so far
+- [x] Resource exhaustion: many stations, slow readers, oversized and
+      compressed frames, handshake floods, call floods, queue saturation,
+      half-open links (`e2e/exhaustion_test.go`)
+- [x] Chaos (seeded proxy: fragmentation, delays, cuts), parallel and race
+      tests, reconnect and replacement storms, soak (`make soak`, nightly)
+- [x] TLS and authentication negative tests
+- [x] Self-interop matrix: every action of every version, both directions
+- [x] Keepalive (`WithPingInterval`), `WithWriteTimeout`,
+      `WithMaxBadMessages`; 2.x identity check
+- [x] API review against R13 (met: raw calls, validation, action lists,
+      frame codec, frame observer); `ErrHandlerPanic`; `DefaultReconnect()`;
+      `component` log attribute; API golden test (`TestAPI`); dependency
+      audit (coder/websocket only)
+- [x] Feature tracker against other implementations (FEATURES.md)
+- [x] Release preparation: use-case examples for every version
+      (examples/README.md); API reference split into API.md,
+      API_CLIENT.md and API_SERVER.md, with `TestDocsCoverAPI`; complete
+      ERRORS.md; per-version action matrices against the reference stacks
+      (docs/compatibility, `make compat`); every gap in FEATURES.md done,
+      by design or planned; `ocpptest`, `ocppcert`, `WithHeader`,
+      `WithOriginPatterns`, `WithIncomingRateLimit`, `Client.Shutdown`,
+      `Client.SetReconnect`
+- [x] Interop with 2.1 against released references: pinned to
+      ocpp-interop v0.2.0
 - [x] Settle S1 (licensing of generated code): ADR 0007
 - [ ] v0.1.0 of go-ocpp
 

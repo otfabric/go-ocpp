@@ -1,0 +1,69 @@
+name: Hardening
+run-name: "Hardening (${{ github.event_name }}) on ${{ github.ref_name }}"
+
+# Long fuzzing, chaos and soak runs: too slow for every push, so nightly and
+# on demand. A fuzz input that fails is uploaded; commit it under the
+# target's testdata/fuzz directory so that every test run checks it.
+on:
+  schedule:
+    - cron: "23 2 * * *"
+  workflow_dispatch:
+    inputs:
+      fuzztime:
+        description: Duration of each fuzz target
+        default: 10m
+      soaktime:
+        description: Duration of the chaos part of the soak
+        default: 10m
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hardening-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fuzz:
+    name: Fuzz ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - ocppj:FuzzDecode
+          - internal/engine:FuzzEndpoint
+          - server:FuzzHandshake
+          - ocpp16:FuzzDispatch
+          - ocpp201:FuzzDispatch
+          - ocpp21:FuzzDispatch
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Fuzz
+        env:
+          TARGET: ${{ matrix.target }}
+          FUZZTIME: ${{ inputs.fuzztime || '10m' }}
+        run: go test -run='^$' -fuzz="^${TARGET#*:}\$" -fuzztime="$FUZZTIME" "./${TARGET%%:*}"
+      - name: Upload failing inputs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-${{ strategy.job-index }}
+          path: "**/testdata/fuzz/**"
+          if-no-files-found: ignore
+
+  soak:
+    name: Chaos and soak
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Soak
+        run: make soak SOAKTIME="${{ inputs.soaktime || '10m' }}"

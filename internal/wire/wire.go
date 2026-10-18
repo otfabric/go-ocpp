@@ -229,6 +229,22 @@ func Call(ctx context.Context, c ocpp.Caller, v ocpp.Version, from ocpp.Role, ac
 	return nil
 }
 
+// Send is the body of a generated SEND function (OCPP 2.1): it checks the
+// version and direction like Call, validates req and sends it. There is no
+// response.
+func Send(ctx context.Context, s ocpp.Sender, v ocpp.Version, from ocpp.Role, action string, req Message) error {
+	if p, ok := s.(ocpp.Peer); ok && p.Version() != 0 && p.Version() != v {
+		return fmt.Errorf("%w: %s of OCPP %s on a connection of OCPP %s", ocpp.ErrUnsupportedVersion, action, v, p.Version())
+	}
+	if r, ok := s.(roler); ok && from != 0 && r.Role() != from {
+		return fmt.Errorf("%w: %s is sent by the %s", ocpp.ErrWrongDirection, action, from)
+	}
+	if err := req.Validate(); err != nil {
+		return err
+	}
+	return s.Send(ctx, action, req)
+}
+
 // Respond is the end of a generated dispatcher case: it checks the
 // handler's response and encodes it. An invalid response is the
 // application's error, sent as InternalError.

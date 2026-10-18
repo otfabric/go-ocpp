@@ -19,12 +19,15 @@ const module = "github.com/otfabric/go-ocpp"
 // rules"). The standard library is always allowed. A package not listed may
 // import nothing outside the standard library and the module root.
 var allowedImports = map[string][]string{
-	".":                  {},
+	".":                  {module + "/internal/after"},
+	"internal/after":     {},
 	"ocppj":              {module},
 	"internal/transport": {"github.com/coder/websocket"},
-	"internal/engine":    {module, module + "/ocppj", module + "/internal/transport"},
+	"internal/engine":    {module, module + "/ocppj", module + "/internal/transport", module + "/internal/after"},
 	"client":             {module, module + "/ocppj", module + "/internal/engine", module + "/internal/transport"},
 	"server":             {module, module + "/ocppj", module + "/internal/engine", module + "/internal/transport"},
+	// The test kit: a real client and server, nothing internal.
+	"ocpptest": {module, module + "/client", module + "/server"},
 	// Version packages: the root package and their runtime, internal/wire.
 	"ocpp16":        {module, module + "/internal/wire"},
 	"ocpp201":       {module, module + "/internal/wire"},

@@ -5,6 +5,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -32,12 +33,76 @@ func (e *Endpoint) Call(ctx context.Context, action string, req, resp any) error
 		if err != nil {
 			return err
 		}
-		return unmarshalPayload(result, resp, action)
+		if err := unmarshalPayload(result, resp, action); err != nil {
+			e.refuseResult(info.MessageID, err)
+			return err
+		}
+		return nil
 	}
 	if e.cfg.CallInterceptor != nil {
 		return e.cfg.CallInterceptor(ctx, info, run)
 	}
 	return run(ctx)
+}
+
+// refuseResult answers a CALLRESULT that cannot be processed with a
+// CALLRESULTERROR (2.1 Part 4 §4.2.3), on OCPP 2.1 connections. Earlier
+// versions have no such message: the error is returned to the caller only.
+func (e *Endpoint) refuseResult(messageID string, err error) {
+	if e.cfg.Info.Version != ocpp.V21 {
+		return
+	}
+	code, desc := ocppj.FormatErrorCode(e.cfg.Info.Version), err.Error()
+	var ve *ocpp.ValidationError
+	if errors.As(err, &ve) {
+		ce := ve.CallError()
+		code, desc = ce.Code, ce.Description
+	}
+	e.log.Warn("response refused with CALLRESULTERROR", "message_id", messageID, "error_code", string(code), "error", err)
+	e.sendResult(ocppj.Frame{Type: ocppj.CallResultError, ID: messageID, ErrorCode: code, Description: e.limit(desc)})
+}
+
+// Send sends a SEND (OCPP 2.1): it is never answered and does not wait for
+// the outgoing CALL slot (2.1 Part 4 §4.1.1, §4.2.4). It returns once the
+// frame is queued for writing.
+func (e *Endpoint) Send(ctx context.Context, action string, req any) (err error) {
+	if e.cfg.Info.Version != ocpp.V21 {
+		return fmt.Errorf("%w: SEND exists in OCPP 2.1 only, this connection uses %s", ocpp.ErrUnsupportedVersion, e.cfg.Info.Version)
+	}
+	if e.cfg.CanSend != nil && !e.cfg.CanSend(action) {
+		return fmt.Errorf("%w: %s from the %s", ocpp.ErrWrongDirection, action, e.cfg.Info.Role)
+	}
+	payload, err := marshalPayload(req)
+	if err != nil {
+		return err
+	}
+	info := ocpp.CallInfo{ConnInfo: e.cfg.Info, Action: action, MessageID: e.cfg.NewMessageID(), Direction: ocpp.Outgoing}
+	start := time.Now()
+	defer func() { e.cfg.Metrics.OnCallDone(e.cfg.Info, action, time.Since(start), err) }()
+	run := func(ctx context.Context) error {
+		if err := e.Err(); err != nil {
+			return err
+		}
+		frame, err := ocppj.Encode(ocppj.Frame{Type: ocppj.Send, ID: info.MessageID, Action: action, Payload: payload})
+		if err != nil {
+			return err
+		}
+		select {
+		case e.sends <- frame:
+			e.log.Debug("SEND queued", "action", action, "message_id", info.MessageID, "direction", "outgoing")
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-e.ctx.Done():
+			return e.cause
+		}
+	}
+	if e.cfg.CallInterceptor != nil {
+		err = e.cfg.CallInterceptor(ctx, info, run)
+	} else {
+		err = run(ctx)
+	}
+	return err
 }
 
 func (e *Endpoint) roundTrip(ctx context.Context, info ocpp.CallInfo, payload json.RawMessage) (json.RawMessage, error) {
@@ -94,6 +159,14 @@ func (e *Endpoint) roundTrip(ctx context.Context, info ocpp.CallInfo, payload js
 		return r.payload, r.err
 	case <-ctx.Done():
 		return nil, ctx.Err()
+	case <-e.ctx.Done():
+		// shutdown finishes the call that is pending when it runs; a call
+		// that became pending after that, its frame taken by the buffered
+		// calls channel the writer no longer drains, is finished here.
+		// finish runs once, so p.ch holds whichever result came first.
+		e.finish(p, callResult{err: e.cause})
+		r := <-p.ch
+		return r.payload, r.err
 	}
 }
 
@@ -168,6 +241,13 @@ func unmarshalPayload(payload json.RawMessage, resp any, action string) error {
 	}
 	if err := json.Unmarshal(payload, resp); err != nil {
 		return fmt.Errorf("%w: %s response: %w", ocpp.ErrProtocol, action, err)
+	}
+	// A typed response validates itself; validating here lets the engine
+	// answer an invalid one with a CALLRESULTERROR (2.1).
+	if v, ok := resp.(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return fmt.Errorf("%w: %s response: %w", ocpp.ErrProtocol, action, err)
+		}
 	}
 	return nil
 }

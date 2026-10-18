@@ -77,8 +77,9 @@ func TestReferenceStationAgainstCSMS(t *testing.T) {
 					for _, name := range f.samplesFrom("station") {
 						s := f.Samples[name]
 						t.Run(name, func(t *testing.T) {
-							if evidence, ok := knownIssues[a.name+"/"+v.String()+"/"+name]; ok {
-								t.Skipf("known upstream defect of %s: %s", a.name, evidence)
+							a.skipKnownIssue(t, v, name)
+							if isSend(v, s.Action) {
+								t.Skip("the container contract (0.4) has no operation to make a reference send a SEND")
 							}
 							if !slices.Contains(refCaps.Sends, s.Action) {
 								t.Skipf("%s does not declare sending %s", a.name, s.Action)
@@ -94,8 +95,15 @@ func TestReferenceStationAgainstCSMS(t *testing.T) {
 					for _, name := range f.samplesFrom("csms") {
 						s := f.Samples[name]
 						t.Run(name, func(t *testing.T) {
-							if evidence, ok := knownIssues[a.name+"/"+v.String()+"/"+name]; ok {
-								t.Skipf("known upstream defect of %s: %s", a.name, evidence)
+							a.skipKnownIssue(t, v, name)
+							if isSend(v, s.Action) {
+								if !a.caps(t).Versions[v.String()].Features.Send {
+									t.Skipf("%s does not declare receiving SEND messages", a.name)
+								}
+								if err := sess.Send(ctx, s.Action, s.Payload); err != nil {
+									t.Fatalf("SEND %s: %v", s.Action, err)
+								}
+								return
 							}
 							var resp json.RawMessage
 							err := sess.Call(ctx, s.Action, s.Payload, &resp)
@@ -105,6 +113,7 @@ func TestReferenceStationAgainstCSMS(t *testing.T) {
 				})
 
 				t.Run("unknown-action", func(t *testing.T) {
+					a.skipKnownIssue(t, v, "unknown-action")
 					err := sess.Call(ctx, "NoSuchAction", nil, nil)
 					var ce *ocpp.CallError
 					if !errors.As(err, &ce) || !noAnswerCodes[ce.Code] {

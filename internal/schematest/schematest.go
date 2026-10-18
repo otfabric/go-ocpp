@@ -34,7 +34,8 @@ import (
 // Config describes a version package to the suite.
 type Config struct {
 	Version ocpp.Version
-	// Files maps an action to its request and response schema files.
+	// Files maps an action to its request and response schema files. A
+	// SEND (OCPP 2.1) has no response: its response file is "".
 	Files func(action string) (request, response string)
 	// Actions lists the actions of the package.
 	Actions []string
@@ -56,6 +57,9 @@ func Run(t *testing.T, cfg Config) {
 			file    string
 			request bool
 		}{{"request", reqFile, true}, {"response", respFile, false}} {
+			if part.file == "" {
+				continue
+			}
 			t.Run(action+"/"+part.name, func(t *testing.T) {
 				s := load(t, part.file)
 				for _, mode := range []string{"full", "minimal"} {
@@ -73,7 +77,7 @@ func Run(t *testing.T, cfg Config) {
 
 // Instance returns a valid instance of the schema in file: with every
 // property (full) or the required ones only, encoded as JSON.
-func Instance(t *testing.T, file string, full bool) json.RawMessage {
+func Instance(t testing.TB, file string, full bool) json.RawMessage {
 	t.Helper()
 	s := load(t, file)
 	b, err := json.Marshal(s.instance(s.root, full))
@@ -89,7 +93,7 @@ type suiteSchema struct {
 	ref  *jsonschema.Schema
 }
 
-func load(t *testing.T, file string) *suiteSchema {
+func load(t testing.TB, file string) *suiteSchema {
 	t.Helper()
 	data, err := os.ReadFile(file)
 	if err != nil {
