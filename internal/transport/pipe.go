@@ -67,3 +67,16 @@ func (e *pipeEnd) Close(code int, reason string) error {
 }
 
 func (e *pipeEnd) Subprotocol() string { return e.sub }
+
+func (e *pipeEnd) Abort() { e.p.close(StatusGoingAway, "") }
+
+// Ping answers at once while the pipe is open: an in-memory peer is never
+// unreachable.
+func (e *pipeEnd) Ping(ctx context.Context) error {
+	select {
+	case <-e.p.done:
+		return ErrClosed
+	default:
+		return nil
+	}
+}

@@ -85,6 +85,9 @@ func New(opts ...Option) (*Server, error) {
 	if o.maxMessageSize <= 0 {
 		o.maxMessageSize = DefaultMaxMessageSize
 	}
+	if o.pingInterval < 0 || o.maxBadMessages < 0 {
+		return nil, fmt.Errorf("%w: ping interval and bad message limit must not be negative", ocpp.ErrInvalidOption)
+	}
 	if o.metrics == nil {
 		o.metrics = ocpp.NopMetrics{}
 	}
@@ -212,6 +215,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		ResponseTimeout:    s.o.responseTimeout,
 		MaxQueuedCalls:     s.o.maxQueuedCalls,
 		Limits:             ocppj.Limits{MaxFrameSize: s.o.maxMessageSize},
+		WriteTimeout:       s.o.writeTimeout,
+		PingInterval:       s.o.pingInterval,
+		MaxBadMessages:     s.o.maxBadMessages,
 		Logger:             s.o.logger,
 		Metrics:            s.o.metrics,
 		CallInterceptor:    s.o.callInterceptor,
@@ -250,8 +256,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Unlock()
 	cause := sess.ep.Err()
+	// A local Close or Shutdown is reported as nil; a replacement is not
+	// the application's doing, so it is reported as ErrReplaced.
 	var reported error
-	if !errors.Is(cause, ocpp.ErrClosed) {
+	if !errors.Is(cause, ocpp.ErrClosed) || errors.Is(cause, ErrReplaced) {
 		reported = cause
 	}
 	s.o.metrics.OnDisconnect(info, reported)

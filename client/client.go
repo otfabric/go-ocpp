@@ -110,6 +110,9 @@ func New(rawURL string, opts ...Option) (*Client, error) {
 	if o.maxMessageSize <= 0 {
 		o.maxMessageSize = DefaultMaxMessageSize
 	}
+	if o.pingInterval < 0 || o.maxBadMessages < 0 {
+		return nil, fmt.Errorf("%w: ping interval and bad message limit must not be negative", ocpp.ErrInvalidOption)
+	}
 	if o.metrics == nil {
 		o.metrics = ocpp.NopMetrics{}
 	}
@@ -259,6 +262,9 @@ func (c *Client) dial(ctx context.Context) (*engine.Endpoint, ocpp.Version, erro
 		ResponseTimeout:    c.o.responseTimeout,
 		MaxQueuedCalls:     c.o.maxQueuedCalls,
 		Limits:             ocppj.Limits{MaxFrameSize: c.o.maxMessageSize},
+		WriteTimeout:       c.o.writeTimeout,
+		PingInterval:       c.o.pingInterval,
+		MaxBadMessages:     c.o.maxBadMessages,
 		Logger:             c.o.logger,
 		Metrics:            c.o.metrics,
 		CallInterceptor:    c.o.callInterceptor,

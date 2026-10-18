@@ -113,6 +113,10 @@ func (w *wsConn) Close(code int, reason string) error {
 
 func (w *wsConn) Subprotocol() string { return w.c.Subprotocol() }
 
+func (w *wsConn) Abort() { _ = w.c.CloseNow() }
+
+func (w *wsConn) Ping(ctx context.Context) error { return convert(w.c.Ping(ctx)) }
+
 func convert(err error) error {
 	if err == nil {
 		return nil

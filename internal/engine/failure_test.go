@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -27,6 +29,8 @@ type fakeConn struct {
 	closeOnce sync.Once
 	mu        sync.Mutex
 	written   [][]byte
+	noPong    bool // Ping waits for a pong that never comes
+	pings     atomic.Int64
 }
 
 func newFakeConn() *fakeConn {
@@ -72,6 +76,21 @@ func (c *fakeConn) Close(int, string) error {
 }
 
 func (c *fakeConn) Subprotocol() string { return "ocpp1.6" }
+
+func (c *fakeConn) Abort() { _ = c.Close(0, "") }
+
+func (c *fakeConn) Ping(ctx context.Context) error {
+	c.pings.Add(1)
+	if !c.noPong {
+		return nil
+	}
+	select {
+	case <-c.closed:
+		return transport.ErrClosed
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
 
 func fakeEndpoint(t *testing.T, conn *fakeConn, mod func(*Config)) *Endpoint {
 	t.Helper()
@@ -433,4 +452,77 @@ func TestFloodWhileHandling(t *testing.T) {
 	_ = e.Close()
 	close(block)
 	<-e.Done()
+}
+
+// A call racing Close returns at once with the close's error, whether it
+// became pending before shutdown ran or after: it never waits for its
+// response timeout.
+func TestCallRacingClose(t *testing.T) {
+	checkNoLeak(t)
+	for i := range 200 {
+		e, _ := rawPeer(t, ocpp.V201, nil, func(c *Config) { c.ResponseTimeout = time.Hour })
+		done := make(chan error, 1)
+		go func() { done <- e.Call(context.Background(), "Heartbeat", nil, nil) }()
+		if i%2 == 1 {
+			runtime.Gosched()
+		}
+		_ = e.Close()
+		select {
+		case err := <-done:
+			if !errors.Is(err, ocpp.ErrClosed) && !errors.Is(err, ocpp.ErrConnectionLost) {
+				t.Fatalf("round %d: %v", i, err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("round %d: the call waited for its response timeout", i)
+		}
+	}
+}
+
+// Pings go out every PingInterval while pongs arrive; a missing pong loses
+// the connection.
+func TestPing(t *testing.T) {
+	checkNoLeak(t)
+	conn := newFakeConn()
+	e := fakeEndpoint(t, conn, func(c *Config) { c.PingInterval = 5 * time.Millisecond })
+	deadline := time.Now().Add(5 * time.Second)
+	for conn.pings.Load() < 3 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if conn.pings.Load() < 3 || e.Err() != nil {
+		t.Fatalf("%d pings, err %v", conn.pings.Load(), e.Err())
+	}
+
+	dead := newFakeConn()
+	dead.noPong = true
+	e2 := fakeEndpoint(t, dead, func(c *Config) { c.PingInterval = 5 * time.Millisecond })
+	select {
+	case <-e2.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("a missing pong did not end the connection")
+	}
+	if !errors.Is(e2.Err(), ocpp.ErrConnectionLost) {
+		t.Fatalf("err %v", e2.Err())
+	}
+}
+
+// MaxBadMessages malformed frames close the connection; fewer do not.
+func TestMaxBadMessages(t *testing.T) {
+	checkNoLeak(t)
+	conn := newFakeConn()
+	e := fakeEndpoint(t, conn, func(c *Config) { c.MaxBadMessages = 3 })
+	conn.reads <- []byte(`not json`)
+	conn.reads <- []byte(`[9,"x"]`)
+	time.Sleep(20 * time.Millisecond)
+	if e.Err() != nil {
+		t.Fatalf("closed after 2 bad messages: %v", e.Err())
+	}
+	conn.reads <- []byte(`{}`)
+	select {
+	case <-e.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("not closed after 3 bad messages")
+	}
+	if !errors.Is(e.Err(), ocpp.ErrConnectionLost) || !errors.Is(e.Err(), ocpp.ErrProtocol) {
+		t.Fatalf("err %v", e.Err())
+	}
 }

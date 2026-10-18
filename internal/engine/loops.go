@@ -68,6 +68,14 @@ func (e *Endpoint) readLoop() {
 func (e *Endpoint) malformed(err error) {
 	err = fmt.Errorf("%w: %w", ocpp.ErrProtocol, err)
 	e.cfg.Metrics.OnProtocolError(e.cfg.Info, err)
+	if n := e.badMessages.Add(1); e.cfg.MaxBadMessages > 0 && n >= int64(e.cfg.MaxBadMessages) {
+		if n == int64(e.cfg.MaxBadMessages) {
+			e.log.Warn("closing: too many malformed frames", "count", n, "error", err)
+			e.CloseWith(lost(fmt.Errorf("%w: %d malformed frames received", ocpp.ErrProtocol, n)),
+				transport.StatusPolicy, "too many malformed messages")
+		}
+		return
+	}
 	var de *ocppj.DecodeError
 	errors.As(err, &de)
 	if de == nil || de.UnknownType || (de.Type != ocppj.Call && de.Type != 0) {
@@ -85,6 +93,29 @@ func (e *Endpoint) malformed(err error) {
 	e.log.Warn("malformed frame answered with CALLERROR", "message_id", id, "error", err)
 	e.sendResult(ocppj.Frame{Type: ocppj.CallError, ID: id,
 		ErrorCode: ocppj.RPCErrorCode(e.cfg.Info.Version), Description: e.limit(de.Reason)})
+}
+
+// pingLoop sends a WebSocket ping every PingInterval. A pong that does not
+// arrive within the interval means the peer is unreachable (a half-open
+// TCP connection, say), and the connection is closed as lost.
+func (e *Endpoint) pingLoop() {
+	t := time.NewTicker(e.cfg.PingInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-e.ctx.Done():
+			return
+		case <-t.C:
+		}
+		ctx, cancel := context.WithTimeout(e.ctx, e.cfg.PingInterval)
+		err := e.conn.Ping(ctx)
+		cancel()
+		if err != nil && e.ctx.Err() == nil {
+			e.log.Warn("no pong: closing", "error", err)
+			e.CloseWith(lost(fmt.Errorf("no pong within %s: %w", e.cfg.PingInterval, err)), 0, "")
+			return
+		}
+	}
 }
 
 func (e *Endpoint) writeLoop() {
@@ -106,7 +137,7 @@ func (e *Endpoint) writeLoop() {
 		err := e.conn.WriteMessage(ctx, data)
 		cancel()
 		if err != nil {
-			e.shutdown(lost(fmt.Errorf("write: %w", err)), transport.StatusInternalError, "")
+			e.shutdown(lost(fmt.Errorf("write: %w", err)), 0, "")
 			return
 		}
 		if obs := e.cfg.FrameObserver; obs != nil {

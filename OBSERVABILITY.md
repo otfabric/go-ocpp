@@ -34,7 +34,7 @@ are added.
 |---|---|
 | `OnConnect(info)` | A connection opens |
 | `OnConnectFailed(info, err)` | A client's connect fails, or the server refuses a connection (subprotocol, authentication, limits, handshake) |
-| `OnDisconnect(info, err)` | An open connection ends; `err` is nil after a local close |
+| `OnDisconnect(info, err)` | An open connection ends; `err` is nil after a local close, `server.ErrReplaced` for a replaced session |
 | `OnReconnectAttempt(info, n)` | Before a client's n-th redial |
 | `OnCallDone(info, action, d, err)` | An outgoing CALL ends: nil, `*CallError`, `ErrTimeout`, a connection error, or a response that failed validation. An outgoing SEND (2.1) ends when it is queued |
 | `OnCallHandled(info, action, d, err)` | An incoming CALL has been answered, or an incoming SEND (2.1) handled |

@@ -159,6 +159,14 @@ func (e *Endpoint) roundTrip(ctx context.Context, info ocpp.CallInfo, payload js
 		return r.payload, r.err
 	case <-ctx.Done():
 		return nil, ctx.Err()
+	case <-e.ctx.Done():
+		// shutdown finishes the call that is pending when it runs; a call
+		// that became pending after that, its frame taken by the buffered
+		// calls channel the writer no longer drains, is finished here.
+		// finish runs once, so p.ch holds whichever result came first.
+		e.finish(p, callResult{err: e.cause})
+		r := <-p.ch
+		return r.payload, r.err
 	}
 }
 

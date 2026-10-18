@@ -38,6 +38,13 @@ type Conn interface {
 	Close(code int, reason string) error
 	// Subprotocol returns the negotiated subprotocol.
 	Subprotocol() string
+	// Abort closes the connection at once, without the closing handshake:
+	// for a peer that no longer responds. It may be called concurrently
+	// with everything else and more than once.
+	Abort()
+	// Ping sends a WebSocket ping and waits for the pong until ctx ends.
+	// It needs a concurrent ReadMessage to receive the pong.
+	Ping(ctx context.Context) error
 }
 
 // ErrClosed is returned by ReadMessage and WriteMessage once the connection

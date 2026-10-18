@@ -39,6 +39,9 @@ type options struct {
 	responseTimeout    time.Duration
 	maxQueuedCalls     int
 	maxMessageSize     int
+	writeTimeout       time.Duration
+	pingInterval       time.Duration
+	maxBadMessages     int
 	callInterceptor    ocpp.Interceptor
 	handlerInterceptor ocpp.Interceptor
 	frameObserver      ocpp.FrameObserver
@@ -158,6 +161,25 @@ func WithMaxQueuedCalls(n int) Option { return func(o *options) { o.maxQueuedCal
 // WithMaxMessageSize sets the largest message accepted, in bytes. A larger
 // one closes the connection.
 func WithMaxMessageSize(n int) Option { return func(o *options) { o.maxMessageSize = n } }
+
+// WithWriteTimeout bounds writing one message. A CSMS that stops reading
+// makes the write fail, and the connection is closed as lost. Default
+// 10 s.
+func WithWriteTimeout(d time.Duration) Option { return func(o *options) { o.writeTimeout = d } }
+
+// WithPingInterval makes the client send a WebSocket ping every d, and
+// treat the connection as lost when the pong does not arrive within d: a
+// half-open connection is then noticed without waiting for a CALL to time
+// out. OCPP 2.x configures it with the WebSocketPingInterval variable of
+// OCPPCommCtrlr, OCPP 1.6 with the WebSocketPingInterval configuration
+// key; the application passes the value in. Zero (the default) sends no
+// pings.
+func WithPingInterval(d time.Duration) Option { return func(o *options) { o.pingInterval = d } }
+
+// WithMaxBadMessages closes the connection with status 1008 once n
+// malformed frames have been received on it. Each is still answered or
+// dropped as the version requires. Zero (the default) sets no limit.
+func WithMaxBadMessages(n int) Option { return func(o *options) { o.maxBadMessages = n } }
 
 // WithCallInterceptor wraps every outgoing CALL.
 func WithCallInterceptor(i ocpp.Interceptor) Option {
