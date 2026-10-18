@@ -4,7 +4,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help all build examples fmt fmt-check lint lint-ci vet vuln test coverage cover fuzz check cross clean interop test-interop e2e deps gen gen-check schemas-check
+.PHONY: help all build examples fmt fmt-check lint lint-ci vet vuln test coverage cover fuzz check cross clean interop test-interop e2e deps gen gen-check schemas-check schemas-sync
 help: ## This help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_-]+:.*?## / {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
@@ -22,7 +22,7 @@ BIN_DIR := bin
 # Library packages: tests and coverage (exclude examples and the interop suite)
 TEST_PKGS := $(shell go list ./... | grep -v '/examples' | grep -v '/interop$$' | grep -v '/interop/')
 # Coverage is measured over the library packages, whichever package's tests exercise them.
-COVER_PKGS := $(shell go list ./... | grep -v '/examples' | grep -v '/e2e$$' | grep -v '/internal/gen' | grep -v '/internal/schematest' | grep -v '/interop$$' | grep -v '/interop/' | paste -sd, -)
+COVER_PKGS := $(shell go list ./... | grep -v '/examples' | grep -v '/e2e$$' | grep -v '/internal/gen' | grep -v '/internal/specsync' | grep -v '/internal/schematest' | grep -v '/interop$$' | grep -v '/interop/' | paste -sd, -)
 
 # Platforms the library must build on, pure Go (CGO_ENABLED=0).
 CROSS_PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64
@@ -150,6 +150,9 @@ gen-check: gen ## Fail if the generated code differs from what is committed
 	@if ! git diff --quiet -- ocpp16 ocpp201; then \
 		echo "Generated code is out of date: run 'make gen' and commit."; git --no-pager diff --stat -- ocpp16 ocpp201; exit 1; \
 	fi
+
+schemas-sync: ## Refresh schemas/ from the OCA download page (review the diff; see schemas/README.md)
+	@go run ./internal/specsync
 
 schemas-check: ## Check the vendored OCA schemas against their recorded SHA-256 sums
 	@cd schemas && shasum -a 256 -c --quiet SHA256SUMS && echo "schemas: OK"

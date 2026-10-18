@@ -13,5 +13,27 @@ checks that the generated code is up to date.
 | `ocpp201` | 128 | draft-06 | OCPP 2.0.1 Edition 4 (all files), `OCPP-2.0.1_part3_JSON_schemas.zip` (2020-03-31; unchanged by Editions 2–4 and errata 2026-09) | `9e025b7d0ef45deb221a7b0bb24b6eb0d199dce8927e1512a8aa75419f511a64` |
 | `ocpp21` | 181 | draft-06 | OCPP 2.1 Edition 2 (all files), `OCPP-2.1_part3_JSON_schemas.zip` (unchanged by errata 2026-09) | `2774ada26a709e3bf8680ee6721b3b215b8bc345dc6d8979b4c6b3d77f3a1f69` |
 
-`SHA256SUMS` lists every file. Check with `shasum -a 256 -c SHA256SUMS` in
-this directory.
+`SHA256SUMS` lists every file (`make schemas-check`). `UPSTREAM.json`
+records, for each document family, the newest OCA archive these files come
+from: its label on the download page, URL and SHA-256, including the errata
+and Part 2 appendices that carry no schemas.
+
+## Staying current
+
+`internal/specsync` (`make schemas-sync`) finds the newest edition, errata and
+appendices of each version on the
+[OCA download page](https://openchargealliance.org/my-oca/ocpp/), downloads
+them, and rewrites this directory from them. The workflow
+`.github/workflows/spec-check.yml` runs it every Monday, regenerates the
+version packages, and opens a `spec-update` issue when anything differs from
+what is committed: a new edition, new errata, or new appendices. It never
+commits; an update is reviewed by hand:
+
+```sh
+make schemas-sync gen
+make check
+```
+
+New errata can change normative rules without changing a schema: the issue
+says so, and SPECIFICATIONS.md's transport rules are re-checked against
+them.

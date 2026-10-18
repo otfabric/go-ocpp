@@ -77,6 +77,7 @@ go-ocpp/
 │   ├── transport/     the WebSocket adapter (ADR 0002)
 │   ├── gen/           the schema-to-Go generator (go generate in each version package)
 │   ├── wire/          the runtime of the generated code
+│   ├── specsync/      refreshes schemas/ from the OCA download page (weekly check)
 │   └── schematest/    the schema conformance suite (tests only)
 ├── e2e/               this module's client against this module's server
 ├── interop/           against otfabric/ocpp-interop images (build tag interop)

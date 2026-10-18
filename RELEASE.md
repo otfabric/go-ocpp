@@ -58,6 +58,9 @@ Phases 3 and 5 (OCPP 1.6J and 2.0.1):
 - WebSocket compression (RFC 7692): always supported by the server,
   `client.WithCompression`
 - Examples `ocpp16` and `ocpp201`
+- `internal/specsync` and the weekly `spec-check` workflow: the vendored
+  OCA documents are compared with the newest published editions, errata and
+  appendices, and a `spec-update` issue is opened when they differ
 
 Changed after checking the OCA text (SPECIFICATIONS.md, T1–T11):
 

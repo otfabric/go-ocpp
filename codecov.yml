@@ -15,4 +15,5 @@ ignore:
   - "examples/**"
   - "internal/gen/**"
   - "internal/schematest/**"
+  - "internal/specsync/**"
   - "**/zz_generated_*.go"

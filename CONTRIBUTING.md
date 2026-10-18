@@ -51,6 +51,15 @@ under that gofmt and under the local one: run `make fmt`, then
   not to lower the target; the few that only a race can reach are named in
   the pull request.
 
+## Generated code and specifications
+
+`ocpp16/zz_generated_*.go` and `ocpp201/zz_generated_*.go` come from
+`internal/gen` and the OCA schemas in `schemas/`; never edit them, change the
+generator and run `make gen`. CI fails when they are out of date
+(`make gen-check`) or when a schema differs from its recorded checksum
+(`make schemas-check`). New OCA documents are picked up with
+`make schemas-sync` (see [schemas/README.md](schemas/README.md#staying-current)).
+
 ## Documentation
 
 Update the document that owns the topic, and add an entry to RELEASE.md

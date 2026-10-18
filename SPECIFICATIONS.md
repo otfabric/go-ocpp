@@ -34,9 +34,12 @@ Excluded: OCPP 1.6 SOAP, OCPP 1.5 and older.
 OCPP 2.0.1 Edition 3 is also published as IEC 63584. go-ocpp follows the OCA
 edition, which is newer.
 
-When a document is downloaded, record its file name and SHA-256 in the table
-under [JSON schemas](#json-schemas), so that a build can show what it was
-generated from.
+What the repository is built from is recorded in
+[schemas/UPSTREAM.json](schemas/UPSTREAM.json) (archive labels, URLs and
+SHA-256). A weekly workflow (`spec-check.yml`) compares it with the newest
+documents on the OCA download page and opens an issue when the OCA has
+published new editions, errata or appendices; see
+[schemas/README.md](schemas/README.md#staying-current).
 
 ## Source rules
 
