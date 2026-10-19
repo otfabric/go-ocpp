@@ -12,11 +12,11 @@ their results are in [INTEROPERABILITY.md](../../INTEROPERABILITY.md).
 
 | Reference | Upstream | Image | Contract | OCPP 1.6 |
 |---|---|---|---|---|
-| mobilityhouse | The Mobility House ocpp 2.1.0 | `ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:c77dcac27829…` | 0.5 | station yes, CSMS yes |
-| chargetime | ChargeTimeEU Java-OCA-OCPP v2.0 | `ghcr.io/otfabric/ocpp-interop-chargetime@sha256:c694c6cfdafd…` | 0.5 | station yes, CSMS yes |
-| lorenzodonini | lorenzodonini ocpp-go v0.19.0 | `ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:8667321b6fc1…` | 0.5 | station yes, CSMS yes |
-| everest | EVerest libocpp 2026.02.1 | `ghcr.io/otfabric/ocpp-interop-everest@sha256:cbc7793935c9…` | 0.5 | station yes, CSMS no |
-| citrineos | CitrineOS core v2.0.1 | `ghcr.io/otfabric/ocpp-interop-citrineos@sha256:fc4a41079a5e…` | 0.5 | station no, CSMS yes |
+| mobilityhouse | The Mobility House ocpp 2.1.0 | `ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:3f14958e9f21…` | 0.5 | station yes, CSMS yes |
+| chargetime | ChargeTimeEU Java-OCA-OCPP v2.0 | `ghcr.io/otfabric/ocpp-interop-chargetime@sha256:221f0cec9ae2…` | 0.5 | station yes, CSMS yes |
+| lorenzodonini | lorenzodonini ocpp-go v0.19.0 | `ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:e6cc15c217be…` | 0.5 | station yes, CSMS yes |
+| everest | EVerest libocpp 2026.02.1 | `ghcr.io/otfabric/ocpp-interop-everest@sha256:abd99af84484…` | 0.5 | station yes, CSMS no |
+| citrineos | CitrineOS core v2.0.1 | `ghcr.io/otfabric/ocpp-interop-citrineos@sha256:143878b708c4…` | 0.5 | station no, CSMS yes |
 
 citrineos answers CALLs by itself, not from the fixture (feature `fixtureAnswers: false`):
 its **handles** are the actions whose answer is the fixture's. It answers the
@@ -33,25 +33,25 @@ exchanged in both roles between a go-ocpp station and CSMS (e2e
 | Authorize | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | — | handles | `authorizeAccepted`, `authorizeBlocked` |
 | BootNotification | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | — | handles | `boot` |
 | CancelReservation | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | — | `cancelReservation` |
-| CertificateSigned | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | — | — | `certificateSigned` |
+| CertificateSigned | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | — | `certificateSigned` |
 | ChangeAvailability | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `changeAvailability` |
 | ChangeConfiguration | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `changeConfiguration` |
 | ClearCache | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `clearCache` |
 | ClearChargingProfile | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `clearChargingProfile` |
 | DataTransfer | both | ✓ CALL | sends, handles | sends, handles | sends, handles | sends, handles | sends, handles | sends, handles | sends, handles | — | — | sends | `dataTransferFromCsms`, `dataTransfer` |
-| DeleteCertificate | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | — | — | `deleteCertificate` |
+| DeleteCertificate | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | — | `deleteCertificate` |
 | DiagnosticsStatusNotification | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | — | handles | `diagnosticsStatus` |
-| ExtendedTriggerMessage | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | — | — | `extendedTriggerHeartbeat` |
+| ExtendedTriggerMessage | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | — | `extendedTriggerHeartbeat` |
 | FirmwareStatusNotification | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | — | handles | `firmwareStatus` |
 | GetCompositeSchedule | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `getCompositeSchedule` |
 | GetConfiguration | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `getConfiguration` |
 | GetDiagnostics | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `getDiagnostics` |
-| GetInstalledCertificateIds | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | — | — | `getInstalledCertificateIds` |
+| GetInstalledCertificateIds | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | — | `getInstalledCertificateIds` |
 | GetLocalListVersion | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `getLocalListVersion` |
-| GetLog | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | — | — | `getLog` |
+| GetLog | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | — | `getLog` |
 | Heartbeat | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | — | handles | `heartbeat` |
-| InstallCertificate | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | — | — | `installCertificate` |
-| LogStatusNotification | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | — | — | — | — | `logStatus` |
+| InstallCertificate | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | — | `installCertificate` |
+| LogStatusNotification | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | — | — | `logStatus` |
 | MeterValues | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | — | handles | `meterValues` |
 | RemoteStartTransaction | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `remoteStart` |
 | RemoteStopTransaction | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `remoteStop` |
@@ -60,9 +60,9 @@ exchanged in both roles between a go-ocpp station and CSMS (e2e
 | SecurityEventNotification | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | — | — | `securityEventMinimal`, `securityEvent` |
 | SendLocalList | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `sendLocalList` |
 | SetChargingProfile | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `setTxDefaultProfile` |
-| SignCertificate | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | — | — | — | — | `signCertificate` |
-| SignedFirmwareStatusNotification | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | — | — | — | — | `signedFirmwareStatus` |
-| SignedUpdateFirmware | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | — | — | `signedUpdateFirmware` |
+| SignCertificate | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | — | — | `signCertificate` |
+| SignedFirmwareStatusNotification | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | — | — | `signedFirmwareStatus` |
+| SignedUpdateFirmware | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | — | `signedUpdateFirmware` |
 | StartTransaction | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | — | — | `startTransaction` |
 | StatusNotification | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | — | handles | `statusAvailable` |
 | StopTransaction | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | — | handles | `stopTransaction` |
@@ -74,7 +74,7 @@ exchanged in both roles between a go-ocpp station and CSMS (e2e
 
 | | Actions | go-ocpp | mobilityhouse station | mobilityhouse CSMS | chargetime station | chargetime CSMS | lorenzodonini station | lorenzodonini CSMS | everest station | everest CSMS | citrineos station | citrineos CSMS |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| OCPP 1.6 | 39 | 39 | 39 | 39 | 39 | 39 | 39 | 39 | 29 | 0 | 0 | 25 |
+| OCPP 1.6 | 39 | 39 | 39 | 39 | 39 | 39 | 39 | 39 | 39 | 0 | 0 | 25 |
 
 A reference's count is the actions its station or CSMS sends or handles.
 

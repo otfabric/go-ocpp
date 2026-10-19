@@ -120,7 +120,7 @@ Found by writing the use-case examples against the public API.
 
 ## Interop gaps
 
-Against otfabric/ocpp-interop v0.4.0 (INTEROPERABILITY.md):
+Against otfabric/ocpp-interop v0.4.1 (INTEROPERABILITY.md):
 
 - **Done**: every action of 1.6J (39/39) and 2.0.1 (64/64), and 90 of 91 of
   2.1, is exchanged with an independent stack

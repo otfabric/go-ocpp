@@ -40,6 +40,12 @@ gets a context that is not cancelled.
 
 ### Changed
 
+- **Interop pinned to otfabric/ocpp-interop v0.4.1.** Its EVerest adapter
+  declares every action libocpp exchanges, which turns 32 skipped scenarios
+  into passes; the other adapters are unchanged.
+- **A CALL is not dispatched once the endpoint has ended**, also when the
+  dispatcher takes it off the queue before it sees the end: its answer could
+  not be sent. Before, it depended on the order of a `select`.
 - The in-memory test pipe (`internal/transport`) delivers the messages written
   before a close first, as a WebSocket does, so that tests over it see what a
   real connection would.
@@ -50,6 +56,14 @@ gets a context that is not cancelled.
   in every run and passes 2000 rounds under `-race`.
 - The drain tests of v0.1.2 (100 rounds each) 30 times under `-race`, twice in
   parallel: 6000 rounds a test, no failure.
+- New engine tests for each delivery path: a SEND while draining
+  (`TestDrainDeliversSends`), SENDs and a CALL queued behind a running
+  handler when the peer closes (`TestQueuedSendsDeliveredAfterTheEnd`, 50
+  rounds), a SEND waiting for the incoming rate limit
+  (`TestSendWaitingForRateLimitDelivered`). Every new line is covered.
+- Interop against the v0.4.1 images (linux/arm64): **1458 pass, 0 fail, 163
+  skipped** with reasons (1.6J 393/40, 2.0.1 632/34, 2.1 432/88; v0.4.0:
+  1426/195).
 - `make check`.
 
 ---

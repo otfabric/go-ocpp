@@ -753,3 +753,91 @@ func TestSendBeforeCloseIsDelivered(t *testing.T) {
 		}
 	}
 }
+
+// sendFrame is a valid 2.1 SEND with message id id.
+func sendFrame(id string) string {
+	return `[6,"` + id + `","NotifyPeriodicEventStream",{"id":1,"pending":0,"basetime":"2026-01-01T00:00:00Z","data":[]}]`
+}
+
+// While draining, an incoming SEND is still delivered: it needs no answer.
+func TestDrainDeliversSends(t *testing.T) {
+	checkNoLeak(t)
+	d := &sendCounter{}
+	e, r := rawPeer(t, ocpp.V21, d, nil)
+	e.Drain()
+	writeRaw(t, r, sendFrame("d1"))
+	deadline := time.Now().Add(5 * time.Second)
+	for d.n.Load() != 1 {
+		if time.Now().After(deadline) {
+			t.Fatal("a SEND was not delivered while draining")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+// blockingCounter blocks every CALL until release is closed and counts SENDs.
+type blockingCounter struct {
+	sendCounter
+	entered chan struct{}
+	release chan struct{}
+	calls   atomic.Int64
+}
+
+func (b *blockingCounter) Dispatch(context.Context, ocpp.Peer, string, json.RawMessage) (json.RawMessage, error) {
+	if b.calls.Add(1) == 1 {
+		close(b.entered)
+	}
+	<-b.release
+	return json.RawMessage(`{}`), nil
+}
+
+// SENDs queued behind a running handler when the peer closes are delivered once
+// it returns; a CALL queued with them is not dispatched, since it can no longer
+// be answered.
+func TestQueuedSendsDeliveredAfterTheEnd(t *testing.T) {
+	checkNoLeak(t)
+	for i := range 50 {
+		d := &blockingCounter{entered: make(chan struct{}), release: make(chan struct{})}
+		e, r := rawPeer(t, ocpp.V21, d, nil)
+		writeRaw(t, r, `[2,"c1","Heartbeat",{}]`)
+		<-d.entered
+		writeRaw(t, r, sendFrame("q1"))
+		writeRaw(t, r, `[2,"c2","Heartbeat",{}]`)
+		writeRaw(t, r, sendFrame("q2"))
+		_ = r.conn.Close(transport.StatusNormal, "")
+		deadline := time.Now().Add(5 * time.Second)
+		for e.Err() == nil {
+			if time.Now().After(deadline) {
+				t.Fatalf("round %d: the endpoint did not end", i)
+			}
+			time.Sleep(time.Millisecond)
+		}
+		close(d.release)
+		<-e.Done()
+		if n := d.n.Load(); n != 2 {
+			t.Fatalf("round %d: %d of 2 queued SENDs delivered", i, n)
+		}
+		if n := d.calls.Load(); n != 1 {
+			t.Fatalf("round %d: %d CALLs dispatched, want only the one running", i, n)
+		}
+	}
+}
+
+// A SEND waiting for the incoming rate limit when the peer closes is delivered.
+func TestSendWaitingForRateLimitDelivered(t *testing.T) {
+	checkNoLeak(t)
+	d := &sendCounter{}
+	e, r := rawPeer(t, ocpp.V21, d, func(c *Config) { c.IncomingRate, c.IncomingBurst = 0.01, 1 })
+	writeRaw(t, r, sendFrame("r1")) // uses the burst
+	writeRaw(t, r, sendFrame("r2")) // waits about 100 s for a token
+	writeRaw(t, r, sendFrame("r3")) // queued behind it
+	_ = r.conn.Close(transport.StatusNormal, "")
+	select {
+	case <-e.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("the endpoint did not end")
+	}
+	if n := d.n.Load(); n != 3 {
+		t.Fatalf("%d of 3 SENDs delivered", n)
+	}
+}

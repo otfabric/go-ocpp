@@ -183,9 +183,10 @@ func (e *Endpoint) dispatchLoop() {
 				return
 			}
 			e.active.Add(1)
-			if e.draining.Load() && f.Type != ocppj.Send {
-				// A CALL that has not started is not answered any more; a
-				// SEND needs no answer and is delivered.
+			if f.Type != ocppj.Send && (e.draining.Load() || e.ctx.Err() != nil) {
+				// A CALL that has not started is not answered any more, while
+				// draining or once the endpoint has ended; a SEND needs no
+				// answer and is delivered.
 				e.active.Add(-1)
 				e.handling.Add(-1)
 				continue
