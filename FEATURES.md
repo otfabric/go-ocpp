@@ -59,7 +59,7 @@ independent validator; 1.6J, 2.0.1 and 2.1 including SEND and
 CALLRESULTERROR; fail-closed authentication before the upgrade; bounded
 queues and limits everywhere; interceptors and a frame observer; slog and
 dependency-free metrics hooks; one production dependency; interop tests
-against three independent stacks; chaos, soak and fuzz testing.
+against five independent stacks; chaos, soak and fuzz testing.
 
 ## Gaps
 

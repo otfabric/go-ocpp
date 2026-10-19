@@ -45,7 +45,7 @@ Docs: [Architecture](ARCHITECTURE.md) · [Requirements](REQUIREMENTS.md) ·
 |---|---|---|
 | OCPP 1.6J, with the Security Whitepaper (Edition 4) extensions | P0 | 39 actions, both roles (`ocpp16`) |
 | OCPP 2.0.1 Edition 4, errata 2026-09 | P0 | 64 actions, both roles (`ocpp201`) |
-| OCPP 2.1 Edition 2, errata 2026-09 | P1 | 91 actions, both roles, SEND and CALLRESULTERROR (`ocpp21`); interop pending |
+| OCPP 2.1 Edition 2, errata 2026-09 | P1 | 91 actions, both roles, SEND and CALLRESULTERROR (`ocpp21`); interop tested against three independent implementations |
 | OCPP 1.6 SOAP, OCPP 1.5 and older | — | out of scope |
 
 ## Install
