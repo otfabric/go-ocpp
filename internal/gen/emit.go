@@ -269,10 +269,11 @@ func (x *%s) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	type plain %s
-	return json.Unmarshal(b, (*plain)(x))
+	return %s(b, (*plain)(x))
 }
 
-`, map[bool]string{true: ", and no other property", false: ""}[t.Strict], t.Name, strings.Join(known, ", "), strings.Join(required, ", "), t.Strict, t.Name)
+`, map[bool]string{true: ", and no other property", false: ""}[t.Strict], t.Name, strings.Join(known, ", "), strings.Join(required, ", "), t.Strict, t.Name,
+		map[bool]string{true: "json.Unmarshal", false: "wire.Unmarshal"}[t.Draft04])
 
 	fmt.Fprintf(b, "// Validate checks x against its schema.\nfunc (x *%s) Validate() error { return x.validate(\"\") }\n\n", t.Name)
 	fmt.Fprintf(b, "func (x *%s) validate(path string) error {\n", t.Name)

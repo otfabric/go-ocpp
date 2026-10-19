@@ -54,7 +54,7 @@ from our tests. "unverified" means we could not establish it.
 | Metrics | callbacks (`ocpp.Metrics`) | no | no | no |
 | Limits (stations, size, queues, bad messages, rate) | yes | partial | no | partial (frame size) |
 | Test kit | `ocpptest` | mocks | partial | test modules |
-| Tested interoperability | against all three and EVerest libocpp, both roles, 1.6J, 2.0.1, 2.1, security profiles 1–3, compression (INTEROPERABILITY.md) | — | — | — |
+| Tested interoperability | against all three, EVerest libocpp (station) and CitrineOS (CSMS), both roles, 1.6J, 2.0.1, 2.1, security profiles 1–3, compression (INTEROPERABILITY.md) | — | — | — |
 
 The comparison with more implementations, and the gaps go-ocpp tracks, are
 in [FEATURES.md](FEATURES.md).

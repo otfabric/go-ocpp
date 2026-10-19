@@ -24,20 +24,21 @@ import (
 )
 
 // The reference images this version of go-ocpp is qualified against:
-// otfabric/ocpp-interop v0.3.1 (The Mobility House ocpp 2.1.0, ChargeTimeEU
+// otfabric/ocpp-interop v0.4.0 (The Mobility House ocpp 2.1.0, ChargeTimeEU
 // Java-OCA-OCPP v2.0, lorenzodonini/ocpp-go v0.19.0: OCPP 1.6J and 2.0.1 in
 // all three, 2.1 in The Mobility House; EVerest libocpp of everest-core
-// 2026.02.1, a station for 1.6J, 2.0.1 and 2.1), pinned by multi-arch index
-// digest
-// so that a run is reproducible. Moving to another release of ocpp-interop
+// 2026.02.1, a station for 1.6J, 2.0.1 and 2.1; CitrineOS core v2.0.1, a
+// CSMS for 1.6J, 2.0.1 and 2.1), pinned by multi-arch index digest so that a
+// run is reproducible. Moving to another release of ocpp-interop
 // means changing these constants; the Makefile and
 // .github/workflows/interop.yml follow.
 const (
-	interopRelease            = "v0.3.1"
-	defaultMobilityHouseImage = "ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:e82896331789e7a1d5ac678994e8a0b5ed29e48ba16a8beb994c16fb7a2f5dd6"
-	defaultChargeTimeImage    = "ghcr.io/otfabric/ocpp-interop-chargetime@sha256:a46c0db29e154e96f8779aebb585fd7c10db1b23be9401442881be21504d2247"
-	defaultLorenzodoniniImage = "ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:8328f5bf6e66281bec10ff35b812eb957c59fd4778f9984c09c28248a0aa9d91"
-	defaultEverestImage       = "ghcr.io/otfabric/ocpp-interop-everest@sha256:990c3ea95c7caa98449663bb7f48d5be7df0144241750e72adbbec2022c3321c"
+	interopRelease            = "v0.4.0"
+	defaultMobilityHouseImage = "ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:c77dcac278296ab49c1df8540d982041a85dbbb2248711e5028bbde1d84e9193"
+	defaultChargeTimeImage    = "ghcr.io/otfabric/ocpp-interop-chargetime@sha256:c694c6cfdafd5705c2eb2abe3e572e1161c2d047b3d9ef9dab24f70230e71b62"
+	defaultLorenzodoniniImage = "ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:8667321b6fc1e53e15052da41f1684f74a34d38e1b8578af8d5a1a612d901219"
+	defaultEverestImage       = "ghcr.io/otfabric/ocpp-interop-everest@sha256:cbc7793935c9b9c082af6aef2bbf251c08ad5c090e2e7ac7153e474f82828f8d"
+	defaultCitrineOSImage     = "ghcr.io/otfabric/ocpp-interop-citrineos@sha256:fc4a41079a5efc6b7a6e7f6450f120d8838f50fefbc73fbb64cd9a51d84a4488"
 )
 
 // adapter is one reference implementation: a container image that follows
@@ -51,7 +52,8 @@ type adapter struct {
 // overridden, for example to try a local build or a candidate:
 //
 //	OCPP_INTEROP_MOBILITYHOUSE_IMAGE, OCPP_INTEROP_CHARGETIME_IMAGE,
-//	OCPP_INTEROP_LORENZODONINI_IMAGE
+//	OCPP_INTEROP_LORENZODONINI_IMAGE, OCPP_INTEROP_EVEREST_IMAGE,
+//	OCPP_INTEROP_CITRINEOS_IMAGE
 //
 // OCPP_INTEROP_ADAPTERS restricts the run to a comma-separated subset.
 // Without Docker the tests skip, unless OCPP_INTEROP_REQUIRE=1, which
@@ -71,6 +73,7 @@ func adapters(t testing.TB) []adapter {
 		image("chargetime", "OCPP_INTEROP_CHARGETIME_IMAGE", defaultChargeTimeImage),
 		image("lorenzodonini", "OCPP_INTEROP_LORENZODONINI_IMAGE", defaultLorenzodoniniImage),
 		image("everest", "OCPP_INTEROP_EVEREST_IMAGE", defaultEverestImage),
+		image("citrineos", "OCPP_INTEROP_CITRINEOS_IMAGE", defaultCitrineOSImage),
 	} {
 		if a.image != "" {
 			all = append(all, a)
@@ -117,6 +120,11 @@ type capabilities struct {
 			Compression      bool  `json:"compression"`
 			Send             bool  `json:"send"`            // OCPP 2.1 SEND (contract 0.4)
 			CallResultError  bool  `json:"callResultError"` // OCPP 2.1 CALLRESULTERROR (contract 0.4)
+			// FixtureAnswers is false for an upstream that answers CALLs by
+			// itself, not from the fixture (contract 0.5: citrineos); its
+			// handles then lists only the actions whose answer is the
+			// fixture's. Not declared means true.
+			FixtureAnswers *bool `json:"fixtureAnswers"`
 		} `json:"features"`
 	} `json:"versions"`
 }
@@ -167,6 +175,15 @@ func (a adapter) securityProfile(t testing.TB, v ocpp.Version, profile int) {
 	if !slices.Contains(a.caps(t).Versions[v.String()].Features.SecurityProfiles, profile) {
 		t.Skipf("%s does not declare security profile %d for OCPP %s", a.name, profile, v)
 	}
+}
+
+// fixtureAnswers reports whether the reference answers CALLs of version v
+// from the fixture (contract 0.5, feature fixtureAnswers; true when not
+// declared).
+func (a adapter) fixtureAnswers(t testing.TB, v ocpp.Version) bool {
+	t.Helper()
+	fa := a.caps(t).Versions[v.String()].Features.FixtureAnswers
+	return fa == nil || *fa
 }
 
 // versions are the OCPP versions the interop suite runs. A reference that
@@ -232,6 +249,21 @@ var knownIssues = map[string]string{
 	"chargetime/2.0.1/compression-csms": "https://github.com/TooTallNate/Java-WebSocket/blob/da3cf2a777aed862f2f5b5cf060cae7969958667/src/main/java/org/java_websocket/extensions/permessage_deflate/PerMessageDeflateExtension.java#L335-L340",
 	// The station offers client_no_context_takeover but keeps its context.
 	"chargetime/2.0.1/compression-station": "https://github.com/TooTallNate/Java-WebSocket/blob/da3cf2a777aed862f2f5b5cf060cae7969958667/src/main/java/org/java_websocket/extensions/permessage_deflate/PerMessageDeflateExtension.java#L326-L333",
+}
+
+// CitrineOS core v2.0.1: the https server of security profiles 2 and 3 has
+// no certificate of its own, only an SNICallback, which Node.js calls only
+// for a ClientHello with a server name; a station that connects by IP
+// address sends none (RFC 6066 section 3) and gets the TLS alert
+// handshake_failure. The same profiles pass with the host name (-sni).
+const citrineosNoSNI = "https://github.com/citrineos/citrineos-core/blob/1a83638c31eebdb1dd8d6cdb0f5b8a9f142a1372/packages/ocpp/src/transport/network-connection/websocket-network-connection.ts#L937-L956"
+
+func init() {
+	for _, v := range []string{"1.6", "2.0.1", "2.1"} {
+		for _, p := range []string{"2", "3"} {
+			knownIssues["citrineos/"+v+"/tls-profile"+p+"-csms"] = citrineosNoSNI
+		}
+	}
 }
 
 const mobilityhouse21NoAnswer = "https://github.com/mobilityhouse/ocpp/blob/91f4f89140a2198dc5a300cfea88d947ac91ae28/ocpp/charge_point.py#L161-L193"
@@ -329,7 +361,11 @@ func (c *container) start(t testing.TB, args []string) {
 		}
 		_, _, _ = docker("rm", "-f", c.name)
 	})
-	deadline := time.Now().Add(90 * time.Second)
+	// CitrineOS starts PostgreSQL, RabbitMQ and then itself (about 15 s
+	// alone, more on a loaded host); the ready file is the contract's
+	// readiness signal.
+	const readyTimeout = 180 * time.Second
+	deadline := time.Now().Add(readyTimeout)
 	for {
 		if _, _, err := docker("exec", c.name, "test", "-f", "/run/ocpp-interop/ready"); err == nil {
 			return
@@ -339,7 +375,7 @@ func (c *container) start(t testing.TB, args []string) {
 			t.Fatalf("%s is %q, not running:\n%s%s", c.name, strings.TrimSpace(state), out, errOut)
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("%s not ready after 90s", c.name)
+			t.Fatalf("%s not ready after %v", c.name, readyTimeout)
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
@@ -388,6 +424,23 @@ func (c *container) call(t testing.TB, station, action string, payload json.RawM
 		t.Fatalf("call %s on %s: result is not JSON: %v\n%s", action, c.name, err, line)
 	}
 	return r
+}
+
+// waitEvent waits until the reference has written n events of a kind
+// (contract events, one JSON object per line on stdout), and reports
+// whether it did within timeout.
+func (c *container) waitEvent(kind string, n int, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for {
+		out, _, _ := docker("logs", c.name)
+		if strings.Count(out, `"event":"`+kind+`"`) >= n {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 }
 
 // stop stops the container with SIGTERM.

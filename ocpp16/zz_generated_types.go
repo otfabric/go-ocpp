@@ -329,7 +329,7 @@ func (x *CertificateHashDataType) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	type plain CertificateHashDataType
-	return json.Unmarshal(b, (*plain)(x))
+	return wire.Unmarshal(b, (*plain)(x))
 }
 
 // Validate checks x against its schema.
@@ -362,7 +362,7 @@ func (x *CertificateSignedRequest) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	type plain CertificateSignedRequest
-	return json.Unmarshal(b, (*plain)(x))
+	return wire.Unmarshal(b, (*plain)(x))
 }
 
 // Validate checks x against its schema.
@@ -386,7 +386,7 @@ func (x *CertificateSignedResponse) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	type plain CertificateSignedResponse
-	return json.Unmarshal(b, (*plain)(x))
+	return wire.Unmarshal(b, (*plain)(x))
 }
 
 // Validate checks x against its schema.
@@ -1020,7 +1020,7 @@ func (x *DeleteCertificateRequest) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	type plain DeleteCertificateRequest
-	return json.Unmarshal(b, (*plain)(x))
+	return wire.Unmarshal(b, (*plain)(x))
 }
 
 // Validate checks x against its schema.
@@ -1044,7 +1044,7 @@ func (x *DeleteCertificateResponse) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	type plain DeleteCertificateResponse
-	return json.Unmarshal(b, (*plain)(x))
+	return wire.Unmarshal(b, (*plain)(x))
 }
 
 // Validate checks x against its schema.
@@ -1152,7 +1152,7 @@ func (x *ExtendedTriggerMessageRequest) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	type plain ExtendedTriggerMessageRequest
-	return json.Unmarshal(b, (*plain)(x))
+	return wire.Unmarshal(b, (*plain)(x))
 }
 
 // Validate checks x against its schema.
@@ -1176,7 +1176,7 @@ func (x *ExtendedTriggerMessageResponse) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	type plain ExtendedTriggerMessageResponse
-	return json.Unmarshal(b, (*plain)(x))
+	return wire.Unmarshal(b, (*plain)(x))
 }
 
 // Validate checks x against its schema.
@@ -1301,7 +1301,7 @@ func (x *FirmwareType) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	type plain FirmwareType
-	return json.Unmarshal(b, (*plain)(x))
+	return wire.Unmarshal(b, (*plain)(x))
 }
 
 // Validate checks x against its schema.
@@ -1545,7 +1545,7 @@ func (x *GetInstalledCertificateIdsRequest) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	type plain GetInstalledCertificateIdsRequest
-	return json.Unmarshal(b, (*plain)(x))
+	return wire.Unmarshal(b, (*plain)(x))
 }
 
 // Validate checks x against its schema.
@@ -1570,7 +1570,7 @@ func (x *GetInstalledCertificateIdsResponse) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	type plain GetInstalledCertificateIdsResponse
-	return json.Unmarshal(b, (*plain)(x))
+	return wire.Unmarshal(b, (*plain)(x))
 }
 
 // Validate checks x against its schema.
@@ -1669,7 +1669,7 @@ func (x *GetLogRequest) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	type plain GetLogRequest
-	return json.Unmarshal(b, (*plain)(x))
+	return wire.Unmarshal(b, (*plain)(x))
 }
 
 // Validate checks x against its schema.
@@ -1697,7 +1697,7 @@ func (x *GetLogResponse) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	type plain GetLogResponse
-	return json.Unmarshal(b, (*plain)(x))
+	return wire.Unmarshal(b, (*plain)(x))
 }
 
 // Validate checks x against its schema.
@@ -1818,7 +1818,7 @@ func (x *InstallCertificateRequest) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	type plain InstallCertificateRequest
-	return json.Unmarshal(b, (*plain)(x))
+	return wire.Unmarshal(b, (*plain)(x))
 }
 
 // Validate checks x against its schema.
@@ -1845,7 +1845,7 @@ func (x *InstallCertificateResponse) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	type plain InstallCertificateResponse
-	return json.Unmarshal(b, (*plain)(x))
+	return wire.Unmarshal(b, (*plain)(x))
 }
 
 // Validate checks x against its schema.
@@ -1960,7 +1960,7 @@ func (x *LogParametersType) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	type plain LogParametersType
-	return json.Unmarshal(b, (*plain)(x))
+	return wire.Unmarshal(b, (*plain)(x))
 }
 
 // Validate checks x against its schema.
@@ -2004,7 +2004,7 @@ func (x *LogStatusNotificationRequest) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	type plain LogStatusNotificationRequest
-	return json.Unmarshal(b, (*plain)(x))
+	return wire.Unmarshal(b, (*plain)(x))
 }
 
 // Validate checks x against its schema.
@@ -2027,7 +2027,7 @@ func (x *LogStatusNotificationResponse) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	type plain LogStatusNotificationResponse
-	return json.Unmarshal(b, (*plain)(x))
+	return wire.Unmarshal(b, (*plain)(x))
 }
 
 // Validate checks x against its schema.
@@ -2669,7 +2669,7 @@ func (x *SecurityEventNotificationRequest) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	type plain SecurityEventNotificationRequest
-	return json.Unmarshal(b, (*plain)(x))
+	return wire.Unmarshal(b, (*plain)(x))
 }
 
 // Validate checks x against its schema.
@@ -2697,7 +2697,7 @@ func (x *SecurityEventNotificationResponse) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	type plain SecurityEventNotificationResponse
-	return json.Unmarshal(b, (*plain)(x))
+	return wire.Unmarshal(b, (*plain)(x))
 }
 
 // Validate checks x against its schema.
@@ -2824,7 +2824,7 @@ func (x *SignCertificateRequest) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	type plain SignCertificateRequest
-	return json.Unmarshal(b, (*plain)(x))
+	return wire.Unmarshal(b, (*plain)(x))
 }
 
 // Validate checks x against its schema.
@@ -2848,7 +2848,7 @@ func (x *SignCertificateResponse) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	type plain SignCertificateResponse
-	return json.Unmarshal(b, (*plain)(x))
+	return wire.Unmarshal(b, (*plain)(x))
 }
 
 // Validate checks x against its schema.
@@ -2873,7 +2873,7 @@ func (x *SignedFirmwareStatusNotificationRequest) UnmarshalJSON(b []byte) error 
 		return err
 	}
 	type plain SignedFirmwareStatusNotificationRequest
-	return json.Unmarshal(b, (*plain)(x))
+	return wire.Unmarshal(b, (*plain)(x))
 }
 
 // Validate checks x against its schema.
@@ -2896,7 +2896,7 @@ func (x *SignedFirmwareStatusNotificationResponse) UnmarshalJSON(b []byte) error
 		return err
 	}
 	type plain SignedFirmwareStatusNotificationResponse
-	return json.Unmarshal(b, (*plain)(x))
+	return wire.Unmarshal(b, (*plain)(x))
 }
 
 // Validate checks x against its schema.
@@ -2920,7 +2920,7 @@ func (x *SignedUpdateFirmwareRequest) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	type plain SignedUpdateFirmwareRequest
-	return json.Unmarshal(b, (*plain)(x))
+	return wire.Unmarshal(b, (*plain)(x))
 }
 
 // Validate checks x against its schema.
@@ -2944,7 +2944,7 @@ func (x *SignedUpdateFirmwareResponse) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	type plain SignedUpdateFirmwareResponse
-	return json.Unmarshal(b, (*plain)(x))
+	return wire.Unmarshal(b, (*plain)(x))
 }
 
 // Validate checks x against its schema.

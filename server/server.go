@@ -394,8 +394,12 @@ func (s *Server) Serve(ln net.Listener) error {
 	return err
 }
 
-// Shutdown stops accepting connections, closes every session with status
-// 1001 (going away), and waits until they have ended or ctx ends.
+// Shutdown stops accepting connections and drains every session: new CALLs
+// and SENDs to stations fail with ocpp.ErrClosed, CALLs from stations that
+// have not started are no longer dispatched, and what is in flight (a CALL
+// awaiting its answer, a handler that has started, a frame queued or being
+// written) is finished, or ctx ends. It then closes every session with
+// status 1001 (going away) and waits until they have ended or ctx ends.
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.mu.Lock()
 	s.closing = true
@@ -408,6 +412,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	for _, hs := range listeners {
 		_ = hs.Close()
 	}
+	_ = drain(ctx, sessions) // bounded by ctx; the sessions are closed either way
 	for _, sess := range sessions {
 		sess.ep.CloseWith(ocpp.ErrClosed, transport.StatusGoingAway, "shutting down")
 	}
@@ -478,8 +483,50 @@ func (s *Session) Send(ctx context.Context, action string, req any) error {
 	return s.ep.Send(ctx, action, req)
 }
 
-// Close closes the connection to the station.
+// Close closes the connection to the station at once: frames still queued or
+// being written are dropped. Shutdown waits for them.
 func (s *Session) Close() error { return s.ep.Close() }
+
+// Shutdown drains the session (new CALLs and SENDs fail with
+// ocpp.ErrClosed, CALLs from the station that have not started are no longer
+// dispatched), waits until what is in flight is done (a CALL awaiting its
+// answer, a handler that has started, a frame queued or being written) or ctx
+// ends, and then closes it like Close. It returns ctx.Err()
+// when ctx ended first; the session is closed either way. Called from a
+// handler of this session, it waits for that handler and so until ctx ends:
+// close from a handler with Close, or with Shutdown in ocpp.AfterResponse.
+func (s *Session) Shutdown(ctx context.Context) error {
+	err := drain(ctx, []*Session{s})
+	_ = s.Close()
+	return err
+}
+
+// drain starts draining every session and waits until each is idle or has
+// ended, or ctx ends.
+func drain(ctx context.Context, sessions []*Session) error {
+	for _, s := range sessions {
+		s.ep.Drain()
+	}
+	t := time.NewTicker(2 * time.Millisecond)
+	defer t.Stop()
+	for {
+		busy := false
+		for _, s := range sessions {
+			if !s.ep.Idle() && s.ep.Err() == nil {
+				busy = true
+				break
+			}
+		}
+		if !busy {
+			return nil
+		}
+		select {
+		case <-t.C:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+}
 
 // Done is closed when the session has ended.
 func (s *Session) Done() <-chan struct{} { return s.ep.Done() }

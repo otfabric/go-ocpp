@@ -620,8 +620,13 @@ func TestIdle(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
-	if !e.Idle() {
-		t.Fatal("not idle after the answer")
+	// The writer records a frame as written just after the peer can read it.
+	deadline := time.Now().Add(5 * time.Second)
+	for !e.Idle() {
+		if time.Now().After(deadline) {
+			t.Fatal("not idle after the answer")
+		}
+		time.Sleep(time.Millisecond)
 	}
 }
 
@@ -649,4 +654,67 @@ func TestAfterResponse(t *testing.T) {
 		t.Fatal("AfterResponse accepted a context that is not a handler's")
 	}
 	_ = e.Close()
+}
+
+// An incoming CALL keeps the endpoint busy until its answer is written.
+func TestIdleWhileHandling(t *testing.T) {
+	checkNoLeak(t)
+	release := make(chan struct{})
+	d := ocpp.DispatcherFunc(func(ctx context.Context, p ocpp.Peer, action string, payload json.RawMessage) (json.RawMessage, error) {
+		<-release
+		return json.RawMessage(`{"status":"Accepted"}`), nil
+	})
+	e, raw := rawPeer(t, ocpp.V201, d, nil)
+	writeRaw(t, raw, `[2,"h","Reset",{"type":"Immediate"}]`)
+	deadline := time.Now().Add(5 * time.Second)
+	for !e.HandlerRunning() {
+		if time.Now().After(deadline) {
+			t.Fatal("the handler did not start")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if e.Idle() {
+		t.Fatal("idle while a CALL is handled")
+	}
+	close(release)
+	if f := readFrame(t, raw, ocpp.V201); f.Type != ocppj.CallResult || f.ID != "h" {
+		t.Fatalf("answer: %+v", f)
+	}
+	for !e.Idle() {
+		if time.Now().After(deadline) {
+			t.Fatal("not idle after the answer")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+// While draining, new CALLs and SENDs fail with ErrClosed, and an incoming
+// CALL that has not started is not dispatched; nothing is written for them.
+func TestDrainRefusesNewMessages(t *testing.T) {
+	checkNoLeak(t)
+	var handled atomic.Int64
+	d := ocpp.DispatcherFunc(func(ctx context.Context, p ocpp.Peer, action string, payload json.RawMessage) (json.RawMessage, error) {
+		handled.Add(1)
+		return json.RawMessage(`{}`), nil
+	})
+	e, raw := rawPeer(t, ocpp.V21, d, nil)
+	e.Drain()
+	if err := e.Call(context.Background(), "Heartbeat", nil, nil); !errors.Is(err, ocpp.ErrClosed) {
+		t.Fatalf("Call while draining: %v", err)
+	}
+	if err := e.Send(context.Background(), "NotifyPeriodicEventStream", json.RawMessage(`{}`)); !errors.Is(err, ocpp.ErrClosed) {
+		t.Fatalf("Send while draining: %v", err)
+	}
+	writeRaw(t, raw, `[2,"x","Heartbeat",{}]`)
+	deadline := time.Now().Add(5 * time.Second)
+	for !e.Idle() {
+		if time.Now().After(deadline) {
+			t.Fatal("not idle while draining with a CALL that has not started")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	time.Sleep(20 * time.Millisecond)
+	if n := handled.Load(); n != 0 {
+		t.Fatalf("%d CALLs dispatched while draining", n)
+	}
 }

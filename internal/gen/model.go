@@ -94,7 +94,12 @@ type goType struct {
 	Strict     bool     // additionalProperties false
 	CustomData bool     // the 2.x CustomDataType: kept open
 	VendorMax  int      // CustomDataType: maxLength of vendorId
-	key        string   // canonical definition, to detect conflicts
+	// Draft04 is set for a type of a JSON Schema draft-04 file (OCPP 1.6
+	// core), in which an integer has no fraction and no exponent; in draft-06
+	// (1.6 Security Whitepaper, 2.x) 20000.0 is an integer too. A type that
+	// both define keeps draft-04's rule.
+	Draft04 bool
+	key     string // canonical definition, to detect conflicts
 }
 
 // ref is the type of a field or of array elements.
@@ -196,6 +201,7 @@ type generator struct {
 	version string
 	file    string // base name of the schema, for names16
 	root    *schema
+	draft04 bool // the schema file is JSON Schema draft-04
 }
 
 // message builds the type of one schema file.
@@ -217,6 +223,7 @@ func (g *generator) message(path, typeName, file string) (*goType, string, error
 		return nil, "", fmt.Errorf("%s: %w", path, err)
 	}
 	g.file, g.root = file, &s
+	g.draft04 = strings.Contains(s.Schema, "draft-04")
 	t, err := g.object(&s, typeName, "", path)
 	if err != nil {
 		return nil, "", err
@@ -248,6 +255,7 @@ func (g *generator) register(t *goType) (*goType, error) {
 		if old.key != t.key {
 			return nil, fmt.Errorf("type %s is defined twice, differently", t.Name)
 		}
+		old.Draft04 = old.Draft04 || t.Draft04
 		return old, nil
 	}
 	g.m.Types[t.Name] = t
@@ -273,7 +281,7 @@ func (g *generator) object(s *schema, typeName, path, where string) (*goType, er
 	if s.Type != "object" {
 		return nil, fmt.Errorf("%s%s: type %q, want object", where, path, s.Type)
 	}
-	t := &goType{Name: typeName, Kind: kindStruct, Doc: s.Description,
+	t := &goType{Name: typeName, Kind: kindStruct, Doc: s.Description, Draft04: g.draft04,
 		Strict: s.AdditionalProperties != nil && !*s.AdditionalProperties}
 	names := make([]string, 0, len(s.Properties))
 	for k := range s.Properties {

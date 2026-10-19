@@ -90,6 +90,19 @@ type Endpoint struct {
 	mu      sync.Mutex
 	pending *pendingCall
 
+	// unwritten counts the frames queued on results, calls and sends and not yet
+	// written: a frame the writer has taken off its queue is still being written.
+	unwritten atomic.Int64
+	// handling counts the incoming CALLs and SENDs read and not yet handled:
+	// queued, or in their handler. A CALL's answer is queued (unwritten) before
+	// the CALL stops counting here.
+	handling atomic.Int64
+	// active counts the handlers that have started, so that a drain can tell
+	// whether one is running; draining refuses new outgoing CALLs and SENDs
+	// and stops dispatching incoming CALLs that have not started.
+	active   atomic.Int64
+	draining atomic.Bool
+
 	results  chan []byte      // CALLRESULT and CALLERROR frames to write
 	calls    chan []byte      // CALL frames to write
 	sends    chan []byte      // SEND frames to write (2.1); they do not wait for the CALL slot
@@ -206,7 +219,8 @@ func (e *Endpoint) Err() error {
 	}
 }
 
-// Close closes the connection with a normal closure. It returns once the
+// Close closes the connection with a normal closure at once: frames still
+// queued or being written are dropped (Shutdown waits for them). It returns once the
 // connection is closed and the reader and writer have exited, and, unless a
 // handler is running, the dispatcher as well; Done reports when everything
 // has returned. Close must not be called from a FrameObserver.
@@ -220,14 +234,28 @@ func (e *Endpoint) Close() error {
 	return nil
 }
 
-// Idle reports whether no outgoing CALL is outstanding or waiting for the
-// slot and no SEND is queued: what a graceful shutdown waits for.
+// Idle reports whether nothing is in flight: no outgoing CALL is outstanding
+// or waiting for the slot, no frame (CALL, SEND, CALLRESULT, CALLERROR) is
+// queued or being written, and no incoming CALL is queued or being handled.
+// While draining, incoming CALLs that have not started do not count: they are
+// not dispatched any more. It is what a graceful shutdown waits for.
 func (e *Endpoint) Idle() bool {
 	e.mu.Lock()
 	pending := e.pending != nil
 	e.mu.Unlock()
-	return !pending && e.waiting.Load() == 0 && len(e.calls) == 0 && len(e.sends) == 0
+	incoming := e.handling.Load()
+	if e.draining.Load() {
+		incoming = e.active.Load()
+	}
+	return !pending && e.waiting.Load() == 0 && e.unwritten.Load() == 0 && incoming == 0
 }
+
+// Drain starts a graceful shutdown: new outgoing CALLs and SENDs fail with
+// ocpp.ErrClosed, and incoming CALLs that have not started are no longer
+// dispatched (they get no answer, as after Close). What is in flight goes on:
+// wait for Idle, then Close. A connection busy in both directions reaches
+// Idle once the CALLs in flight are answered.
+func (e *Endpoint) Drain() { e.draining.Store(true) }
 
 // HandlerRunning reports whether a handler is running. Owners use it to
 // avoid waiting for a handler from inside that handler.

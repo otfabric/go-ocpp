@@ -39,9 +39,11 @@ func (e *Endpoint) readLoop() {
 		switch f.Type {
 		case ocppj.Call, ocppj.Send:
 			// SENDs are handled in order with the CALLs, and never answered.
+			e.handling.Add(1)
 			select {
 			case e.incoming <- f:
 			case <-e.ctx.Done():
+				e.handling.Add(-1)
 				return
 			}
 		case ocppj.CallResult, ocppj.CallError:
@@ -138,12 +140,15 @@ func (e *Endpoint) writeLoop() {
 		ctx, cancel := context.WithTimeout(e.ctx, e.cfg.WriteTimeout)
 		err := e.conn.WriteMessage(ctx, data)
 		cancel()
+		if err == nil {
+			if obs := e.cfg.FrameObserver; obs != nil {
+				obs(e.cfg.Info, ocpp.Outgoing, data)
+			}
+		}
+		e.unwritten.Add(-1)
 		if err != nil {
 			e.shutdown(lost(fmt.Errorf("write: %w", err)), 0, "")
 			return
-		}
-		if obs := e.cfg.FrameObserver; obs != nil {
-			obs(e.cfg.Info, ocpp.Outgoing, data)
 		}
 	}
 }
@@ -154,9 +159,11 @@ func (e *Endpoint) sendResult(f ocppj.Frame) {
 		e.log.Error("cannot encode a response", "message_id", f.ID, "error", err)
 		return
 	}
+	e.unwritten.Add(1)
 	select {
 	case e.results <- data:
 	case <-e.ctx.Done():
+		e.unwritten.Add(-1)
 	}
 }
 
@@ -165,7 +172,14 @@ func (e *Endpoint) dispatchLoop() {
 		select {
 		case f := <-e.incoming:
 			if e.limiter != nil && !e.limiter.wait(e.ctx) {
+				e.handling.Add(-1)
 				return
+			}
+			e.active.Add(1)
+			if e.draining.Load() {
+				e.active.Add(-1)
+				e.handling.Add(-1)
+				continue
 			}
 			e.inHandler.Store(true)
 			if f.Type == ocppj.Send {
@@ -174,6 +188,8 @@ func (e *Endpoint) dispatchLoop() {
 				e.handle(f)
 			}
 			e.inHandler.Store(false)
+			e.active.Add(-1)
+			e.handling.Add(-1)
 		case <-e.ctx.Done():
 			return
 		}

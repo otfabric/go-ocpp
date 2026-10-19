@@ -496,10 +496,14 @@ func checkHeader(name, value string) error {
 	return nil
 }
 
-// Shutdown stops new calls (they fail with ocpp.ErrClosed), waits until the
-// calls already made have their answers and queued SENDs are written, or
-// until ctx ends, and then closes like Close. It returns ctx.Err() when ctx
-// ended first; the client is closed either way.
+// Shutdown stops new calls (they fail with ocpp.ErrClosed) and the dispatch
+// of CALLs from the CSMS that have not started, waits until what is in
+// flight is done (the calls already made have their answers, the handlers
+// that have started have answered, and every queued frame, SENDs and
+// answers included, is written) or until ctx ends, and then closes like Close. It
+// returns ctx.Err() when ctx ended first; the client is closed either way.
+// Called from a handler, it waits for that handler and so until ctx ends:
+// close from a handler with Close, or with Shutdown in ocpp.AfterResponse.
 func (c *Client) Shutdown(ctx context.Context) error {
 	c.mu.Lock()
 	c.draining = true
@@ -507,6 +511,7 @@ func (c *Client) Shutdown(ctx context.Context) error {
 	c.mu.Unlock()
 	var err error
 	if ep != nil {
+		ep.Drain()
 		t := time.NewTicker(2 * time.Millisecond)
 		for !ep.Idle() && ep.Err() == nil && err == nil {
 			select {

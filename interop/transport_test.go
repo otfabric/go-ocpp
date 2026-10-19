@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -128,72 +129,83 @@ func tlsDir(t *testing.T, files map[string][]byte) []string {
 // TestStationTLS connects the go-ocpp client with security profiles 2 and
 // 3 to each reference CSMS that declares them: the right credentials work
 // and a CALL in each direction is answered; a wrong password, the
-// certificate of another station and an untrusted server are refused.
+// certificate of another station and an untrusted server are refused. Each
+// runs twice: with the CSMS's address in the URL (127.0.0.1: the client
+// sends no server name, RFC 6066 section 3) and with its host name
+// (localhost: the client sends it, SNI).
 func TestStationTLS(t *testing.T) {
 	ca, other := newTestCA(t), newTestCA(t)
 	for _, a := range adapters(t) {
 		for _, v := range versions {
 			for _, profile := range []int{2, 3} {
-				t.Run(fmt.Sprintf("%s/%s/profile%d", a.name, v, profile), func(t *testing.T) {
-					a.role(t, v, "server")
-					a.securityProfile(t, v, profile)
-					a.skipKnownIssue(t, v, fmt.Sprintf("tls-profile%d-csms", profile))
-					f := a.fixture(t, v)
-					id, password := f.station()
-					srvCert, srvKey, _ := ca.issue(t, "reference CSMS", []string{"localhost", "127.0.0.1"})
-					mount := tlsDir(t, map[string][]byte{"server.crt": srvCert, "server.key": srvKey, "ca.crt": ca.pem})
-					ref := startServerWith(t, a, v, mount, "--security-profile", fmt.Sprint(profile), "--tls-dir", "/tls")
-					url := fmt.Sprintf("wss://127.0.0.1:%d/ocpp/%s", ref.port, id)
-
-					creds := func(cn string, ca *testCA) []client.Option {
-						if profile == 2 {
-							return []client.Option{client.WithBasicAuth(id, password)}
+				for _, host := range []string{"127.0.0.1", "localhost"} {
+					name := fmt.Sprintf("%s/%s/profile%d", a.name, v, profile)
+					if host == "localhost" {
+						name += "-sni"
+					}
+					t.Run(name, func(t *testing.T) {
+						a.role(t, v, "server")
+						a.securityProfile(t, v, profile)
+						if host == "127.0.0.1" {
+							a.skipKnownIssue(t, v, fmt.Sprintf("tls-profile%d-csms", profile))
 						}
-						_, _, pair := ca.issue(t, cn, nil)
-						return []client.Option{client.WithTLS(&tls.Config{RootCAs: ca.pool, Certificates: []tls.Certificate{pair}})}
-					}
-					opts := append([]client.Option{client.WithVersions(v), client.WithTLS(&tls.Config{RootCAs: ca.pool})}, creds(id, ca)...)
-					if profile == 3 {
-						opts = append([]client.Option{client.WithVersions(v)}, creds(id, ca)...)
-					}
-					c, err := client.New(url, opts...)
-					if err != nil {
-						t.Fatal(err)
-					}
-					t.Cleanup(func() { _ = c.Close() })
-					ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-					defer cancel()
-					if err := c.Connect(ctx); err != nil {
-						t.Fatalf("connect with profile %d: %v", profile, err)
-					}
-					if err := c.Call(ctx, "Heartbeat", json.RawMessage(`{}`), nil); err != nil {
-						t.Fatalf("Heartbeat over TLS: %v", err)
-					}
+						f := a.fixture(t, v)
+						id, password := f.station()
+						srvCert, srvKey, _ := ca.issue(t, "reference CSMS", []string{"localhost", "127.0.0.1"})
+						mount := tlsDir(t, map[string][]byte{"server.crt": srvCert, "server.key": srvKey, "ca.crt": ca.pem})
+						ref := startServerWith(t, a, v, mount, "--security-profile", fmt.Sprint(profile), "--tls-dir", "/tls")
+						url := fmt.Sprintf("wss://%s:%d/ocpp/%s", host, ref.port, id)
 
-					// Refusals.
-					var bad []client.Option
-					if profile == 2 {
-						wrong := []byte(password)
-						wrong[len(wrong)-1] ^= 1
-						bad = []client.Option{client.WithVersions(v), client.WithTLS(&tls.Config{RootCAs: ca.pool}), client.WithBasicAuth(id, string(wrong))}
-					} else {
-						_, _, pair := ca.issue(t, id+"X", nil) // another station's certificate
-						bad = []client.Option{client.WithVersions(v), client.WithTLS(&tls.Config{RootCAs: ca.pool, Certificates: []tls.Certificate{pair}})}
-					}
-					for name, o := range map[string][]client.Option{
-						"wrong credentials": bad,
-						"untrusted server":  {client.WithVersions(v), client.WithTLS(&tls.Config{RootCAs: other.pool}), client.WithBasicAuth(id, password)},
-					} {
-						bc, err := client.New(url, o...)
+						creds := func(cn string, ca *testCA) []client.Option {
+							if profile == 2 {
+								return []client.Option{client.WithBasicAuth(id, password)}
+							}
+							_, _, pair := ca.issue(t, cn, nil)
+							return []client.Option{client.WithTLS(&tls.Config{RootCAs: ca.pool, Certificates: []tls.Certificate{pair}})}
+						}
+						opts := append([]client.Option{client.WithVersions(v), client.WithTLS(&tls.Config{RootCAs: ca.pool})}, creds(id, ca)...)
+						if profile == 3 {
+							opts = append([]client.Option{client.WithVersions(v)}, creds(id, ca)...)
+						}
+						c, err := client.New(url, opts...)
 						if err != nil {
 							t.Fatal(err)
 						}
-						if err := bc.Connect(ctx); !errors.Is(err, ocpp.ErrConnectFailed) {
-							t.Errorf("%s: %v", name, err)
+						t.Cleanup(func() { _ = c.Close() })
+						ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+						defer cancel()
+						if err := c.Connect(ctx); err != nil {
+							t.Fatalf("connect with profile %d: %v", profile, err)
 						}
-						_ = bc.Close()
-					}
-				})
+						if err := c.Call(ctx, "Heartbeat", json.RawMessage(`{}`), nil); err != nil {
+							t.Fatalf("Heartbeat over TLS: %v", err)
+						}
+
+						// Refusals.
+						var bad []client.Option
+						if profile == 2 {
+							wrong := []byte(password)
+							wrong[len(wrong)-1] ^= 1
+							bad = []client.Option{client.WithVersions(v), client.WithTLS(&tls.Config{RootCAs: ca.pool}), client.WithBasicAuth(id, string(wrong))}
+						} else {
+							_, _, pair := ca.issue(t, id+"X", nil) // another station's certificate
+							bad = []client.Option{client.WithVersions(v), client.WithTLS(&tls.Config{RootCAs: ca.pool, Certificates: []tls.Certificate{pair}})}
+						}
+						for name, o := range map[string][]client.Option{
+							"wrong credentials": bad,
+							"untrusted server":  {client.WithVersions(v), client.WithTLS(&tls.Config{RootCAs: other.pool}), client.WithBasicAuth(id, password)},
+						} {
+							bc, err := client.New(url, o...)
+							if err != nil {
+								t.Fatal(err)
+							}
+							if err := bc.Connect(ctx); !errors.Is(err, ocpp.ErrConnectFailed) {
+								t.Errorf("%s: %v", name, err)
+							}
+							_ = bc.Close()
+						}
+					})
+				}
 			}
 		}
 	}
@@ -269,7 +281,7 @@ func TestStationCompression(t *testing.T) {
 	for _, a := range adapters(t) {
 		for _, v := range versions {
 			t.Run(a.name+"/"+v.String(), func(t *testing.T) {
-				a.role(t, v, "server")
+				refCaps := a.role(t, v, "server")
 				if !a.caps(t).Versions[v.String()].Features.Compression {
 					t.Skipf("%s does not declare compression for OCPP %s", a.name, v)
 				}
@@ -291,6 +303,12 @@ func TestStationCompression(t *testing.T) {
 				if !strings.Contains(ext, "permessage-deflate") {
 					t.Fatalf("the reference CSMS did not accept compression: %q", ext)
 				}
+				// Connect again once the reference has seen the probe go: a
+				// CSMS that refuses or mixes up a second connection of an
+				// identity (citrineos) must not see the two overlap.
+				if !ref.waitEvent("connection-closed", 1, 15*time.Second) {
+					t.Logf("%s reported no connection-closed for the probe connection", a.name)
+				}
 
 				d := newDispatcher(f, f.Answers.Station, v)
 				c := newStation(t, v, url, client.WithCompression(), client.WithHandler(v, d))
@@ -307,7 +325,14 @@ func TestStationCompression(t *testing.T) {
 					}
 					var resp json.RawMessage
 					err := c.Call(ctx, s.Action, s.Payload, &resp)
-					t.Run(name, func(t *testing.T) { checkGoCall(t, f, s, resp, err) })
+					t.Run(name, func(t *testing.T) {
+						if !a.fixtureAnswers(t, v) && !slices.Contains(refCaps.Handles, s.Action) {
+							// The answer is the reference's own, not the fixture's.
+							checkSelfAnsweredGoCall(t, a, f, s, resp, err)
+							return
+						}
+						checkGoCall(t, f, s, resp, err)
+					})
 				}
 			})
 		}

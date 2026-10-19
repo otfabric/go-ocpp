@@ -28,6 +28,7 @@ func (s *Session) RemoteAddr() string
 func (s *Session) Role() ocpp.Role
 func (s *Session) Send(ctx context.Context, action string, req any) error
 func (s *Session) SessionID() string
+func (s *Session) Shutdown(ctx context.Context) error
 func (s *Session) TLS() *tls.ConnectionState
 func (s *Session) Version() ocpp.Version
 func AnyOf(auths ...Authenticator) Authenticator

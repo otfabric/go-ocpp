@@ -120,22 +120,26 @@ Found by writing the use-case examples against the public API.
 
 ## Interop gaps
 
-Against otfabric/ocpp-interop v0.3.1 (INTEROPERABILITY.md):
+Against otfabric/ocpp-interop v0.4.0 (INTEROPERABILITY.md):
 
 - **Done**: every action of 1.6J (39/39) and 2.0.1 (64/64), and 90 of 91 of
   2.1, is exchanged with an independent stack
   ([docs/compatibility](docs/compatibility)); TLS (security profiles 2 and
   3) and compression are tested against the references in both roles; OCPP
-  2.1 is tested against two independent implementations (The Mobility
-  House in both roles, EVerest libocpp as a station).
-- **Open (P1)**: go-ocpp as an OCPP 2.1 station against a second
-  independent CSMS (EVerest libocpp has no CSMS; CitrineOS is the
-  candidate).
+  2.1 is tested against three independent implementations: two CSMSs (The
+  Mobility House, CitrineOS core v2.0.1) with go-ocpp as the station, and
+  two stations (The Mobility House, EVerest libocpp) with go-ocpp as the
+  CSMS.
+- CitrineOS answers by itself, not from the fixture: go-ocpp's CALLs to it
+  outside the actions it declares are checked against the OCA schema only;
+  it refuses nine 2.1 station messages with FormatViolation and the 1.6
+  Security Whitepaper messages with NotImplemented (skipped, not passed),
+  and serves TLS only to a station that sends SNI.
 - **Open, blocked upstream**: SEND and CALLRESULTERROR against an
   independent implementation (no released reference implements them; the
-  2.1 action NotifyPeriodicEventStream is a SEND); compression against a
-  second stack in 2.0.1 (ChargeTimeEU's is defective, ocpp-go's CSMS and
-  EVerest cannot).
+  2.1 action NotifyPeriodicEventStream is a SEND); compression with go-ocpp
+  as the CSMS against a second station (ChargeTimeEU's is defective in
+  2.0.1, ocpp-go and EVerest cannot, CitrineOS has no station).
 - Mobility House 2.1.0 does not answer 2.1 CALLs it has no handler for
   (fixed on master, not released); BatterySwap cannot be sent by it.
 

@@ -5,6 +5,105 @@ tag, GitHub release); the section of the version below is the release's
 notes. Before v1.0.0 a minor release may change the API: every change is
 listed here, and COMPATIBILITY.md has the stability rules.
 
+## v0.1.2
+
+**Date:** 2026-10-19
+**Previous release:** v0.1.1
+
+## Summary
+
+Two fixes found while building ocppctl on go-ocpp: a graceful shutdown no
+longer loses a frame that is being written, and integers follow the JSON
+Schema draft of each OCA schema, so `20000.0` is an integer in OCPP 1.6
+Security, 2.0.1 and 2.1 messages (EVerest libocpp writes integers so).
+Interop moves to ocpp-interop v0.4.0, with CitrineOS as a fifth reference
+and the second independent OCPP 2.1 CSMS.
+
+**Upgrade notes:** `Server.Shutdown` now drains the sessions before it
+closes them: CALLs and SENDs to stations made after it starts fail with
+`ErrClosed`, and it waits (bounded by its context) for what is in flight;
+use `Close` to close at once. One addition to the API: `Session.Shutdown`.
+
+## Changes
+
+### Fixed
+
+- **A frame being written was lost on `Client.Shutdown`.** The endpoint
+  counted itself idle once its writer had taken a frame off the queue, before
+  the write completed, and did not count queued answers at all; `Close` then
+  cancelled the write. A SEND queued just before `Shutdown`, or the answer of
+  a handler followed by a `Shutdown` from `ocpp.AfterResponse` (a station
+  that accepts a Reset and restarts), could be lost. The endpoint now counts
+  every frame until it is written, and every incoming CALL until its answer
+  is queued. `Shutdown` drains: new outgoing CALLs and SENDs fail with
+  `ErrClosed`, incoming CALLs that have not started are no longer
+  dispatched, and it waits until what is in flight is done, so it also ends
+  on a connection that is busy in both directions.
+- **Integral numbers refused for integers.** A number with a zero fractional
+  part (`20000.0`, `2e4`) was refused with TypeConstraintViolation for an
+  integer field. The OCPP 1.6 Security Whitepaper, 2.0.1 and 2.1 schemas are
+  JSON Schema draft-06, in which such a number is an integer; it is now
+  accepted in their messages (and decoded to the Go `int`). A number with a
+  fraction is still refused. The OCPP 1.6 core schemas are draft-04, in which
+  an integer has no fraction or exponent: their messages still refuse
+  `20000.0`. Found with EVerest libocpp's NotifyEVChargingNeeds (2.0.1).
+
+### Added
+
+- `Session.Shutdown(ctx)`: the graceful close of one session, as
+  `Client.Shutdown` is for a station.
+
+### Changed
+
+- `Server.Shutdown(ctx)` drains the sessions (as `Client.Shutdown` does)
+  before it closes them with 1001.
+- `Close` (client, session) is documented as dropping frames still queued or
+  being written; `Shutdown` is the graceful close.
+- ARCHITECTURE.md: the integer rule per schema draft, as an implementation
+  choice.
+- **Interop moved to otfabric/ocpp-interop v0.4.0** (pinned by digest in
+  `interop/harness.go`, the Makefile and `interop.yml`), which adds a fifth
+  reference, `citrineos` (CitrineOS core v2.0.1, TypeScript): a CSMS for
+  1.6J, 2.0.1 and 2.1, the second independent OCPP 2.1 CSMS. go-ocpp as an
+  OCPP 2.1 station is now tested against two independent CSMSs (The Mobility
+  House, CitrineOS), and 2.1 against three implementations in all.
+- The interop harness reads the capability feature `fixtureAnswers`
+  (contract 0.5; true when not declared). Against a CSMS that answers by
+  itself (`fixtureAnswers: false`), a CALL from go-ocpp with an action the
+  CSMS does not declare in `handles` is not compared with the fixture: a
+  CALLRESULT must pass go-ocpp's validation of the version, a CALLERROR must
+  carry a defined error code and is skipped as unsupported with its code and
+  reason, never passed (as ocpp-interop's `scripts/interop.sh` does).
+- `TestStationTLS` connects to each reference CSMS by address and by host
+  name (`-sni`): CitrineOS serves TLS only to a client that sends SNI, a
+  known upstream defect recorded with its evidence. The compression test
+  connects again only after the reference has reported the probe
+  connection closed. The readiness timeout of a reference container is
+  180 s (CitrineOS starts PostgreSQL and RabbitMQ first).
+
+## Verification
+
+- New regression tests, each failing on v0.1.1: `TestClientShutdownWritesQueuedSend`,
+  `TestClientShutdownAfterResponse`, `TestSessionShutdownWritesQueuedSend`,
+  `TestServerShutdownAnswersCallInHandler` (e2e, 100 rounds each),
+  `TestIdleWhileHandling` (engine), `TestIntegralNumbers` and
+  `TestUnmarshalIntegralFloats` (wire), `TestIntegersFollowTheSchemaDraft`
+  (1.6) and `TestIntegralFloatsAreIntegers` (2.0.1, 2.1).
+- `make interop` against the five ocpp-interop v0.4.0 images (2026-10-19,
+  linux/arm64): 1426 scenarios pass, 0 fail, 195 skipped with their reasons
+  (1.6J 390 / 43, 2.0.1 620 / 46, 2.1 415 / 105; leaf tests of
+  `go test -json`). With CitrineOS as the CSMS: 237 pass, 87 skipped (no
+  station role, CSMS actions its REST API cannot send, CALLERRORs of its own
+  for samples it does not process, TLS without SNI); go-ocpp's CALLs it
+  answers pass as 12 / 27 / 29 (1.6J / 2.0.1 / 2.1), its CALLs to go-ocpp as
+  18 / 38 / 39, with Basic authentication, TLS profiles 2 and 3 and
+  compression in every version. No known issue was removed: none existed
+  only because of integral numbers. `make compat` regenerated
+  docs/compatibility with the citrineos columns.
+- `make check`.
+
+---
+
 ## v0.1.1
 
 **Date:** 2026-10-18
