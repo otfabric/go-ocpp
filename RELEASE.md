@@ -5,6 +5,63 @@ tag, GitHub release); the section of the version below is the release's
 notes. Before v1.0.0 a minor release may change the API: every change is
 listed here, and COMPATIBILITY.md has the stability rules.
 
+## v0.1.4
+
+**Date:** 2026-10-19
+**Previous release:** v0.1.3
+
+## Summary
+
+A handler's CALLERROR details reach the peer, and every behaviour that
+differs between OCPP versions is now tested end to end in every version.
+
+**Upgrade notes:** none.
+
+## Changes
+
+### Fixed
+
+- **A handler's CALLERROR details were dropped.** A handler that answered
+  with an `*ocpp.CallError` carrying `Details` sent a CALLERROR with `{}`:
+  the engine passed on its code and description only. The details are now
+  sent when they are a JSON object and the code is one the version defines
+  (otherwise the error is answered as `InternalError`, without its text or
+  details, as before). Found by the new per-version e2e suite.
+
+### Added
+
+- **`TestProtocolPerVersion`** (e2e), for 1.6J, 2.0.1 and 2.1 each, over real
+  WebSocket connections with go-ocpp on both ends and against raw WebSocket
+  peers: CALLERROR propagation with code, description and details in both
+  directions; a code the version does not define, a handler error and a
+  handler panic answered with `InternalError` (the connection goes on);
+  NotImplemented for an unknown action and NotSupported for an action of the
+  other role; the validation code of each version for a missing field
+  (Occurence/Occurrence), an unknown property (Formation/Format), a wrong
+  type and a value out of its constraints; a malformed CALL answered with
+  the version's RPC code, an unreadable frame answered with ID `-1` in 2.x
+  and dropped in 1.6, an unknown message type, a response to no CALL and a
+  SEND dropped or delivered without an answer; an invalid response returned
+  as a `*ValidationError` wrapped in `ErrProtocol`, and answered with a
+  CALLRESULTERROR in 2.1 only; a response timeout followed by a late
+  response, which is dropped; the 2.x identity rule. `Client.Role` and
+  `Session.Role`.
+- **`TestCustomAuthenticator`** (e2e, every version): an `Authenticator`
+  sees the `ConnectRequest` (identity, Basic credentials, the request), and a
+  `StatusError` refuses with its HTTP status (403, 503), any other error and
+  an invalid status with 401; the password does not print.
+- **`TestSetReconnect`** (e2e): `SetReconnect` changes the back-off of a
+  running client, rejects a back-off without `WaitMinimum`, and nil stops
+  the reconnection after the next loss.
+
+## Verification
+
+- The three new tests pass 3 times in a row under `-race`; the details fix is
+  caught by `TestProtocolPerVersion` on v0.1.3.
+- `make check`.
+
+---
+
 ## v0.1.3
 
 **Date:** 2026-10-19
