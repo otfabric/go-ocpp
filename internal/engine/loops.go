@@ -172,18 +172,27 @@ func (e *Endpoint) dispatchLoop() {
 		select {
 		case f := <-e.incoming:
 			if e.limiter != nil && !e.limiter.wait(e.ctx) {
+				// Ended while waiting: deliver this SEND and those queued.
+				if f.Type == ocppj.Send {
+					e.inHandler.Store(true)
+					e.handleSend(context.WithoutCancel(e.ctx), f)
+					e.inHandler.Store(false)
+				}
 				e.handling.Add(-1)
+				e.deliverReceivedSends()
 				return
 			}
 			e.active.Add(1)
-			if e.draining.Load() {
+			if e.draining.Load() && f.Type != ocppj.Send {
+				// A CALL that has not started is not answered any more; a
+				// SEND needs no answer and is delivered.
 				e.active.Add(-1)
 				e.handling.Add(-1)
 				continue
 			}
 			e.inHandler.Store(true)
 			if f.Type == ocppj.Send {
-				e.handleSend(f)
+				e.handleSend(e.sendContext(), f)
 			} else {
 				e.handle(f)
 			}
@@ -191,6 +200,39 @@ func (e *Endpoint) dispatchLoop() {
 			e.active.Add(-1)
 			e.handling.Add(-1)
 		case <-e.ctx.Done():
+			e.deliverReceivedSends()
+			return
+		}
+	}
+}
+
+// sendContext is the context of a SEND's handler: the endpoint's, or, once the
+// endpoint has ended, one that is not cancelled. A SEND received before the
+// end was delivered: its handler is not told that the connection has gone.
+func (e *Endpoint) sendContext() context.Context {
+	if e.ctx.Err() != nil {
+		return context.WithoutCancel(e.ctx)
+	}
+	return e.ctx
+}
+
+// deliverReceivedSends handles the SENDs that were received in full before the
+// endpoint ended (a station that sends and closes: the close frame can be read
+// before the SEND is dispatched). A SEND needs no answer, so it is delivered,
+// with a context that is not cancelled; CALLs still queued are dropped, since
+// they can no longer be answered.
+func (e *Endpoint) deliverReceivedSends() {
+	ctx := context.WithoutCancel(e.ctx)
+	for {
+		select {
+		case f := <-e.incoming:
+			if f.Type == ocppj.Send {
+				e.inHandler.Store(true)
+				e.handleSend(ctx, f)
+				e.inHandler.Store(false)
+			}
+			e.handling.Add(-1)
+		default:
 			return
 		}
 	}
@@ -198,7 +240,7 @@ func (e *Endpoint) dispatchLoop() {
 
 // handleSend runs the dispatcher for one incoming SEND (2.1). A SEND is
 // never answered (2.1 Part 4 §4.2.4): errors are logged and counted only.
-func (e *Endpoint) handleSend(f ocppj.Frame) {
+func (e *Endpoint) handleSend(ctx context.Context, f ocppj.Frame) {
 	start := time.Now()
 	info := ocpp.CallInfo{ConnInfo: e.cfg.Info, Action: f.Action, MessageID: f.ID, Direction: ocpp.Incoming}
 	run := func(ctx context.Context) (err error) {
@@ -215,9 +257,9 @@ func (e *Endpoint) handleSend(f ocppj.Frame) {
 	}
 	var err error
 	if e.cfg.HandlerInterceptor != nil {
-		err = e.cfg.HandlerInterceptor(e.ctx, info, run)
+		err = e.cfg.HandlerInterceptor(ctx, info, run)
 	} else {
-		err = run(e.ctx)
+		err = run(ctx)
 	}
 	e.cfg.Metrics.OnCallHandled(e.cfg.Info, f.Action, time.Since(start), err)
 	if err != nil {

@@ -38,6 +38,13 @@ type pipeEnd struct {
 }
 
 func (e *pipeEnd) ReadMessage(ctx context.Context) ([]byte, error) {
+	// Messages written before the close are read first, as on a WebSocket,
+	// where the close frame follows them on the same stream.
+	select {
+	case m := <-e.in:
+		return m, nil
+	default:
+	}
 	select {
 	case m := <-e.in:
 		return m, nil

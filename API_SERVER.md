@@ -56,7 +56,7 @@ func (s *Server) ListenAndServe(addr string) error                // returns ocp
 func (s *Server) Serve(ln net.Listener) error
 func (s *Server) Shutdown(ctx context.Context) error
 func (s *Server) Close() error
-func (s *Server) Station(id string) (*Session, bool)
+func (s *Server) Station(id string) (*Session, bool) // registered just after the handshake: see WithSessionHandler
 func (s *Server) Stations() []*Session
 func (s *Server) Versions() []ocpp.Version
 

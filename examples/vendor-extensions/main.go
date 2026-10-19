@@ -208,7 +208,11 @@ func main() {
 func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
+	// The server registers a session just after the station's Connect returns:
+	// the session handler hands it over once it exists.
+	sessions := make(chan *server.Session, 4)
 	srv, err := server.New(
+		server.WithSessionHandler(func(s *server.Session) { sessions <- s }, nil),
 		server.WithHandler(ocpp.V16, ocpp16.CentralSystem(csms16{})),
 		server.WithHandler(ocpp.V201, withVendorActions(ocpp201.CSMS(csms201{}))),
 		server.WithHandler(ocpp.V21, ocpp21.CSMS(csms21{})),
@@ -233,12 +237,17 @@ func run() error {
 		if err := c.Connect(ctx); err != nil {
 			return nil, nil, err
 		}
-		s, ok := srv.Station(id)
-		if !ok {
-			_ = c.Close()
-			return nil, nil, errors.New("no session")
+		for {
+			select {
+			case s := <-sessions:
+				if s.ID() == id {
+					return c, s, nil
+				}
+			case <-ctx.Done():
+				_ = c.Close()
+				return nil, nil, errors.New("no session")
+			}
 		}
-		return c, s, nil
 	}
 
 	fmt.Println("--- OCPP 1.6 ---")

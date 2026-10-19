@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -716,5 +717,39 @@ func TestDrainRefusesNewMessages(t *testing.T) {
 	time.Sleep(20 * time.Millisecond)
 	if n := handled.Load(); n != 0 {
 		t.Fatalf("%d CALLs dispatched while draining", n)
+	}
+}
+
+// sendCounter counts the SENDs it is given.
+type sendCounter struct{ n atomic.Int64 }
+
+func (s *sendCounter) Dispatch(context.Context, ocpp.Peer, string, json.RawMessage) (json.RawMessage, error) {
+	return json.RawMessage(`{}`), nil
+}
+
+func (s *sendCounter) DispatchSend(context.Context, ocpp.Peer, string, json.RawMessage) error {
+	s.n.Add(1)
+	return nil
+}
+
+// A SEND received in full before the peer closes is delivered, even when the
+// close is read before the SEND is dispatched (the dispatcher used to pick the
+// end of the endpoint over the queued SEND at random).
+func TestSendBeforeCloseIsDelivered(t *testing.T) {
+	checkNoLeak(t)
+	const rounds = 200
+	for i := range rounds {
+		d := &sendCounter{}
+		e, r := rawPeer(t, ocpp.V21, d, nil)
+		writeRaw(t, r, `[6,"s`+strconv.Itoa(i)+`","NotifyPeriodicEventStream",{"id":1,"pending":0,"basetime":"2026-01-01T00:00:00Z","data":[]}]`)
+		_ = r.conn.Close(transport.StatusNormal, "")
+		select {
+		case <-e.Done():
+		case <-time.After(5 * time.Second):
+			t.Fatalf("round %d: the endpoint did not end", i)
+		}
+		if d.n.Load() != 1 {
+			t.Fatalf("round %d: the SEND received before the close was not delivered", i)
+		}
 	}
 }
