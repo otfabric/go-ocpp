@@ -280,7 +280,7 @@ func run() error {
 }
 
 func demo16(ctx context.Context, c *client.Client, s *server.Session) error {
-	if _, err := ocpp16.BootNotification(ctx, c, &ocpp16.BootNotificationRequest{ChargePointVendor: "OT Fabric", ChargePointModel: "VendorStation"}); err != nil {
+	if _, err := ocpp16.BootNotification(ctx, c, &ocpp16.BootNotificationRequest{ChargePointVendor: "OTFabric", ChargePointModel: "VendorStation"}); err != nil {
 		return err
 	}
 	// Station to CSMS: data is a string; JSON inside it is a convention.
@@ -322,7 +322,7 @@ func demo201(ctx context.Context, c *client.Client, s *server.Session) error {
 	// customData on a standard message: vendor properties under a vendorId.
 	boot, err := ocpp201.BootNotification(ctx, c, &ocpp201.BootNotificationRequest{
 		Reason:          ocpp201.BootReasonPowerUp,
-		ChargingStation: ocpp201.ChargingStationType{VendorName: "OT Fabric", Model: "VendorStation"},
+		ChargingStation: ocpp201.ChargingStationType{VendorName: "OTFabric", Model: "VendorStation"},
 		CustomData: &ocpp201.CustomData{VendorID: vendorID, Fields: map[string]json.RawMessage{
 			"hardwareRevision":   json.RawMessage(`"B2"`),
 			"cabinetTemperature": json.RawMessage(`41.5`),
@@ -378,7 +378,7 @@ func demo201(ctx context.Context, c *client.Client, s *server.Session) error {
 
 func demo21(ctx context.Context, c *client.Client, s *server.Session) error {
 	if _, err := ocpp21.BootNotification(ctx, c, &ocpp21.BootNotificationRequest{Reason: ocpp21.BootReasonPowerUp,
-		ChargingStation: ocpp21.ChargingStationType{VendorName: "OT Fabric", Model: "VendorStation"}}); err != nil {
+		ChargingStation: ocpp21.ChargingStationType{VendorName: "OTFabric", Model: "VendorStation"}}); err != nil {
 		return err
 	}
 	if _, err := ocpp21.StatusNotification(ctx, c, &ocpp21.StatusNotificationRequest{

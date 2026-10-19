@@ -93,7 +93,7 @@ c, err := client.New("wss://csms.example.com/ocpp/STATION001",
 err = c.Connect(ctx)
 boot, err := ocpp201.BootNotification(ctx, c, &ocpp201.BootNotificationRequest{
     Reason:          ocpp201.BootReasonPowerUp,
-    ChargingStation: ocpp201.ChargingStationType{VendorName: "OT Fabric", Model: "TestStation"},
+    ChargingStation: ocpp201.ChargingStationType{VendorName: "OTFabric", Model: "TestStation"},
 })
 ```
 

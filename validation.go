@@ -50,7 +50,7 @@ func (e *ValidationError) CallError() *CallError {
 // Ptr returns a pointer to v, for the optional fields of messages:
 //
 //	req := &ocpp16.BootNotificationRequest{
-//	    ChargePointVendor:       "OT Fabric",
+//	    ChargePointVendor:       "OTFabric",
 //	    ChargePointModel:        "TestStation",
 //	    ChargePointSerialNumber: ocpp.Ptr("OTF-0001"),
 //	}

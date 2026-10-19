@@ -96,7 +96,7 @@ func run() error {
 
 	boot, err := ocpp21.BootNotification(ctx, c, &ocpp21.BootNotificationRequest{
 		Reason:          ocpp21.BootReasonPowerUp,
-		ChargingStation: ocpp21.ChargingStationType{VendorName: "OT Fabric", Model: "TestStation"},
+		ChargingStation: ocpp21.ChargingStationType{VendorName: "OTFabric", Model: "TestStation"},
 	})
 	if err != nil {
 		return err

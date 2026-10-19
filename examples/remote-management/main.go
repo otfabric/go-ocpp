@@ -225,7 +225,7 @@ func (s *station) run(ctx context.Context, url string, current chan<- *client.Cl
 		}
 		fw, _ := s.firmware.Load().(string)
 		if _, err := ocpp201.BootNotification(ctx, c, &ocpp201.BootNotificationRequest{Reason: reason,
-			ChargingStation: ocpp201.ChargingStationType{VendorName: "OT Fabric", Model: "ManagedStation", FirmwareVersion: ocpp.Ptr(fw)}}); err != nil {
+			ChargingStation: ocpp201.ChargingStationType{VendorName: "OTFabric", Model: "ManagedStation", FirmwareVersion: ocpp.Ptr(fw)}}); err != nil {
 			return err
 		}
 		current <- c

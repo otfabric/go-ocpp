@@ -239,7 +239,7 @@ func attempt(ctx context.Context, url string, wantOK bool, opts ...client.Option
 		return errors.New("connected, but should have been refused")
 	}
 	_, err = ocpp201.BootNotification(ctx, c, &ocpp201.BootNotificationRequest{Reason: ocpp201.BootReasonPowerUp,
-		ChargingStation: ocpp201.ChargingStationType{VendorName: "OT Fabric", Model: "SecureStation"}})
+		ChargingStation: ocpp201.ChargingStationType{VendorName: "OTFabric", Model: "SecureStation"}})
 	return err
 }
 
@@ -259,7 +259,7 @@ func newPKI() (*pki, error) {
 	if err != nil {
 		return nil, err
 	}
-	tmpl := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "example CA", Organization: []string{"OT Fabric example"}},
+	tmpl := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "example CA", Organization: []string{"OTFabric example"}},
 		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour),
 		IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign}
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
@@ -282,7 +282,7 @@ func (p *pki) issue(cn string, isServer bool, serial int64) (*tls.Certificate, e
 	if err != nil {
 		return nil, err
 	}
-	tmpl := &x509.Certificate{SerialNumber: big.NewInt(serial), Subject: pkix.Name{CommonName: cn, Organization: []string{"OT Fabric example"}},
+	tmpl := &x509.Certificate{SerialNumber: big.NewInt(serial), Subject: pkix.Name{CommonName: cn, Organization: []string{"OTFabric example"}},
 		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour),
 		KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}}
 	if isServer {

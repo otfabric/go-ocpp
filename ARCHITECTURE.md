@@ -301,7 +301,7 @@ Each version package is generated from the OCA schemas in `schemas/` by
 
    ```go
    resp, err := ocpp16.BootNotification(ctx, c, &ocpp16.BootNotificationRequest{
-       ChargePointVendor: "OT Fabric",
+       ChargePointVendor: "OTFabric",
        ChargePointModel:  "TestStation",
    })
    ```
