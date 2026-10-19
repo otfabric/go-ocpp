@@ -20,6 +20,9 @@ import (
 // already sent keeps the slot until its response arrives or the response
 // timeout expires, as T6 requires.
 func (e *Endpoint) Call(ctx context.Context, action string, req, resp any) error {
+	if e.draining.Load() {
+		return ocpp.ErrClosed
+	}
 	if e.cfg.CanSend != nil && !e.cfg.CanSend(action) {
 		return fmt.Errorf("%w: %s from the %s", ocpp.ErrWrongDirection, action, e.cfg.Info.Role)
 	}
@@ -66,6 +69,9 @@ func (e *Endpoint) refuseResult(messageID string, err error) {
 // the outgoing CALL slot (2.1 Part 4 §4.1.1, §4.2.4). It returns once the
 // frame is queued for writing.
 func (e *Endpoint) Send(ctx context.Context, action string, req any) (err error) {
+	if e.draining.Load() {
+		return ocpp.ErrClosed
+	}
 	if e.cfg.Info.Version != ocpp.V21 {
 		return fmt.Errorf("%w: SEND exists in OCPP 2.1 only, this connection uses %s", ocpp.ErrUnsupportedVersion, e.cfg.Info.Version)
 	}
@@ -87,13 +93,16 @@ func (e *Endpoint) Send(ctx context.Context, action string, req any) (err error)
 		if err != nil {
 			return err
 		}
+		e.unwritten.Add(1)
 		select {
 		case e.sends <- frame:
 			e.log.Debug("SEND queued", "action", action, "message_id", info.MessageID, "direction", "outgoing")
 			return nil
 		case <-ctx.Done():
+			e.unwritten.Add(-1)
 			return ctx.Err()
 		case <-e.ctx.Done():
+			e.unwritten.Add(-1)
 			return e.cause
 		}
 	}
@@ -136,12 +145,15 @@ func (e *Endpoint) roundTrip(ctx context.Context, info ocpp.CallInfo, payload js
 	e.pending = p
 	e.mu.Unlock()
 
+	e.unwritten.Add(1)
 	select {
 	case e.calls <- frame:
 	case <-ctx.Done():
+		e.unwritten.Add(-1)
 		e.finish(p, callResult{err: ctx.Err()})
 		return nil, ctx.Err()
 	case <-e.ctx.Done():
+		e.unwritten.Add(-1)
 		e.finish(p, callResult{err: e.cause})
 		return nil, e.cause
 	}

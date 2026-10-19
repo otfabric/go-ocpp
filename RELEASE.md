@@ -5,6 +5,73 @@ tag, GitHub release); the section of the version below is the release's
 notes. Before v1.0.0 a minor release may change the API: every change is
 listed here, and COMPATIBILITY.md has the stability rules.
 
+## v0.1.2
+
+**Date:** 2026-10-19
+**Previous release:** v0.1.1
+
+## Summary
+
+Two fixes found while building ocppctl on go-ocpp: a graceful shutdown no
+longer loses a frame that is being written, and integers follow the JSON
+Schema draft of each OCA schema, so `20000.0` is an integer in OCPP 1.6
+Security, 2.0.1 and 2.1 messages (EVerest libocpp writes integers so).
+
+**Upgrade notes:** `Server.Shutdown` now drains the sessions before it
+closes them: CALLs and SENDs to stations made after it starts fail with
+`ErrClosed`, and it waits (bounded by its context) for what is in flight;
+use `Close` to close at once. One addition to the API: `Session.Shutdown`.
+
+## Changes
+
+### Fixed
+
+- **A frame being written was lost on `Client.Shutdown`.** The endpoint
+  counted itself idle once its writer had taken a frame off the queue, before
+  the write completed, and did not count queued answers at all; `Close` then
+  cancelled the write. A SEND queued just before `Shutdown`, or the answer of
+  a handler followed by a `Shutdown` from `ocpp.AfterResponse` (a station
+  that accepts a Reset and restarts), could be lost. The endpoint now counts
+  every frame until it is written, and every incoming CALL until its answer
+  is queued. `Shutdown` drains: new outgoing CALLs and SENDs fail with
+  `ErrClosed`, incoming CALLs that have not started are no longer
+  dispatched, and it waits until what is in flight is done, so it also ends
+  on a connection that is busy in both directions.
+- **Integral numbers refused for integers.** A number with a zero fractional
+  part (`20000.0`, `2e4`) was refused with TypeConstraintViolation for an
+  integer field. The OCPP 1.6 Security Whitepaper, 2.0.1 and 2.1 schemas are
+  JSON Schema draft-06, in which such a number is an integer; it is now
+  accepted in their messages (and decoded to the Go `int`). A number with a
+  fraction is still refused. The OCPP 1.6 core schemas are draft-04, in which
+  an integer has no fraction or exponent: their messages still refuse
+  `20000.0`. Found with EVerest libocpp's NotifyEVChargingNeeds (2.0.1).
+
+### Added
+
+- `Session.Shutdown(ctx)`: the graceful close of one session, as
+  `Client.Shutdown` is for a station.
+
+### Changed
+
+- `Server.Shutdown(ctx)` drains the sessions (as `Client.Shutdown` does)
+  before it closes them with 1001.
+- `Close` (client, session) is documented as dropping frames still queued or
+  being written; `Shutdown` is the graceful close.
+- ARCHITECTURE.md: the integer rule per schema draft, as an implementation
+  choice.
+
+## Verification
+
+- New regression tests, each failing on v0.1.1: `TestClientShutdownWritesQueuedSend`,
+  `TestClientShutdownAfterResponse`, `TestSessionShutdownWritesQueuedSend`,
+  `TestServerShutdownAnswersCallInHandler` (e2e, 100 rounds each),
+  `TestIdleWhileHandling` (engine), `TestIntegralNumbers` and
+  `TestUnmarshalIntegralFloats` (wire), `TestIntegersFollowTheSchemaDraft`
+  (1.6) and `TestIntegralFloatsAreIntegers` (2.0.1, 2.1).
+- `make check`.
+
+---
+
 ## v0.1.1
 
 **Date:** 2026-10-18

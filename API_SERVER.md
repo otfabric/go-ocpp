@@ -91,6 +91,7 @@ func (s *Session) Version() ocpp.Version
 func (s *Session) Call(ctx context.Context, action string, req, resp any) error
 func (s *Session) Send(ctx context.Context, action string, req any) error // OCPP 2.1
 func (s *Session) Close() error
+func (s *Session) Shutdown(ctx context.Context) error // graceful Close
 func (s *Session) Done() <-chan struct{}
 func (s *Session) Err() error // ocpp.ErrClosed, server.ErrReplaced, or wraps ocpp.ErrConnectionLost
 func (s *Session) SessionID() string     // unique per connection (a UUID), in logs as session_id
@@ -204,11 +205,18 @@ var ErrUnauthorized error   // BasicAuth's error for refused credentials: HTTP 4
 
 ## Shutdown
 
-- `Shutdown(ctx)` stops accepting connections (new upgrades get 503), closes
-  every session with status 1001 (going away), and waits until they have
-  ended or ctx ends. `ListenAndServe` and `Serve` then return
+- `Shutdown(ctx)` stops accepting connections (new upgrades get 503) and
+  drains every session: new CALLs and SENDs to stations fail with
+  `ocpp.ErrClosed`, CALLs from stations that have not started are no longer
+  dispatched, and what is in flight (a CALL awaiting its answer, a handler
+  that has started, a frame queued or being written) is finished or ctx
+  ends. It then closes every session with status 1001 (going away) and
+  waits until they have ended or ctx ends. `ListenAndServe` and `Serve` then return
   `ocpp.ErrClosed`.
-- `Close` does the same without waiting.
+- `Close` closes at once, without waiting: frames still queued or being
+  written are dropped.
+- `Session.Shutdown(ctx)` is the same for one session: it drains it, then
+  closes it like `Session.Close`.
 - Calls in flight on a closed session fail with `ocpp.ErrClosed`.
 
 ## Scaling out

@@ -14,7 +14,9 @@ import (
 	"fmt"
 	"math"
 	"net/url"
+	"reflect"
 	"strconv"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -105,6 +107,7 @@ func contains(list []string, s string) bool {
 // Decode unmarshals payload into m strictly and validates it. Errors are
 // *ocpp.ValidationError.
 func Decode(payload json.RawMessage, m Message, c Codes) error {
+	// The generated UnmarshalJSON methods apply the integer rule of their schema.
 	if err := json.Unmarshal(payload, m); err != nil {
 		return Classify(err, c)
 	}
@@ -272,4 +275,80 @@ func Request(payload json.RawMessage, req Message, c Codes) error {
 		return ocpp.NewCallError(c.Format, err.Error())
 	}
 	return nil
+}
+
+// Unmarshal is json.Unmarshal for the generated types, with integers as JSON
+// Schema defines them. The OCA schemas are JSON Schema draft-06, in which an
+// "integer" is any number with a zero fractional part: 20000.0 and 2e4 are
+// integers, and some implementations write them so (EVerest libocpp, for
+// one). encoding/json refuses them for a Go int. When decoding fails on a
+// number, the object is decoded once more with every integral number written
+// as an integer; a number with a fractional part still fails. Payloads that
+// decode as they are are never rewritten.
+func Unmarshal(b []byte, v any) error {
+	err := json.Unmarshal(b, v)
+	var te *json.UnmarshalTypeError
+	if err == nil || !errors.As(err, &te) || !strings.HasPrefix(te.Value, "number") {
+		return err
+	}
+	nb, changed := IntegralNumbers(b)
+	if !changed {
+		return err
+	}
+	if rv := reflect.ValueOf(v); rv.Kind() == reflect.Pointer && !rv.IsNil() {
+		rv.Elem().Set(reflect.Zero(rv.Elem().Type()))
+	}
+	return json.Unmarshal(nb, v)
+}
+
+// maxExact is 2^53: integers up to it are exact in a float64.
+const maxExact = 1 << 53
+
+// IntegralNumbers returns b with every number that has a zero fractional
+// part but is not written as an integer (20000.0, 2.5e3, 1E2) written as an
+// integer, and whether it changed anything. Strings are left alone, and so
+// are numbers beyond ±2^53, which a float64 cannot hold exactly.
+func IntegralNumbers(b []byte) ([]byte, bool) {
+	var out []byte
+	changed := false
+	inString, escaped := false, false
+	for i := 0; i < len(b); i++ {
+		ch := b[i]
+		if inString {
+			switch {
+			case escaped:
+				escaped = false
+			case ch == '\\':
+				escaped = true
+			case ch == '"':
+				inString = false
+			}
+			out = append(out, ch)
+			continue
+		}
+		if ch == '"' {
+			inString = true
+			out = append(out, ch)
+			continue
+		}
+		if ch != '-' && (ch < '0' || ch > '9') {
+			out = append(out, ch)
+			continue
+		}
+		j := i
+		for j < len(b) && strings.IndexByte("+-0123456789.eE", b[j]) >= 0 {
+			j++
+		}
+		lit := string(b[i:j])
+		i = j - 1
+		if strings.ContainsAny(lit, ".eE") {
+			if f, err := strconv.ParseFloat(lit, 64); err == nil && f == math.Trunc(f) && math.Abs(f) <= maxExact {
+				out = strconv.AppendInt(out, int64(f), 10)
+				changed = true
+				continue
+			}
+		}
+		out = append(out, lit...)
+	}
+	return out, changed
 }

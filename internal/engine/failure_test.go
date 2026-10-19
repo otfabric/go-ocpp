@@ -620,8 +620,13 @@ func TestIdle(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
-	if !e.Idle() {
-		t.Fatal("not idle after the answer")
+	// The writer records a frame as written just after the peer can read it.
+	deadline := time.Now().Add(5 * time.Second)
+	for !e.Idle() {
+		if time.Now().After(deadline) {
+			t.Fatal("not idle after the answer")
+		}
+		time.Sleep(time.Millisecond)
 	}
 }
 
@@ -649,4 +654,36 @@ func TestAfterResponse(t *testing.T) {
 		t.Fatal("AfterResponse accepted a context that is not a handler's")
 	}
 	_ = e.Close()
+}
+
+// An incoming CALL keeps the endpoint busy until its answer is written.
+func TestIdleWhileHandling(t *testing.T) {
+	checkNoLeak(t)
+	release := make(chan struct{})
+	d := ocpp.DispatcherFunc(func(ctx context.Context, p ocpp.Peer, action string, payload json.RawMessage) (json.RawMessage, error) {
+		<-release
+		return json.RawMessage(`{"status":"Accepted"}`), nil
+	})
+	e, raw := rawPeer(t, ocpp.V201, d, nil)
+	writeRaw(t, raw, `[2,"h","Reset",{"type":"Immediate"}]`)
+	deadline := time.Now().Add(5 * time.Second)
+	for !e.HandlerRunning() {
+		if time.Now().After(deadline) {
+			t.Fatal("the handler did not start")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if e.Idle() {
+		t.Fatal("idle while a CALL is handled")
+	}
+	close(release)
+	if f := readFrame(t, raw, ocpp.V201); f.Type != ocppj.CallResult || f.ID != "h" {
+		t.Fatalf("answer: %+v", f)
+	}
+	for !e.Idle() {
+		if time.Now().After(deadline) {
+			t.Fatal("not idle after the answer")
+		}
+		time.Sleep(time.Millisecond)
+	}
 }
