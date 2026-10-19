@@ -7,7 +7,7 @@ responsibly.
 
 **Do not open a public GitHub issue for security vulnerabilities.**
 
-Instead, email **security@otfabric.com**, or open a private advisory on
+Instead, email **security@otfabric.io**, or open a private advisory on
 GitHub: on the [Security](https://github.com/otfabric/go-ocpp/security) tab,
 choose **Advisories**, then **Report a vulnerability**. Include a
 description, the steps to reproduce, and the affected version.
