@@ -120,8 +120,10 @@ if errors.As(err, &ce) && ce.Code == ocpp.NotSupported { ... }
 
 ## CALLERROR to the peer
 
-A handler returns `ocpp.NewCallError(code, description)` to answer with that
-CALLERROR. Any other error, a panic, a nil response or a response that is not
+A handler returns `ocpp.NewCallError(code, description)`, or an
+`*ocpp.CallError` with `Details` (a JSON object), to answer with that
+CALLERROR; its details are sent as they are (`{}` when they are not a JSON
+object). Any other error, a panic, a nil response or a response that is not
 a JSON object is answered with `InternalError` and an empty description. The
 error itself is logged locally, because it may contain internal details. A
 code the connection's version does not define is also replaced with
