@@ -4,8 +4,8 @@ package e2e
 
 import (
 	"context"
-	"errors"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync/atomic"
 	"testing"
@@ -188,7 +188,9 @@ func TestSessionShutdownTimeout(t *testing.T) {
 	connect(t, c)
 	sess := waitStation(t, srv, "SLOWST")
 	called := make(chan error, 1)
-	go func() { called <- sess.Call(context.Background(), "Reset", json.RawMessage(`{"type":"Immediate"}`), nil) }()
+	go func() {
+		called <- sess.Call(context.Background(), "Reset", json.RawMessage(`{"type":"Immediate"}`), nil)
+	}()
 	<-entered
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
