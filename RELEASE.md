@@ -5,6 +5,69 @@ tag, GitHub release); the section of the version below is the release's
 notes. Before v1.0.0 a minor release may change the API: every change is
 listed here, and COMPATIBILITY.md has the stability rules.
 
+## v0.1.3
+
+**Date:** 2026-10-19
+**Previous release:** v0.1.2
+
+## Summary
+
+A SEND received just before the peer closes the connection is always
+delivered, and three examples no longer race the server's registration of a
+session. Found by the release run of v0.1.2.
+
+**Upgrade notes:** none. A SEND handler that runs after the endpoint has ended
+gets a context that is not cancelled.
+
+## Changes
+
+### Fixed
+
+- **A SEND received just before the peer closed could be dropped.** When the
+  close frame was read before the dispatcher had taken the SEND off its queue,
+  the dispatcher chose at random between the SEND and the end of the
+  endpoint, and could end without handling it. SENDs received before the end
+  are now always delivered, with a context that is not cancelled when the
+  endpoint has already ended, and also while draining. CALLs that have not
+  started are still dropped, since they can no longer be answered. v0.1.2's
+  `TestClientShutdownWritesQueuedSend` failed once on a release runner for
+  this reason: the station had written the SEND, the server dropped it.
+- **Three examples could fail on a loaded machine** (vendor-extensions,
+  device-model, smart-charging): they looked the session up with
+  `Server.Station` right after the station's `Connect` returned, a moment
+  before the server registers it. They now take it from the session handler,
+  and `Server.Station` documents when a session is registered.
+
+### Changed
+
+- **Interop pinned to otfabric/ocpp-interop v0.4.1.** Its EVerest adapter
+  declares every action libocpp exchanges, which turns 32 skipped scenarios
+  into passes; the other adapters are unchanged.
+- **A CALL is not dispatched once the endpoint has ended**, also when the
+  dispatcher takes it off the queue before it sees the end: its answer could
+  not be sent. Before, it depended on the order of a `select`.
+- The in-memory test pipe (`internal/transport`) delivers the messages written
+  before a close first, as a WebSocket does, so that tests over it see what a
+  real connection would.
+
+## Verification
+
+- `TestSendBeforeCloseIsDelivered` (engine, 200 rounds a run) fails on v0.1.2
+  in every run and passes 2000 rounds under `-race`.
+- The drain tests of v0.1.2 (100 rounds each) 30 times under `-race`, twice in
+  parallel: 6000 rounds a test, no failure.
+- New engine tests for each delivery path: a SEND while draining
+  (`TestDrainDeliversSends`), SENDs and a CALL queued behind a running
+  handler when the peer closes (`TestQueuedSendsDeliveredAfterTheEnd`, 50
+  rounds), a SEND waiting for the incoming rate limit
+  (`TestSendWaitingForRateLimitDelivered`). Every new line is covered.
+- Interop against the v0.4.1 images (linux/arm64): **1458 pass, 0 fail, 163
+  skipped** with reasons (1.6J 393/40, 2.0.1 632/34, 2.1 432/88; v0.4.0:
+  1426/195).
+- `make check`.
+
+---
+
 ## v0.1.2
 
 **Date:** 2026-10-19

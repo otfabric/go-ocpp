@@ -27,17 +27,17 @@ Both are required. In each, CALLs are sent from both ends of the connection.
 
 ## Status
 
-Qualified against **otfabric/ocpp-interop v0.4.0** (contract 0.5), pinned
+Qualified against **otfabric/ocpp-interop v0.4.1** (contract 0.5), pinned
 by digest in `interop/harness.go`, the Makefile and
 `.github/workflows/interop.yml`:
 
 | Reference | Upstream | OCPP | Roles | TLS (profiles 2, 3) | Compression | Image |
 |---|---|---|---|---|---|---|
-| `mobilityhouse` | The Mobility House ocpp 2.1.0 (Python) | 1.6J, 2.0.1, 2.1 | station, CSMS | yes | yes | `ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:c77dcac2…` |
-| `chargetime` | ChargeTimeEU Java-OCA-OCPP v2.0 (Java) | 1.6J, 2.0.1 | station, CSMS | yes | 2.0.1, with upstream defects | `ghcr.io/otfabric/ocpp-interop-chargetime@sha256:c694c6cf…` |
-| `lorenzodonini` | lorenzodonini/ocpp-go v0.19.0 (Go) | 1.6J, 2.0.1 | station, CSMS | yes | no (its CSMS cannot accept it) | `ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:8667321b…` |
-| `everest` | EVerest libocpp, everest-core 2026.02.1 (C++) | 1.6J, 2.0.1, 2.1 | station only (libocpp has no CSMS) | yes | no (libocpp cannot offer it) | `ghcr.io/otfabric/ocpp-interop-everest@sha256:cbc77939…` |
-| `citrineos` | CitrineOS core v2.0.1 (TypeScript) | 1.6J, 2.0.1, 2.1 | CSMS only (CitrineOS has no station) | yes, with SNI only (upstream defect) | yes | `ghcr.io/otfabric/ocpp-interop-citrineos@sha256:fc4a4107…` |
+| `mobilityhouse` | The Mobility House ocpp 2.1.0 (Python) | 1.6J, 2.0.1, 2.1 | station, CSMS | yes | yes | `ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:3f14958e…` |
+| `chargetime` | ChargeTimeEU Java-OCA-OCPP v2.0 (Java) | 1.6J, 2.0.1 | station, CSMS | yes | 2.0.1, with upstream defects | `ghcr.io/otfabric/ocpp-interop-chargetime@sha256:221f0cec…` |
+| `lorenzodonini` | lorenzodonini/ocpp-go v0.19.0 (Go) | 1.6J, 2.0.1 | station, CSMS | yes | no (its CSMS cannot accept it) | `ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:e6cc15c2…` |
+| `everest` | EVerest libocpp, everest-core 2026.02.1 (C++) | 1.6J, 2.0.1, 2.1 | station only (libocpp has no CSMS) | yes | no (libocpp cannot offer it) | `ghcr.io/otfabric/ocpp-interop-everest@sha256:abd99af8…` |
+| `citrineos` | CitrineOS core v2.0.1 (TypeScript) | 1.6J, 2.0.1, 2.1 | CSMS only (CitrineOS has no station) | yes, with SNI only (upstream defect) | yes | `ghcr.io/otfabric/ocpp-interop-citrineos@sha256:143878b7…` |
 
 `TestReferences` checks that each pinned image reports this release. The
 per-version action matrices against these references are in
@@ -92,20 +92,22 @@ the `-sni` scenarios); compression, with the
 negotiation checked on the wire (`TestStationCompression`,
 `TestReferenceStationCompression`).
 
-### Results (v0.4.0 images, 2026-10-19, linux/arm64; CI runs amd64 and arm64)
+### Results (v0.4.1 images, 2026-10-19, linux/arm64; CI runs amd64 and arm64)
 
-All versions, all five references, both roles: **1426 scenarios pass, 0
-fail**; 195 are skipped, each with its reason. Counted as the leaf tests of
+All versions, all five references, both roles: **1458 scenarios pass, 0
+fail**; 163 are skipped, each with its reason. Counted as the leaf tests of
 `go test -json` (a role or version a reference does not declare is one
-skipped test). By version: 1.6J 390 pass / 43 skipped, 2.0.1 620 / 46, 2.1
-415 / 105. By reference:
+skipped test). By version: 1.6J 393 pass / 40 skipped, 2.0.1 632 / 34, 2.1
+432 / 88. v0.4.1 changed no upstream: its EVerest adapter declares every
+action libocpp exchanges (it declared the sets of v0.2.0 before), which
+turns 32 EVerest skips into passes. By reference:
 
 | Reference | Pass | Skip | Skipped because |
 |---|---|---|---|
 | mobilityhouse | 524 | 7 | known upstream defects (4), SEND not declared or no contract operation (2), BatterySwap not sent (1) |
 | chargetime | 244 | 16 | OCPP 2.1 not supported (12), compression: 1.6 not declared, 2.0.1 known upstream defect (4) |
 | lorenzodonini | 236 | 24 | OCPP 2.1 not supported (12), compression not supported (4), known upstream defects (8) |
-| everest | 184 | 60 | no CSMS (21), actions the station does not declare sending (33), compression not supported (3), SEND (1), ReportDERControl known upstream defect (1), NotifyWebPaymentStarted not declared and answered `NotImplemented` (1) |
+| everest | 216 | 28 | no CSMS (21), compression not supported (3), GetCertificateChainStatus not sent (libocpp has no such message type, 1), SEND (1), ReportDERControl known upstream defect (1), NotifyWebPaymentStarted not declared and answered `NotImplemented` (1) |
 | citrineos | 237 | 87 | below |
 
 **citrineos** (CitrineOS core v2.0.1, the second independent OCPP 2.1

@@ -12,11 +12,11 @@ their results are in [INTEROPERABILITY.md](../../INTEROPERABILITY.md).
 
 | Reference | Upstream | Image | Contract | OCPP 2.1 |
 |---|---|---|---|---|
-| mobilityhouse | The Mobility House ocpp 2.1.0 | `ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:c77dcac27829…` | 0.5 | station yes, CSMS yes |
-| chargetime | ChargeTimeEU Java-OCA-OCPP v2.0 | `ghcr.io/otfabric/ocpp-interop-chargetime@sha256:c694c6cfdafd…` | 0.5 | not supported |
-| lorenzodonini | lorenzodonini ocpp-go v0.19.0 | `ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:8667321b6fc1…` | 0.5 | not supported |
-| everest | EVerest libocpp 2026.02.1 | `ghcr.io/otfabric/ocpp-interop-everest@sha256:cbc7793935c9…` | 0.5 | station yes, CSMS no |
-| citrineos | CitrineOS core v2.0.1 | `ghcr.io/otfabric/ocpp-interop-citrineos@sha256:fc4a41079a5e…` | 0.5 | station no, CSMS yes |
+| mobilityhouse | The Mobility House ocpp 2.1.0 | `ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:3f14958e9f21…` | 0.5 | station yes, CSMS yes |
+| chargetime | ChargeTimeEU Java-OCA-OCPP v2.0 | `ghcr.io/otfabric/ocpp-interop-chargetime@sha256:221f0cec9ae2…` | 0.5 | not supported |
+| lorenzodonini | lorenzodonini ocpp-go v0.19.0 | `ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:e6cc15c217be…` | 0.5 | not supported |
+| everest | EVerest libocpp 2026.02.1 | `ghcr.io/otfabric/ocpp-interop-everest@sha256:abd99af84484…` | 0.5 | station yes, CSMS no |
+| citrineos | CitrineOS core v2.0.1 | `ghcr.io/otfabric/ocpp-interop-citrineos@sha256:143878b708c4…` | 0.5 | station no, CSMS yes |
 
 citrineos answers CALLs by itself, not from the fixture (feature `fixtureAnswers: false`):
 its **handles** are the actions whose answer is the fixture's. It answers the
@@ -30,103 +30,103 @@ exchanged in both roles between a go-ocpp station and CSMS (e2e
 
 | Action | Sent by | go-ocpp | mobilityhouse station | mobilityhouse CSMS | chargetime station | chargetime CSMS | lorenzodonini station | lorenzodonini CSMS | everest station | everest CSMS | citrineos station | citrineos CSMS | Interop scenarios |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| AFRRSignal | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | — | — | — | — | `afrrSignal` |
+| AFRRSignal | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | — | `afrrSignal` |
 | AdjustPeriodicEventStream | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | — | `adjustPeriodicEventStream` |
 | Authorize | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | sends | — | — | — | `authorizeAccepted`, `authorizeBlocked` |
-| BatterySwap | Station | ✓ CALL | — | — | n/a | n/a | n/a | n/a | — | — | — | — | `batterySwapIn` |
+| BatterySwap | Station | ✓ CALL | — | handles | n/a | n/a | n/a | n/a | sends | — | — | — | `batterySwapIn` |
 | BootNotification | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | sends | — | — | handles | `boot` |
-| CancelReservation | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | — | — | — | — | `cancelReservation` |
-| CertificateSigned | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | — | — | — | sends | `certificateSigned` |
+| CancelReservation | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | — | `cancelReservation` |
+| CertificateSigned | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | sends | `certificateSigned` |
 | ChangeAvailability | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | sends | `changeAvailability` |
-| ChangeTransactionTariff | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | — | — | — | — | `changeTransactionTariff` |
+| ChangeTransactionTariff | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | — | `changeTransactionTariff` |
 | ClearCache | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | sends | `clearCache` |
 | ClearChargingProfile | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | sends | `clearChargingProfile` |
 | ClearDERControl | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | — | `clearDERControl` |
-| ClearDisplayMessage | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | — | — | — | sends | `clearDisplayMessage` |
+| ClearDisplayMessage | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | sends | `clearDisplayMessage` |
 | ClearTariffs | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | — | `clearTariffs` |
-| ClearVariableMonitoring | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | — | — | — | sends | `clearVariableMonitoring` |
-| ClearedChargingLimit | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | — | — | — | handles | `clearedChargingLimit` |
+| ClearVariableMonitoring | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | sends | `clearVariableMonitoring` |
+| ClearedChargingLimit | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | sends | — | — | handles | `clearedChargingLimit` |
 | ClosePeriodicEventStream | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | sends | — | — | — | `closePeriodicEventStream` |
-| CostUpdated | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | — | — | — | sends | `costUpdated` |
-| CustomerInformation | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | — | — | — | sends | `customerInformation` |
+| CostUpdated | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | sends | `costUpdated` |
+| CustomerInformation | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | sends | `customerInformation` |
 | DataTransfer | both | ✓ CALL | sends, handles | sends, handles | n/a | n/a | n/a | n/a | sends, handles | — | — | sends | `dataTransferFromCsms`, `dataTransfer` |
-| DeleteCertificate | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | — | — | — | sends | `deleteCertificate` |
+| DeleteCertificate | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | sends | `deleteCertificate` |
 | FirmwareStatusNotification | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | sends | — | — | handles | `firmwareStatus` |
-| Get15118EVCertificate | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | — | — | — | — | `get15118EVCertificate` |
+| Get15118EVCertificate | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | sends | — | — | — | `get15118EVCertificate` |
 | GetBaseReport | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | sends | `getBaseReport` |
 | GetCertificateChainStatus | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | — | — | — | — | `getCertificateChainStatus` |
-| GetCertificateStatus | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | — | — | — | — | `getCertificateStatus` |
-| GetChargingProfiles | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | — | — | — | sends | `getChargingProfiles` |
-| GetCompositeSchedule | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | — | — | — | — | `getCompositeSchedule` |
+| GetCertificateStatus | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | sends | — | — | — | `getCertificateStatus` |
+| GetChargingProfiles | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | sends | `getChargingProfiles` |
+| GetCompositeSchedule | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | — | `getCompositeSchedule` |
 | GetDERControl | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | — | `getDERControl` |
-| GetDisplayMessages | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | — | — | — | sends | `getDisplayMessages` |
-| GetInstalledCertificateIds | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | — | — | — | sends | `getInstalledCertificateIds` |
+| GetDisplayMessages | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | sends | `getDisplayMessages` |
+| GetInstalledCertificateIds | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | sends | `getInstalledCertificateIds` |
 | GetLocalListVersion | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | sends | `getLocalListVersion` |
-| GetLog | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | — | — | — | sends | `getLog` |
-| GetMonitoringReport | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | — | — | — | sends | `getMonitoringReport` |
+| GetLog | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | sends | `getLog` |
+| GetMonitoringReport | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | sends | `getMonitoringReport` |
 | GetPeriodicEventStream | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | — | `getPeriodicEventStream` |
-| GetReport | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | — | — | — | sends | `getReport` |
+| GetReport | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | sends | `getReport` |
 | GetTariffs | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | — | `getTariffs` |
-| GetTransactionStatus | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | — | — | — | sends | `getTransactionStatus` |
+| GetTransactionStatus | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | sends | `getTransactionStatus` |
 | GetVariables | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | sends | `getVariables` |
 | Heartbeat | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | sends | — | — | handles | `heartbeat` |
-| InstallCertificate | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | — | — | — | — | `installCertificate` |
+| InstallCertificate | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | — | `installCertificate` |
 | LogStatusNotification | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | sends | — | — | handles | `logStatus` |
 | MeterValues | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | sends | — | — | handles | `meterValues` |
-| NotifyAllowedEnergyTransfer | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | — | — | — | — | `notifyAllowedEnergyTransfer` |
-| NotifyChargingLimit | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | — | — | — | handles | `notifyChargingLimit` |
-| NotifyCustomerInformation | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | — | — | — | — | `notifyCustomerInformation` |
+| NotifyAllowedEnergyTransfer | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | — | `notifyAllowedEnergyTransfer` |
+| NotifyChargingLimit | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | sends | — | — | handles | `notifyChargingLimit` |
+| NotifyCustomerInformation | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | sends | — | — | — | `notifyCustomerInformation` |
 | NotifyDERAlarm | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | sends | — | — | — | `notifyDERAlarm` |
 | NotifyDERStartStop | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | sends | — | — | — | `notifyDERStartStop` |
-| NotifyDisplayMessages | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | — | — | — | — | `notifyDisplayMessages` |
-| NotifyEVChargingNeeds | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | — | — | — | — | `notifyEVChargingNeeds` |
-| NotifyEVChargingSchedule | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | — | — | — | handles | `notifyEVChargingSchedule` |
+| NotifyDisplayMessages | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | sends | — | — | — | `notifyDisplayMessages` |
+| NotifyEVChargingNeeds | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | sends | — | — | — | `notifyEVChargingNeeds` |
+| NotifyEVChargingSchedule | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | sends | — | — | handles | `notifyEVChargingSchedule` |
 | NotifyEvent | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | sends | — | — | handles | `notifyEvent` |
-| NotifyMonitoringReport | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | — | — | — | handles | `notifyMonitoringReport` |
+| NotifyMonitoringReport | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | sends | — | — | handles | `notifyMonitoringReport` |
 | NotifyPeriodicEventStream | Station | ✓ SEND | — | — | n/a | n/a | n/a | n/a | — | — | — | — | `notifyPeriodicEventStream` (no reference supports SEND: skipped) |
-| NotifyPriorityCharging | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | — | — | — | — | `notifyPriorityCharging` |
+| NotifyPriorityCharging | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | sends | — | — | — | `notifyPriorityCharging` |
 | NotifyReport | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | sends | — | — | handles | `notifyReport` |
-| NotifySettlement | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | — | — | — | — | `notifySettlement` |
+| NotifySettlement | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | sends | — | — | — | `notifySettlement` |
 | NotifyWebPaymentStarted | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | — | — | — | — | `notifyWebPaymentStarted` |
 | OpenPeriodicEventStream | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | sends | — | — | — | `openPeriodicEventStream` |
-| PublishFirmware | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | — | — | — | sends | `publishFirmware` |
-| PublishFirmwareStatusNotification | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | — | — | — | handles | `publishFirmwareStatus` |
-| PullDynamicScheduleUpdate | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | — | — | — | — | `pullDynamicScheduleUpdate` |
-| ReportChargingProfiles | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | — | — | — | handles | `reportChargingProfiles` |
+| PublishFirmware | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | sends | `publishFirmware` |
+| PublishFirmwareStatusNotification | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | sends | — | — | handles | `publishFirmwareStatus` |
+| PullDynamicScheduleUpdate | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | sends | — | — | — | `pullDynamicScheduleUpdate` |
+| ReportChargingProfiles | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | sends | — | — | handles | `reportChargingProfiles` |
 | ReportDERControl | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | sends | — | — | — | `reportDERControl` |
 | RequestBatterySwap | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | — | `requestBatterySwap` |
 | RequestStartTransaction | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | sends | `requestStart` |
 | RequestStopTransaction | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | sends | `requestStop` |
 | ReservationStatusUpdate | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | sends | — | — | handles | `reservationStatusUpdate` |
-| ReserveNow | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | — | — | — | sends | `reserveNow` |
+| ReserveNow | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | sends | `reserveNow` |
 | Reset | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | sends | `resetImmediate` |
 | SecurityEventNotification | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | sends | — | — | handles | `securityEvent` |
-| SendLocalList | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | — | — | — | sends | `sendLocalList` |
+| SendLocalList | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | sends | `sendLocalList` |
 | SetChargingProfile | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | sends | `setTxDefaultProfile` |
 | SetDERControl | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | — | `setDERControl` |
 | SetDefaultTariff | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | sends | `setDefaultTariff` |
-| SetDisplayMessage | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | — | — | — | sends | `setDisplayMessage` |
-| SetMonitoringBase | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | — | — | — | sends | `setMonitoringBase` |
-| SetMonitoringLevel | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | — | — | — | sends | `setMonitoringLevel` |
-| SetNetworkProfile | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | — | — | — | sends | `setNetworkProfile` |
-| SetVariableMonitoring | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | — | — | — | sends | `setVariableMonitoring` |
+| SetDisplayMessage | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | sends | `setDisplayMessage` |
+| SetMonitoringBase | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | sends | `setMonitoringBase` |
+| SetMonitoringLevel | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | sends | `setMonitoringLevel` |
+| SetNetworkProfile | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | sends | `setNetworkProfile` |
+| SetVariableMonitoring | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | sends | `setVariableMonitoring` |
 | SetVariables | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | sends | `setVariables` |
-| SignCertificate | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | — | — | — | — | `signCertificate` |
+| SignCertificate | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | sends | — | — | — | `signCertificate` |
 | StatusNotification | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | sends | — | — | handles | `statusAvailable` |
 | TransactionEvent | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | sends | — | — | handles | `transactionEnded`, `transactionStarted`, `transactionUpdated` |
 | TriggerMessage | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | sends | `triggerHeartbeat` |
 | UnlockConnector | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | sends | `unlockConnector` |
-| UnpublishFirmware | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | — | — | — | sends | `unpublishFirmware` |
-| UpdateDynamicSchedule | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | — | — | — | — | `updateDynamicSchedule` |
-| UpdateFirmware | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | — | — | — | sends | `updateFirmware` |
-| UsePriorityCharging | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | — | — | — | — | `usePriorityCharging` |
-| VatNumberValidation | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | — | — | — | — | `vatNumberValidation` |
+| UnpublishFirmware | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | sends | `unpublishFirmware` |
+| UpdateDynamicSchedule | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | — | `updateDynamicSchedule` |
+| UpdateFirmware | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | sends | `updateFirmware` |
+| UsePriorityCharging | CSMS | ✓ CALL | handles | sends | n/a | n/a | n/a | n/a | handles | — | — | — | `usePriorityCharging` |
+| VatNumberValidation | Station | ✓ CALL | sends | handles | n/a | n/a | n/a | n/a | sends | — | — | — | `vatNumberValidation` |
 
 ## Totals
 
 | | Actions | go-ocpp | mobilityhouse station | mobilityhouse CSMS | chargetime station | chargetime CSMS | lorenzodonini station | lorenzodonini CSMS | everest station | everest CSMS | citrineos station | citrineos CSMS |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| OCPP 2.1 | 91 | 91 | 89 | 89 | n/a | n/a | n/a | n/a | 40 | 0 | 0 | 55 |
+| OCPP 2.1 | 91 | 91 | 89 | 90 | n/a | n/a | n/a | n/a | 88 | 0 | 0 | 55 |
 
 A reference's count is the actions its station or CSMS sends or handles.
 

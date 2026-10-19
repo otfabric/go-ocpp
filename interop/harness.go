@@ -24,7 +24,7 @@ import (
 )
 
 // The reference images this version of go-ocpp is qualified against:
-// otfabric/ocpp-interop v0.4.0 (The Mobility House ocpp 2.1.0, ChargeTimeEU
+// otfabric/ocpp-interop v0.4.1 (The Mobility House ocpp 2.1.0, ChargeTimeEU
 // Java-OCA-OCPP v2.0, lorenzodonini/ocpp-go v0.19.0: OCPP 1.6J and 2.0.1 in
 // all three, 2.1 in The Mobility House; EVerest libocpp of everest-core
 // 2026.02.1, a station for 1.6J, 2.0.1 and 2.1; CitrineOS core v2.0.1, a
@@ -33,12 +33,12 @@ import (
 // means changing these constants; the Makefile and
 // .github/workflows/interop.yml follow.
 const (
-	interopRelease            = "v0.4.0"
-	defaultMobilityHouseImage = "ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:c77dcac278296ab49c1df8540d982041a85dbbb2248711e5028bbde1d84e9193"
-	defaultChargeTimeImage    = "ghcr.io/otfabric/ocpp-interop-chargetime@sha256:c694c6cfdafd5705c2eb2abe3e572e1161c2d047b3d9ef9dab24f70230e71b62"
-	defaultLorenzodoniniImage = "ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:8667321b6fc1e53e15052da41f1684f74a34d38e1b8578af8d5a1a612d901219"
-	defaultEverestImage       = "ghcr.io/otfabric/ocpp-interop-everest@sha256:cbc7793935c9b9c082af6aef2bbf251c08ad5c090e2e7ac7153e474f82828f8d"
-	defaultCitrineOSImage     = "ghcr.io/otfabric/ocpp-interop-citrineos@sha256:fc4a41079a5efc6b7a6e7f6450f120d8838f50fefbc73fbb64cd9a51d84a4488"
+	interopRelease            = "v0.4.1"
+	defaultMobilityHouseImage = "ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:3f14958e9f21d85d3e18542bcbc9460bc8b7163a2982f4539dc7b8f78eb70fca"
+	defaultChargeTimeImage    = "ghcr.io/otfabric/ocpp-interop-chargetime@sha256:221f0cec9ae24c5ed3fcd1e7b9b1efa95ab4fb1b1c1e698ec8fcc5096af43242"
+	defaultLorenzodoniniImage = "ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:e6cc15c217be02edd4f4a2dddefae247a0deb3ce6384c5843b9fbf7fc4c1cca4"
+	defaultEverestImage       = "ghcr.io/otfabric/ocpp-interop-everest@sha256:abd99af84484ceddf6607caa402d6ca2b3aa25f5f3aa774de5d3016e14dfb99d"
+	defaultCitrineOSImage     = "ghcr.io/otfabric/ocpp-interop-citrineos@sha256:143878b708c4f2638ee3a2aaaa9df8f061a9f0a717bdf01a02a4fcb69769b898"
 )
 
 // adapter is one reference implementation: a container image that follows

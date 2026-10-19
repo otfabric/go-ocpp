@@ -112,7 +112,10 @@ func (s *Server) Versions() []ocpp.Version {
 	return vs
 }
 
-// Station returns the session of the station with the given identity.
+// Station returns the session of the station with the given identity. The
+// session is registered just after the WebSocket handshake completes, so a
+// station's Connect can return a moment before Station finds it: to act on a
+// new session, use the onConnect function of WithSessionHandler.
 func (s *Server) Station(id string) (*Session, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

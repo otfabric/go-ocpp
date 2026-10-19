@@ -214,7 +214,11 @@ func main() {
 // both for version v, and returns the station's client and the CSMS's
 // session.
 func connect(ctx context.Context, v ocpp.Version, csms, station ocpp.Dispatcher) (*client.Client, *server.Session, func(), error) {
-	srv, err := server.New(server.WithHandler(v, csms), server.WithoutAuthentication())
+	// The server registers the session just after the station's Connect
+	// returns: the session handler hands it over once it exists.
+	sessions := make(chan *server.Session, 1)
+	srv, err := server.New(server.WithHandler(v, csms), server.WithoutAuthentication(),
+		server.WithSessionHandler(func(s *server.Session) { sessions <- s }, nil))
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -235,8 +239,10 @@ func connect(ctx context.Context, v ocpp.Version, csms, station ocpp.Dispatcher)
 		_ = c.Close()
 		_ = srv.Shutdown(ctx)
 	}
-	session, ok := srv.Station(stationID)
-	if !ok {
+	var session *server.Session
+	select {
+	case session = <-sessions:
+	case <-ctx.Done():
 		cleanup()
 		return nil, nil, nil, fmt.Errorf("no session")
 	}

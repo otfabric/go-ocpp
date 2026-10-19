@@ -12,11 +12,11 @@ their results are in [INTEROPERABILITY.md](../../INTEROPERABILITY.md).
 
 | Reference | Upstream | Image | Contract | OCPP 2.0.1 |
 |---|---|---|---|---|
-| mobilityhouse | The Mobility House ocpp 2.1.0 | `ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:c77dcac27829…` | 0.5 | station yes, CSMS yes |
-| chargetime | ChargeTimeEU Java-OCA-OCPP v2.0 | `ghcr.io/otfabric/ocpp-interop-chargetime@sha256:c694c6cfdafd…` | 0.5 | station yes, CSMS yes |
-| lorenzodonini | lorenzodonini ocpp-go v0.19.0 | `ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:8667321b6fc1…` | 0.5 | station yes, CSMS yes |
-| everest | EVerest libocpp 2026.02.1 | `ghcr.io/otfabric/ocpp-interop-everest@sha256:cbc7793935c9…` | 0.5 | station yes, CSMS no |
-| citrineos | CitrineOS core v2.0.1 | `ghcr.io/otfabric/ocpp-interop-citrineos@sha256:fc4a41079a5e…` | 0.5 | station no, CSMS yes |
+| mobilityhouse | The Mobility House ocpp 2.1.0 | `ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:3f14958e9f21…` | 0.5 | station yes, CSMS yes |
+| chargetime | ChargeTimeEU Java-OCA-OCPP v2.0 | `ghcr.io/otfabric/ocpp-interop-chargetime@sha256:221f0cec9ae2…` | 0.5 | station yes, CSMS yes |
+| lorenzodonini | lorenzodonini ocpp-go v0.19.0 | `ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:e6cc15c217be…` | 0.5 | station yes, CSMS yes |
+| everest | EVerest libocpp 2026.02.1 | `ghcr.io/otfabric/ocpp-interop-everest@sha256:abd99af84484…` | 0.5 | station yes, CSMS no |
+| citrineos | CitrineOS core v2.0.1 | `ghcr.io/otfabric/ocpp-interop-citrineos@sha256:143878b708c4…` | 0.5 | station no, CSMS yes |
 
 citrineos answers CALLs by itself, not from the fixture (feature `fixtureAnswers: false`):
 its **handles** are the actions whose answer is the fixture's. It answers the
@@ -32,74 +32,74 @@ exchanged in both roles between a go-ocpp station and CSMS (e2e
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | Authorize | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | — | — | `authorizeAccepted`, `authorizeBlocked` |
 | BootNotification | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | — | handles | `boot` |
-| CancelReservation | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | — | — | `cancelReservation` |
-| CertificateSigned | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | — | sends | `certificateSigned` |
+| CancelReservation | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | — | `cancelReservation` |
+| CertificateSigned | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `certificateSigned` |
 | ChangeAvailability | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `changeAvailability` |
 | ClearCache | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `clearCache` |
 | ClearChargingProfile | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `clearChargingProfile` |
-| ClearDisplayMessage | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | — | sends | `clearDisplayMessage` |
-| ClearVariableMonitoring | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | — | sends | `clearVariableMonitoring` |
-| ClearedChargingLimit | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | — | — | — | handles | `clearedChargingLimit` |
-| CostUpdated | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | — | sends | `costUpdated` |
-| CustomerInformation | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | — | sends | `customerInformation` |
+| ClearDisplayMessage | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `clearDisplayMessage` |
+| ClearVariableMonitoring | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `clearVariableMonitoring` |
+| ClearedChargingLimit | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | — | handles | `clearedChargingLimit` |
+| CostUpdated | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `costUpdated` |
+| CustomerInformation | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `customerInformation` |
 | DataTransfer | both | ✓ CALL | sends, handles | sends, handles | sends, handles | sends, handles | sends, handles | sends, handles | sends, handles | — | — | sends | `dataTransferFromCsms`, `dataTransfer` |
-| DeleteCertificate | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | — | sends | `deleteCertificate` |
+| DeleteCertificate | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `deleteCertificate` |
 | FirmwareStatusNotification | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | — | handles | `firmwareStatus` |
-| Get15118EVCertificate | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | — | — | — | — | `get15118EVCertificate` |
+| Get15118EVCertificate | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | — | — | `get15118EVCertificate` |
 | GetBaseReport | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `getBaseReport` |
-| GetCertificateStatus | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | — | — | — | — | `getCertificateStatus` |
-| GetChargingProfiles | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | — | sends | `getChargingProfiles` |
-| GetCompositeSchedule | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | — | — | `getCompositeSchedule` |
-| GetDisplayMessages | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | — | sends | `getDisplayMessages` |
-| GetInstalledCertificateIds | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | — | sends | `getInstalledCertificateIds` |
+| GetCertificateStatus | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | — | — | `getCertificateStatus` |
+| GetChargingProfiles | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `getChargingProfiles` |
+| GetCompositeSchedule | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | — | `getCompositeSchedule` |
+| GetDisplayMessages | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `getDisplayMessages` |
+| GetInstalledCertificateIds | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `getInstalledCertificateIds` |
 | GetLocalListVersion | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `getLocalListVersion` |
-| GetLog | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | — | sends | `getLog` |
-| GetMonitoringReport | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | — | sends | `getMonitoringReport` |
-| GetReport | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | — | sends | `getReport` |
-| GetTransactionStatus | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | — | sends | `getTransactionStatus` |
+| GetLog | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `getLog` |
+| GetMonitoringReport | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `getMonitoringReport` |
+| GetReport | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `getReport` |
+| GetTransactionStatus | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `getTransactionStatus` |
 | GetVariables | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `getVariables` |
 | Heartbeat | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | — | handles | `heartbeat` |
-| InstallCertificate | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | — | — | `installCertificate` |
+| InstallCertificate | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | — | `installCertificate` |
 | LogStatusNotification | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | — | handles | `logStatus` |
 | MeterValues | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | — | handles | `meterValues` |
-| NotifyChargingLimit | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | — | — | — | handles | `notifyChargingLimit` |
-| NotifyCustomerInformation | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | — | — | — | — | `notifyCustomerInformation` |
-| NotifyDisplayMessages | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | — | — | — | — | `notifyDisplayMessages` |
-| NotifyEVChargingNeeds | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | — | — | — | — | `notifyEVChargingNeeds` |
-| NotifyEVChargingSchedule | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | — | — | — | handles | `notifyEVChargingSchedule` |
+| NotifyChargingLimit | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | — | handles | `notifyChargingLimit` |
+| NotifyCustomerInformation | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | — | — | `notifyCustomerInformation` |
+| NotifyDisplayMessages | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | — | — | `notifyDisplayMessages` |
+| NotifyEVChargingNeeds | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | — | — | `notifyEVChargingNeeds` |
+| NotifyEVChargingSchedule | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | — | handles | `notifyEVChargingSchedule` |
 | NotifyEvent | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | — | handles | `notifyEvent` |
-| NotifyMonitoringReport | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | — | — | — | handles | `notifyMonitoringReport` |
+| NotifyMonitoringReport | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | — | handles | `notifyMonitoringReport` |
 | NotifyReport | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | — | handles | `notifyReport` |
-| PublishFirmware | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | — | sends | `publishFirmware` |
-| PublishFirmwareStatusNotification | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | — | — | — | handles | `publishFirmwareStatus` |
-| ReportChargingProfiles | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | — | — | — | handles | `reportChargingProfiles` |
+| PublishFirmware | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `publishFirmware` |
+| PublishFirmwareStatusNotification | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | — | handles | `publishFirmwareStatus` |
+| ReportChargingProfiles | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | — | handles | `reportChargingProfiles` |
 | RequestStartTransaction | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `requestStart` |
 | RequestStopTransaction | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `requestStop` |
 | ReservationStatusUpdate | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | — | handles | `reservationStatusUpdate` |
-| ReserveNow | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | — | sends | `reserveNow` |
+| ReserveNow | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `reserveNow` |
 | Reset | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `resetImmediate` |
 | SecurityEventNotification | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | — | handles | `securityEvent` |
-| SendLocalList | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | — | sends | `sendLocalList` |
+| SendLocalList | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `sendLocalList` |
 | SetChargingProfile | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `setTxDefaultProfile` |
-| SetDisplayMessage | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | — | sends | `setDisplayMessage` |
-| SetMonitoringBase | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | — | sends | `setMonitoringBase` |
-| SetMonitoringLevel | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | — | sends | `setMonitoringLevel` |
-| SetNetworkProfile | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | — | sends | `setNetworkProfile` |
-| SetVariableMonitoring | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | — | sends | `setVariableMonitoring` |
+| SetDisplayMessage | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `setDisplayMessage` |
+| SetMonitoringBase | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `setMonitoringBase` |
+| SetMonitoringLevel | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `setMonitoringLevel` |
+| SetNetworkProfile | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `setNetworkProfile` |
+| SetVariableMonitoring | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `setVariableMonitoring` |
 | SetVariables | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `setVariables` |
-| SignCertificate | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | — | — | — | — | `signCertificate` |
+| SignCertificate | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | — | — | `signCertificate` |
 | StatusNotification | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | — | handles | `statusAvailable` |
 | TransactionEvent | Station | ✓ CALL | sends | handles | sends | handles | sends | handles | sends | — | — | handles | `transactionEnded`, `transactionStarted`, `transactionUpdated` |
 | TriggerMessage | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `triggerHeartbeat` |
 | UnlockConnector | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `unlockConnector` |
-| UnpublishFirmware | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | — | sends | `unpublishFirmware` |
-| UpdateFirmware | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | — | — | — | sends | `updateFirmware` |
+| UnpublishFirmware | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `unpublishFirmware` |
+| UpdateFirmware | CSMS | ✓ CALL | handles | sends | handles | sends | handles | sends | handles | — | — | sends | `updateFirmware` |
 
 ## Totals
 
 | | Actions | go-ocpp | mobilityhouse station | mobilityhouse CSMS | chargetime station | chargetime CSMS | lorenzodonini station | lorenzodonini CSMS | everest station | everest CSMS | citrineos station | citrineos CSMS |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| OCPP 2.0.1 | 64 | 64 | 64 | 64 | 64 | 64 | 64 | 64 | 26 | 0 | 0 | 54 |
+| OCPP 2.0.1 | 64 | 64 | 64 | 64 | 64 | 64 | 64 | 64 | 64 | 0 | 0 | 54 |
 
 A reference's count is the actions its station or CSMS sends or handles.
 
