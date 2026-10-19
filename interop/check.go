@@ -8,9 +8,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/otfabric/go-ocpp"
+	"github.com/otfabric/go-ocpp/ocppj"
 )
 
 // noAnswerCodes are the CALLERRORs an implementation may answer a CALL with
@@ -24,6 +26,55 @@ func checkGoCall(t *testing.T, f *fixture, s sample, resp json.RawMessage, err e
 	t.Helper()
 	if problem := goCallProblem(t, f, s, resp, err); problem != nil {
 		t.Fatal(problem)
+	}
+}
+
+// checkStationCall checks the outcome of a CALL go-ocpp sent as a station
+// to a reference CSMS, which declares handles for the version: against the
+// fixture's answer where the reference answers from the fixture, or by what
+// can be checked without it where the reference answers by itself.
+func checkStationCall(t *testing.T, a adapter, handles []string, f *fixture, s sample, resp json.RawMessage, err error) {
+	t.Helper()
+	switch {
+	case slices.Contains(handles, s.Action):
+		// Declared: the answer is the fixture's (also with fixtureAnswers
+		// false, where handles lists only those actions).
+		checkGoCall(t, f, s, resp, err)
+	case !a.fixtureAnswers(t, f.version):
+		checkSelfAnsweredGoCall(t, a, f, s, resp, err)
+	default:
+		checkUndeclaredGoCall(t, a, f, s, resp, err)
+	}
+}
+
+// checkSelfAnsweredGoCall checks a CALL go-ocpp sent to a reference that
+// answers by itself, not from the fixture (feature fixtureAnswers false),
+// with an action whose answer it does not declare equal to the fixture's.
+// The answer cannot be compared with the fixture; what is checked is what
+// holds whatever the answer: a CALLRESULT conforms to the OCA schema of the
+// version (go-ocpp's typed validation), and a CALLERROR has an error code
+// the version defines. A CALLRESULT that conforms is a pass. A CALLERROR is
+// the reference not processing the sample: skipped as unsupported with its
+// code and description, never passed.
+func checkSelfAnsweredGoCall(t *testing.T, a adapter, f *fixture, s sample, resp json.RawMessage, err error) {
+	t.Helper()
+	var ce *ocpp.CallError
+	switch {
+	case err == nil:
+		if verr := validateResponse(f.version, s.Action, resp); verr != nil {
+			t.Fatalf("%s answer %s fails go-ocpp's validation: %v", s.Action, resp, verr)
+		}
+		t.Logf("%s answers by itself (fixtureAnswers false): %s conforms to the OCPP %s schema; not compared with the fixture", a.name, resp, f.version)
+	case errors.As(err, &ce):
+		if !ocppj.ValidErrorCode(f.version, ce.Code) {
+			t.Fatalf("%s answered %s with CALLERROR %q, which OCPP %s does not define", a.name, s.Action, ce.Code, f.version)
+		}
+		if noAnswerCodes[ce.Code] {
+			t.Skipf("unsupported: %s answers %s with CALLERROR %s (%q)", a.name, s.Action, ce.Code, ce.Description)
+		}
+		t.Skipf("unsupported: %s answers by itself (fixtureAnswers false) and refuses the sample with CALLERROR %s (%q)", a.name, ce.Code, ce.Description)
+	default:
+		t.Fatalf("%s: %v", s.Action, err)
 	}
 }
 

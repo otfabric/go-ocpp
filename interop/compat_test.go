@@ -106,6 +106,14 @@ func compatibilityDoc(t *testing.T, v ocpp.Version, refs []adapter) string {
 		fmt.Fprintf(&b, "| %s | %s %s | `%s` | %s | %s |\n", a.name, c.Upstream.Name, c.Upstream.Version, shortImage(a.image), c.ContractVersion, state)
 	}
 
+	for _, ri := range infos {
+		if fa := ri.caps.Versions[v.String()].Features.FixtureAnswers; ri.supports && fa != nil && !*fa {
+			fmt.Fprintf(&b, "\n%s answers CALLs by itself, not from the fixture (feature `fixtureAnswers: false`):\n"+
+				"its **handles** are the actions whose answer is the fixture's. It answers the\n"+
+				"other actions too; go-ocpp checks those answers against the OCA schema only.\n", ri.a.name)
+		}
+	}
+
 	b.WriteString("\nCells: **sends** / **handles** as declared; — not declared; n/a the\n" +
 		"reference does not support the version. go-ocpp: every action is typed,\n" +
 		"validated against the OCA schema in both directions, dispatchable, and\n" +
