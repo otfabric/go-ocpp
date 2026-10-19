@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"context"
+	"errors"
 	"encoding/json"
 	"fmt"
 	"sync/atomic"
@@ -148,9 +149,10 @@ func TestServerShutdownAnswersCallInHandler(t *testing.T) {
 	}
 
 	// Bounded by its context: a handler that does not end does not hold it up.
-	block := make(chan struct{})
+	entered, block := make(chan struct{}), make(chan struct{})
 	defer close(block)
 	stuck := &counter{answer: func(ctx context.Context, _ ocpp.Peer, _ string) (json.RawMessage, error) {
+		close(entered)
 		select {
 		case <-block:
 		case <-ctx.Done():
@@ -161,12 +163,43 @@ func TestServerShutdownAnswersCallInHandler(t *testing.T) {
 	c2 := station(t, base2+"STUCK", client.WithInsecureTransport(), client.WithVersions(ocpp.V201))
 	connect(t, c2)
 	go func() { _ = c2.Call(context.Background(), "Heartbeat", json.RawMessage(`{}`), nil) }()
-	waitStation(t, srv2, "STUCK")
-	eventually(t, "the CALL to be in its handler", func() bool { s, _ := srv2.Station("STUCK"); return s != nil })
+	<-entered
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	_ = srv2.Shutdown(ctx)
-	if len(srv2.Stations()) != 0 {
-		t.Error("sessions left after a Shutdown whose context ended")
+	if err := srv2.Shutdown(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Shutdown with a handler that does not end: %v", err)
+	}
+	// Closed even so; they end once their stuck handler sees the close.
+	eventually(t, "the sessions to end", func() bool { return len(srv2.Stations()) == 0 })
+}
+
+// Session.Shutdown returns ctx.Err() when what is in flight does not finish in
+// time, and closes the session anyway.
+func TestSessionShutdownTimeout(t *testing.T) {
+	noLeak(t)
+	srv, base := csms(t, nil, server.WithHandler(ocpp.V201, &counter{}), server.WithoutAuthentication())
+	entered, release := make(chan struct{}), make(chan struct{})
+	slow := &counter{answer: func(ctx context.Context, _ ocpp.Peer, _ string) (json.RawMessage, error) {
+		close(entered)
+		<-release
+		return json.RawMessage(`{"status":"Accepted"}`), nil
+	}}
+	c := station(t, base+"SLOWST", client.WithInsecureTransport(), client.WithVersions(ocpp.V201), client.WithHandler(ocpp.V201, slow))
+	connect(t, c)
+	sess := waitStation(t, srv, "SLOWST")
+	called := make(chan error, 1)
+	go func() { called <- sess.Call(context.Background(), "Reset", json.RawMessage(`{"type":"Immediate"}`), nil) }()
+	<-entered
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if err := sess.Shutdown(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Session.Shutdown: %v", err)
+	}
+	close(release)
+	if err := <-called; !errors.Is(err, ocpp.ErrClosed) {
+		t.Fatalf("the CALL in flight when the session closed: %v", err)
+	}
+	if err := sess.Send(context.Background(), "NotifyWebPaymentStarted", json.RawMessage(`{}`)); err == nil {
+		t.Fatal("a SEND on a closed session")
 	}
 }
