@@ -10,7 +10,7 @@
 //
 //	c, err := client.New(url, client.WithHandler(ocpp.V16, ocpp16.ChargePoint(h)))
 //	resp, err := ocpp16.BootNotification(ctx, c, &ocpp16.BootNotificationRequest{
-//	    ChargePointVendor: "OTFabric",
+//	    ChargePointVendor: "OT Fabric",
 //	    ChargePointModel:  "TestStation",
 //	})
 //

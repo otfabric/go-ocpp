@@ -122,7 +122,7 @@ func run() error {
 	}
 	defer func() { _ = c.Close() }()
 
-	boot, err := ocpp16.BootNotification(ctx, c, &ocpp16.BootNotificationRequest{ChargePointVendor: "OTFabric", ChargePointModel: "TestStation"})
+	boot, err := ocpp16.BootNotification(ctx, c, &ocpp16.BootNotificationRequest{ChargePointVendor: "OT Fabric", ChargePointModel: "TestStation"})
 	if err != nil {
 		return err
 	}

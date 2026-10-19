@@ -4,7 +4,7 @@ Status: Accepted (2026-10-18)
 
 ## Context
 
-Other OTFabric libraries have no dependencies outside the standard library.
+Other OT Fabric libraries have no dependencies outside the standard library.
 go-openadr carries its own minimal RFC 6455 implementation for this reason.
 That implementation has no subprotocols and no extensions.
 

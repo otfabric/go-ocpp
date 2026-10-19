@@ -31,7 +31,7 @@ defer c.Close()
 
 boot, err := ocpp201.BootNotification(ctx, c, &ocpp201.BootNotificationRequest{
     Reason:          ocpp201.BootReasonPowerUp,
-    ChargingStation: ocpp201.ChargingStationType{VendorName: "OTFabric", Model: "TestStation"},
+    ChargingStation: ocpp201.ChargingStationType{VendorName: "OT Fabric", Model: "TestStation"},
 })
 ```
 

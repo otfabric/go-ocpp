@@ -204,7 +204,7 @@ verified against an independent implementation.
 ## Phase 8 - ocppctl
 
 Starts after the go-ocpp API is stable enough to be published. It builds on
-the published module, follows the OTFabric CLI conventions (see iec104ctl,
+the published module, follows the OT Fabric CLI conventions (see iec104ctl,
 modbusctl), offers human-readable and JSON output with stable exit codes, and
 contains no protocol code of its own.
 

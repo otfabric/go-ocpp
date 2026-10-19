@@ -10,7 +10,7 @@
 //	c, err := client.New(url, client.WithHandler(ocpp.V21, ocpp21.ChargingStation(h)))
 //	resp, err := ocpp21.BootNotification(ctx, c, &ocpp21.BootNotificationRequest{
 //	    Reason:          ocpp21.BootReasonPowerUp,
-//	    ChargingStation: ocpp21.ChargingStationType{VendorName: "OTFabric", Model: "TestStation"},
+//	    ChargingStation: ocpp21.ChargingStationType{VendorName: "OT Fabric", Model: "TestStation"},
 //	})
 //
 // The CSMS (the server package) answers through CSMS(h) and sends to a

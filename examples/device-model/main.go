@@ -449,7 +449,7 @@ func run201() error {
 	}
 	defer cleanup()
 	if _, err := ocpp201.BootNotification(ctx, c, &ocpp201.BootNotificationRequest{Reason: ocpp201.BootReasonPowerUp,
-		ChargingStation: ocpp201.ChargingStationType{VendorName: "OTFabric", Model: "DeviceModelStation"}}); err != nil {
+		ChargingStation: ocpp201.ChargingStationType{VendorName: "OT Fabric", Model: "DeviceModelStation"}}); err != nil {
 		return err
 	}
 
@@ -692,7 +692,7 @@ func run21() error {
 	}
 	defer cleanup()
 	if _, err := ocpp21.BootNotification(ctx, c, &ocpp21.BootNotificationRequest{Reason: ocpp21.BootReasonPowerUp,
-		ChargingStation: ocpp21.ChargingStationType{VendorName: "OTFabric", Model: "DeviceModelStation"}}); err != nil {
+		ChargingStation: ocpp21.ChargingStationType{VendorName: "OT Fabric", Model: "DeviceModelStation"}}); err != nil {
 		return err
 	}
 

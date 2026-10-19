@@ -30,7 +30,7 @@ any change that is not recorded there, and every change is listed in
 - [Package ocpptest](#package-ocpptest)
 - [Package ocppcert](#package-ocppcert)
 - [Concurrency](#concurrency)
-- [Departures from other OTFabric libraries](#departures-from-other-otfabric-libraries)
+- [Departures from other OT Fabric libraries](#departures-from-other-ot-fabric-libraries)
 
 ## Package ocpp
 
@@ -334,7 +334,7 @@ fields into `ocpp201.CertificateHashDataType` and its siblings.
 - Callbacks (metrics, frame observers, state handlers, session handlers)
   run synchronously. They must not block, and must not call `Close`.
 
-## Departures from other OTFabric libraries
+## Departures from other OT Fabric libraries
 
 - Logging takes a `*slog.Logger` instead of a library-specific `Logger`
   interface ([ADR 0005](docs/adr/0005-observability.md)).

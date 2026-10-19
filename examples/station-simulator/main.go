@@ -352,7 +352,7 @@ type ops16 struct{ c *client.Client }
 
 func (o *ops16) boot(ctx context.Context) (string, int, error) {
 	resp, err := ocpp16.BootNotification(ctx, o.c, &ocpp16.BootNotificationRequest{
-		ChargePointVendor: "OTFabric", ChargePointModel: "Simulator", FirmwareVersion: ocpp.Ptr("0.1.0"),
+		ChargePointVendor: "OT Fabric", ChargePointModel: "Simulator", FirmwareVersion: ocpp.Ptr("0.1.0"),
 	})
 	if err != nil {
 		return "", 0, err
@@ -427,7 +427,7 @@ type ops201 struct {
 
 func (o *ops201) boot(ctx context.Context) (string, int, error) {
 	resp, err := ocpp201.BootNotification(ctx, o.c, &ocpp201.BootNotificationRequest{Reason: ocpp201.BootReasonPowerUp,
-		ChargingStation: ocpp201.ChargingStationType{VendorName: "OTFabric", Model: "Simulator", FirmwareVersion: ocpp.Ptr("0.1.0")}})
+		ChargingStation: ocpp201.ChargingStationType{VendorName: "OT Fabric", Model: "Simulator", FirmwareVersion: ocpp.Ptr("0.1.0")}})
 	if err != nil {
 		return "", 0, err
 	}
@@ -512,7 +512,7 @@ type ops21 struct {
 
 func (o *ops21) boot(ctx context.Context) (string, int, error) {
 	resp, err := ocpp21.BootNotification(ctx, o.c, &ocpp21.BootNotificationRequest{Reason: ocpp21.BootReasonPowerUp,
-		ChargingStation: ocpp21.ChargingStationType{VendorName: "OTFabric", Model: "Simulator", FirmwareVersion: ocpp.Ptr("0.1.0")}})
+		ChargingStation: ocpp21.ChargingStationType{VendorName: "OT Fabric", Model: "Simulator", FirmwareVersion: ocpp.Ptr("0.1.0")}})
 	if err != nil {
 		return "", 0, err
 	}
