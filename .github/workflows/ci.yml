@@ -15,29 +15,32 @@ jobs:
   # Lint, vet, go mod tidy/verify, coverage and the race-detector test matrix
   # (ADR 0006).
   ci:
-    uses: otfabric/.github/.github/workflows/go-ci.yml@v2
+    uses: otfabric/.github/.github/workflows/go-ci.yml@v2.1.0
     with:
       codecov-name: go-ocpp
       go-versions: '["1.26", "1.27"]'
       golangci-lint-version: v2.15.0
+      run-govulncheck: true
+      # Measured 99.0 % with the coverpkg below (go-ci method).
+      coverage-min: "98"
+      fuzz-time: 10s
       # Match the Makefile's COVER_PKGS: the e2e tests drive client and server.
       coverpkg: github.com/otfabric/go-ocpp,github.com/otfabric/go-ocpp/ocppj,github.com/otfabric/go-ocpp/client,github.com/otfabric/go-ocpp/server,github.com/otfabric/go-ocpp/internal/engine,github.com/otfabric/go-ocpp/internal/transport,github.com/otfabric/go-ocpp/ocpptest,github.com/otfabric/go-ocpp/ocppcert
     secrets: inherit
 
   # Formatting with the gofmt of the go.mod version and the latest one, the
-  # dependency allow-list (ADR 0002), staticcheck and govulncheck: what the
-  # reusable workflow does not run.
+  # dependency allow-list (ADR 0002) and staticcheck: what the reusable
+  # workflow does not run.
   checks:
-    name: Format, dependencies, staticcheck, govulncheck
+    name: Format, dependencies, staticcheck
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
           go-version: "1.27.x"
-      - run: go install honnef.co/go/tools/cmd/staticcheck@latest
-      - run: go install golang.org/x/vuln/cmd/govulncheck@latest
-      - run: make fmt-check deps lint vuln
+      - run: go install honnef.co/go/tools/cmd/staticcheck@2026.2.2
+      - run: make fmt-check deps lint
 
   # The generated version packages must match the generator and the schemas
   # (ADR 0003, ADR 0007).
@@ -51,17 +54,16 @@ jobs:
           go-version-file: go.mod
       - run: make schemas-check gen-check
 
-  # A short run of every fuzz target and of the chaos test on every push;
-  # the long runs are nightly (hardening.yml).
+  # A short run of the chaos test on every push (the reusable workflow runs
+  # every fuzz target for fuzz-time); the long runs are nightly (hardening.yml).
   hardening:
-    name: Short fuzz and chaos
+    name: Short chaos
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - run: make fuzz FUZZTIME=10s
       - run: make chaos CHAOS_DURATION=10s
 
   # The library must build without cgo on every supported OS and architecture
