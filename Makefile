@@ -4,7 +4,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: compat help all build examples fmt fmt-check lint lint-ci vet vuln test test-min coverage cover fuzz fuzz-long chaos soak check cross clean interop test-interop e2e deps gen gen-check schemas-check schemas-sync
+.PHONY: compat help all build examples fmt fmt-check lint lint-ci vet vuln test test-min coverage cover fuzz fuzz-long chaos soak check cross clean interop test-interop e2e deps gen gen-check schemas-check schemas-sync coverage-check bench
 help: ## This help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_-]+:.*?## / {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
@@ -121,6 +121,8 @@ cover: coverage ## Open coverage report in browser
 # Each entry is <package dir>:<fuzz target>. An input that fails is written
 # to <package>/testdata/fuzz/<target>/ by go test: commit it, so that every
 # later test run checks it as a regression.
+# Same minimum as coverage-min in ci.yml.
+COVER_MIN := 98
 FUZZTIME ?= 30s
 FUZZ_TARGETS := ocppj:FuzzDecode internal/engine:FuzzEndpoint server:FuzzHandshake \
 	ocpp16:FuzzDispatch ocpp201:FuzzDispatch ocpp21:FuzzDispatch
@@ -210,6 +212,13 @@ schemas-sync: ## Refresh schemas/ from the OCA download page (review the diff; s
 
 schemas-check: ## Check the vendored OCA schemas against their recorded SHA-256 sums
 	@cd schemas && shasum -a 256 -c --quiet SHA256SUMS && echo "schemas: OK"
+
+coverage-check: coverage ## Fail when total coverage is below COVER_MIN
+	@total=$$(go tool cover -func=coverage.out | awk '/^total:/ {sub("%","",$$3); print $$3}'); \
+	awk -v t="$$total" -v m="$(COVER_MIN)" 'BEGIN { if (t+0 < m+0) { printf "coverage %.1f%% < %s%%\n", t, m; exit 1 } else printf "coverage %.1f%% >= %s%%\n", t, m }'
+
+bench: ## Benchmarks
+	@go test -count=1 -run='^$$' -bench=. -benchmem $(TEST_PKGS)
 
 check: fmt fmt-check deps gen-check schemas-check lint lint-ci vet vuln test test-min coverage cross examples ## Run format + generate + lint + vet + vuln + test + cross-build
 
