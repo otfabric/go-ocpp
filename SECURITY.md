@@ -19,7 +19,7 @@ description, the steps to reproduce, and the affected version.
 | Latest release | Yes |
 | Older releases | No |
 
-No release has been made yet.
+Releases are listed in [RELEASE.md](RELEASE.md).
 
 ## Security Considerations
 
