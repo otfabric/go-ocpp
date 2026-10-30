@@ -315,7 +315,19 @@ func (e *Endpoint) handle(f ocppj.Frame) {
 		e.sendResult(ocppj.Frame{Type: ocppj.CallResult, ID: f.ID, Payload: result})
 		return
 	}
-	e.sendResult(ocppj.Frame{Type: ocppj.CallError, ID: f.ID, ErrorCode: e.errorCode(err, f), Description: e.limit(e.description(err))})
+	e.sendResult(ocppj.Frame{Type: ocppj.CallError, ID: f.ID, ErrorCode: e.errorCode(err, f), Description: e.limit(e.description(err)),
+		Details: e.details(err)})
+}
+
+// details returns the CALLERROR details: a *ocpp.CallError's own, when they
+// are a JSON object and its code is one the version defines (otherwise the
+// error is answered as InternalError, without its text); {} else.
+func (e *Endpoint) details(err error) json.RawMessage {
+	var ce *ocpp.CallError
+	if errors.As(err, &ce) && ocppj.ValidErrorCode(e.cfg.Info.Version, ce.Code) && isObject(ce.Details) {
+		return ce.Details
+	}
+	return nil
 }
 
 // recovered logs a handler panic with its stack and returns the error that
