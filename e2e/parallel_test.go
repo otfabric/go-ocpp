@@ -351,7 +351,10 @@ func TestRejectNewRace(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	if ok.Load() != 1 || conflict.Load() != n-1 || replaced.Load() != 0 || len(srv.Stations()) != 1 {
-		t.Fatalf("%d admitted, %d conflicts, %d replaced, %d sessions", ok.Load(), conflict.Load(), replaced.Load(), len(srv.Stations()))
+	if ok.Load() != 1 || conflict.Load() != n-1 || replaced.Load() != 0 {
+		t.Fatalf("%d admitted, %d conflicts, %d replaced", ok.Load(), conflict.Load(), replaced.Load())
 	}
+	// The client is connected at the upgrade; the server registers the
+	// session just after it.
+	eventually(t, "one session", func() bool { return len(srv.Stations()) == 1 })
 }
