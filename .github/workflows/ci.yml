@@ -15,7 +15,7 @@ jobs:
   # Lint, vet, go mod tidy/verify, coverage and the race-detector test matrix
   # (ADR 0006).
   ci:
-    uses: otfabric/.github/.github/workflows/go-ci.yml@v3.1.1
+    uses: otfabric/.github/.github/workflows/go-ci.yml@v3.2.0
     with:
       codecov-name: go-ocpp
       go-versions: '["1.26", "1.27"]'
