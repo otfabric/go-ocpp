@@ -1,5 +1,5 @@
 # Ignore the bin directory
-bin/
+/bin/
 
 # Ignore VS Code settings
 .vscode/
@@ -11,3 +11,23 @@ bin/
 
 # macOS
 .DS_Store
+
+# Build artefacts live in /bin/ and /release/ (otfabric/engineering REPO-005)
+/release/
+*.test
+coverage.out
+
+# Output of a bare `go build`, anchored so it can never hide a source folder
+/examples/csms/csms
+/examples/device-model/device-model
+/examples/observability/observability
+/examples/ocpp16/ocpp16
+/examples/ocpp201/ocpp201
+/examples/ocpp21/ocpp21
+/examples/remote-management/remote-management
+/examples/security-profiles/security-profiles
+/examples/smart-charging/smart-charging
+/examples/station-simulator/station-simulator
+/examples/vendor-extensions/vendor-extensions
+/internal/gen/gen
+/internal/specsync/specsync
