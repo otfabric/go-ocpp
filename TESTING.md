@@ -30,7 +30,7 @@ How to run each tier. Conventions for tests are in [CONTRIBUTING.md](CONTRIBUTIN
 
 ## Coverage
 
-`make coverage` measures `COVER_PKGS`: the library packages, whichever package's tests exercise them. Excluded: the examples, the interop suite, `e2e` and the code-generation and test helpers `internal/gen`, `internal/specsync` and `internal/schematest` (see the `COVER_PKGS` line of the [Makefile](Makefile)). `make coverage-check` fails below `COVER_MIN` (98), the same minimum as `coverage-min` in `.github/workflows/ci.yml`.
+`make coverage` measures `COVER_PKGS`: the library packages, whichever package's tests exercise them. Excluded: the examples, the interop suite, `e2e` and the code-generation and test helpers `internal/gen`, `internal/specsync` and `internal/schematest` (see the `COVER_PKGS` line of the [Makefile](Makefile)). `make coverage-check` fails below `COVER_MIN` (98), the same minimum as `coverage-min` in `.github/workflows/ci.yml`. `make coverage-pkg-check` requires `COVER_PKG_MIN` (90) of each package of `COVER_PKGS`, in CI too; `ocpptest` is the lowest, at 93 %.
 
 ## Fuzz regressions
 
