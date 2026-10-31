@@ -5,6 +5,17 @@ tag, GitHub release); the section of the version below is the release's
 notes. Before v1.0.0 a minor release may change the API: every change is
 listed here, and COMPATIBILITY.md has the stability rules.
 
+## v0.1.5
+
+**Date:** 2026-10-31
+**Previous release:** v0.1.4
+
+### Changed
+
+- Policy 1.2: build output in `bin/` and `release/`, a per-package coverage floor, and more tests and CI. No change in behaviour.
+
+---
+
 ## v0.1.4
 
 **Date:** 2026-10-19
