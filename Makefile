@@ -4,7 +4,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: compat help all build examples fmt fmt-check lint lint-ci vet vuln test test-min coverage cover fuzz fuzz-long chaos soak check cross clean interop test-interop e2e deps gen gen-check schemas-check schemas-sync coverage-check bench
+.PHONY: compat help all build examples fmt fmt-check lint lint-ci vet vuln test test-min coverage coverage-pkg-check cover fuzz fuzz-long chaos soak check cross clean interop test-interop e2e deps gen gen-check schemas-check schemas-sync coverage-check bench
 help: ## This help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_-]+:.*?## / {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
@@ -123,6 +123,8 @@ cover: coverage ## Open coverage report in browser
 # later test run checks it as a regression.
 # Same minimum as coverage-min in ci.yml.
 COVER_MIN := 98
+# Per-package floor (TEST-012), over the packages of COVER_PKGS.
+COVER_PKG_MIN := 90
 FUZZTIME ?= 30s
 FUZZ_TARGETS := ocppj:FuzzDecode internal/engine:FuzzEndpoint server:FuzzHandshake \
 	ocpp16:FuzzDispatch ocpp201:FuzzDispatch ocpp21:FuzzDispatch
@@ -213,6 +215,12 @@ schemas-sync: ## Refresh schemas/ from the OCA download page (review the diff; s
 schemas-check: ## Check the vendored OCA schemas against their recorded SHA-256 sums
 	@cd schemas && shasum -a 256 -c --quiet SHA256SUMS && echo "schemas: OK"
 
+coverage-pkg-check: coverage ## Fail when a package of COVER_PKGS is below COVER_PKG_MIN (reads coverage.out)
+	@awk -v m="$(COVER_PKG_MIN)" -v pkgs="$(COVER_PKGS)" 'BEGIN { split(pkgs, l, ","); for (i in l) want[l[i]] = 1 } \
+	NR > 1 { n[$$1] = $$2; if ($$3 > 0) h[$$1] = 1 } \
+	END { for (k in n) { p = k; sub(/\/[^\/]*$$/, "", p); if (p in want) { s[p] += n[k]; if (k in h) c[p] += n[k] } } \
+	for (p in s) { v = 100 * c[p] / s[p]; if (v < m) { printf "%s: %.1f%% < %s%%\n", p, v, m; bad = 1 } } exit bad }' coverage.out
+
 coverage-check: coverage ## Fail when total coverage is below COVER_MIN
 	@total=$$(go tool cover -func=coverage.out | awk '/^total:/ {sub("%","",$$3); print $$3}'); \
 	awk -v t="$$total" -v m="$(COVER_MIN)" 'BEGIN { if (t+0 < m+0) { printf "coverage %.1f%% < %s%%\n", t, m; exit 1 } else printf "coverage %.1f%% >= %s%%\n", t, m }'
@@ -220,7 +228,7 @@ coverage-check: coverage ## Fail when total coverage is below COVER_MIN
 bench: ## Benchmarks
 	@go test -count=1 -run='^$$' -bench=. -benchmem $(TEST_PKGS)
 
-check: fmt fmt-check deps gen-check schemas-check lint lint-ci vet vuln test test-min coverage cross examples ## Run format + generate + lint + vet + vuln + test + cross-build
+check: fmt fmt-check deps gen-check schemas-check lint lint-ci vet vuln test test-min coverage coverage-pkg-check cross examples ## Run format + generate + lint + vet + vuln + test + cross-build
 
 clean: ## Remove generated binaries and coverage artifacts
 	@echo "Cleaning up"
