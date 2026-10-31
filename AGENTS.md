@@ -4,7 +4,7 @@ Instructions for AI coding agents (and humans) working in this repository.
 
 ## Organisation standards
 
-This repository follows **otfabric/engineering policy 1.1**, profile
+This repository follows **otfabric/engineering policy 1.2**, profile
 **protocol-library** (`.otfabric/policy.yaml`, mode `enforce`). Where this
 file and the organisation standards disagree, this file wins here: say so in
 your report.
