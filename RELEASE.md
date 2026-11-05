@@ -5,6 +5,135 @@ tag, GitHub release); the section of the version below is the release's
 notes. Before v1.0.0 a minor release may change the API: every change is
 listed here, and COMPATIBILITY.md has the stability rules.
 
+## v0.2.0
+
+**Date:** 2026-11-05
+**Previous release:** v0.1.5
+
+## Summary
+
+SAST clean (gosec 13 -> 0 at severity and confidence low, nothing waived),
+and 14 defects fixed, 13 of them found by new hostile-peer tests: a hostile station
+against the server, a hostile CSMS against the client. The most serious: a
+`wss://` client followed a redirect to `ws://`, sending its Basic
+credentials in clear text, and refused handshakes could hold any number of
+idle server connections.
+
+**Upgrade notes:**
+
+- `Client.Connect` while another `Connect`, or a redial of `WithReconnect`,
+  is in progress now waits for that attempt (until its own ctx ends) and
+  returns its outcome. It returned nil at once before, with the client still
+  connecting.
+- The client refuses an HTTP redirect from `wss://` to `ws://` during the
+  handshake: `Connect` fails with a `*HandshakeError` carrying the 3xx.
+  `WithHTTPClient`'s client is used through a copy; the application's own
+  is not changed.
+- `client.New` refuses a Basic user name that contains `:` (RFC 7617 §2),
+  and `ocppcert.Hash` a certificate with a nil or negative serial number.
+- A 101 whose upgrade headers are broken is no longer reported as a
+  `*HandshakeError{StatusCode: 101}`.
+
+## Changes
+
+### Fixed
+
+- **Client: a `wss://` to `ws://` redirect went to clear text.** With
+  `WithTLS`, `WithHTTPClient` or the default HTTP client, a TLS server that
+  answered 301/302/307/308 with a `ws://` or `http://` location moved the
+  station onto a clear-text connection without `WithInsecureTransport`, and
+  Go's HTTP client sent the `Authorization` header there (it keeps it on a
+  redirect to the same host, also on another port).
+- **Server: refused connections stayed open.** A handshake the server
+  refused (unknown station, wrong credentials, bad path or identity, limits)
+  left its HTTP connection open as an idle keep-alive connection, without
+  a timeout on the server's own listener: one refused request per
+  connection could hold any number of file descriptors, past
+  `WithMaxStations`. Refusals now carry `Connection: close`, and `Serve`
+  sets `IdleTimeout` to the handshake timeout.
+- **Engine: a malformed CALL during a drain was answered.** While a session
+  drains, a malformed CALL is now dropped like a valid one that has not
+  started: a peer that sent them without reading the CALLERRORs kept a frame
+  unwritten, so `Shutdown` never saw the session idle and waited for its
+  ctx or the write timeout.
+- **Server: a panic in onConnect left the session registered.** A panic
+  in the onConnect function of `WithSessionHandler` unwound `ServeHTTP`
+  (net/http recovers it) while the session went on; once it ended it stayed
+  in `Stations`, onDisconnect was not called, and with `RejectNew` the
+  station could not connect again. The panic is now logged at Error with
+  its stack, like a handler's, and the session goes on.
+- **Integral numbers decided on the float64.** The draft-06 integer rule
+  accepted numbers that are not integers but round to one in a float64
+  (`0.99999999999999999999`, `1e-400`, `9007199254740992.5`), and rewrote
+  `9007199254740993.0` as `9007199254740992`. Integrality is now decided on
+  the decimal text.
+- **Client: a broken 101 held Connect past the handshake timeout.** A CSMS
+  that answered the handshake with a 101 whose upgrade headers are broken
+  (a subprotocol not offered, say) and kept the connection open held
+  `Connect` about 3 s past `WithHandshakeTimeout`, and `Close` could not
+  shorten it: coder/websocket reads the start of such a response under a
+  timer of its own. The handshake's connection is now closed when its
+  context ends, for every HTTP client whose transport is an
+  `*http.Transport`.
+- **Client: Close did not end a Connect stalled in the handshake.** Only a
+  redial was cancelled by `Close`; a first `Connect` waited for the whole
+  handshake timeout before returning `ErrClosed`.
+- **Client: Connect returned while another attempt was still running** (see
+  the upgrade notes); a caller waiting on a failing attempt never saw its
+  error.
+- **Client: a state handler that read the client deadlocked.** The handler
+  runs while the client's lock is held; `State` and `Version` now read
+  without it, so the handler may call them (it still must not call `Close`,
+  `Connect` or `Call`).
+- **Client: `SetReconnect(nil)` during a redial panicked** (nil dereference
+  in the back-off). The running redial finishes with the settings it had, as
+  documented.
+- **Client: `Reconnect{RandomRange: math.MaxInt64}` panicked**, and a
+  `WaitMinimum` plus `RandomRange` past `math.MaxInt64` wrapped to a
+  negative delay, reconnecting at once in a tight loop. Both saturate.
+- **Client: a broken 101 was reported as `HandshakeError{101}`**, although
+  the CSMS refused nothing.
+- **Client: a Basic user name with `:` was accepted**; the CSMS would split
+  it at the colon.
+- **ocppcert: `Hash` returned serial `"<nil>"` or `"-5"`** for a nil or
+  negative serial (RFC 5280 §4.1.2.2).
+
+### Changed
+
+- SAST: the reconnect supervisor derives its dial contexts from
+  `context.WithoutCancel` of `Connect`'s context, so its values (trace IDs)
+  reach the redials; reconnect jitter comes from `crypto/rand`, so stations
+  sharing a `math/rand` seed do not reconnect in lockstep;
+  `internal/specsync` hashes `schemas/` inside an `os.Root`, and the
+  generators write files 0600 and directories 0750.
+- `go fix ./...` for Go 1.26 (already the floor).
+- Interop pinned to otfabric/ocpp-interop v0.5.3 (contract 0.5, the same
+  upstreams as v0.4.1); shared workflows v3.3.1.
+
+### Added
+
+- `e2e/hostile_server_test.go` and `e2e/hostile_client_test.go`: raw
+  WebSocket peers that abuse the handshake, redirects, framing, control
+  frames, results, floods, Close in every state and reconnect races, with
+  goroutine-leak checks. Unit tests for each fix
+  (`client/connect_test.go` with `testing/synctest`,
+  `internal/engine/hostile_test.go`, `internal/transport/dial_test.go`).
+- Fuzz targets `internal/wire:FuzzIntegralNumbers` (checked against exact
+  `big.Rat` arithmetic), `client:FuzzNew` and `ocppcert:FuzzHash`, in
+  `make fuzz` and the nightly Hardening workflow.
+
+## Verification
+
+- Every fix has a test that failed before it.
+- `make check` (coverage 98.2 %, every changed line covered); Linux
+  `-race` and `GOARCH=386` in `golang:1.26`; the hostile tests 4 copies in
+  parallel at `-race -count=4 -cpu 1,8`.
+- SAST (engineering `make sast`, low/low): PASS, 0 findings.
+- Interop against the ocpp-interop v0.5.3 images (linux/arm64): **1458
+  pass, 0 fail, 163 skipped**, the same counts as against v0.4.1.
+
+---
+
 ## v0.1.5
 
 **Date:** 2026-10-31

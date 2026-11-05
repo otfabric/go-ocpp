@@ -2,7 +2,11 @@
 
 package ocppj
 
-import "github.com/otfabric/go-ocpp"
+import (
+	"slices"
+
+	"github.com/otfabric/go-ocpp"
+)
 
 var errorCodes16 = []ocpp.ErrorCode{
 	ocpp.NotImplemented, ocpp.NotSupported, ocpp.InternalError, ocpp.ProtocolError,
@@ -32,12 +36,7 @@ func ErrorCodes(v ocpp.Version) []ocpp.ErrorCode {
 
 // ValidErrorCode reports whether version v defines code.
 func ValidErrorCode(v ocpp.Version, code ocpp.ErrorCode) bool {
-	for _, c := range ErrorCodes(v) {
-		if c == code {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(ErrorCodes(v), code)
 }
 
 // FormatErrorCode returns the code for a payload that is not valid JSON or

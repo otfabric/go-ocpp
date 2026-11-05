@@ -73,9 +73,7 @@ func TestParallelCalls(t *testing.T) {
 			var wg sync.WaitGroup
 			for g := range callers {
 				for _, caller := range []ocpp.Caller{c, sess} {
-					wg.Add(1)
-					go func() {
-						defer wg.Done()
+					wg.Go(func() {
 						for i := range calls {
 							var got echoed
 							want := fmt.Sprintf(`{"g":%d,"i":%d}`, g, i)
@@ -87,7 +85,7 @@ func TestParallelCalls(t *testing.T) {
 								t.Errorf("sent %s, answered %+v", want, got)
 							}
 						}
-					}()
+					})
 				}
 			}
 			wg.Wait()
@@ -124,9 +122,7 @@ func TestCloseUnderLoad(t *testing.T) {
 			var wg sync.WaitGroup
 			for g := range 8 {
 				for _, caller := range []ocpp.Caller{c, sess} {
-					wg.Add(1)
-					go func() {
-						defer wg.Done()
+					wg.Go(func() {
 						for i := 0; ; i++ {
 							ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 							err := caller.Call(ctx, "Heartbeat", map[string]int{"g": g, "i": i}, nil)
@@ -138,7 +134,7 @@ func TestCloseUnderLoad(t *testing.T) {
 								return
 							}
 						}
-					}()
+					})
 				}
 			}
 			time.Sleep(time.Duration(5+rand.IntN(30)) * time.Millisecond)
@@ -177,9 +173,7 @@ func TestReplacementStorm(t *testing.T) {
 	cs := make([]*client.Client, clients)
 	for i := range clients {
 		cs[i] = station(t, base+"STORM", client.WithInsecureTransport(), client.WithVersions(ocpp.V201))
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			if err := cs[i].Connect(ctx); err != nil {
@@ -190,7 +184,7 @@ func TestReplacementStorm(t *testing.T) {
 			if err := cs[i].Call(ctx, "Heartbeat", nil, nil); err != nil && !expectedFailure(err) {
 				t.Errorf("call %d: %v", i, err)
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	eventually(t, "replaced sessions ended", func() bool {
@@ -231,9 +225,7 @@ func TestShutdownUnderLoad(t *testing.T) {
 		connect(t, c)
 		sess := waitStation(t, srv, id)
 		for _, caller := range []ocpp.Caller{c, sess} {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				for {
 					if err := caller.Call(context.Background(), "Heartbeat", nil, nil); err != nil {
 						if !expectedFailure(err) {
@@ -242,7 +234,7 @@ func TestShutdownUnderLoad(t *testing.T) {
 						return
 					}
 				}
-			}()
+			})
 		}
 	}
 	time.Sleep(20 * time.Millisecond)
@@ -335,9 +327,7 @@ func TestRejectNewRace(t *testing.T) {
 	var wg sync.WaitGroup
 	var ok, conflict atomic.Int32
 	for range n {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			c := station(t, base+"RACE", client.WithInsecureTransport(), client.WithVersions(ocpp.V16))
 			var he *client.HandshakeError
 			switch err := c.Connect(context.Background()); {
@@ -348,7 +338,7 @@ func TestRejectNewRace(t *testing.T) {
 			default:
 				t.Errorf("connect: %v", err)
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	if ok.Load() != 1 || conflict.Load() != n-1 || replaced.Load() != 0 {

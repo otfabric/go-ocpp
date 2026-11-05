@@ -7,16 +7,18 @@ package client
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"math"
-	"math/rand/v2"
+	"math/big"
 	"net/http"
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/otfabric/go-ocpp"
@@ -38,12 +40,21 @@ type Client struct {
 	draining bool
 	http     *http.Client
 
-	mu        sync.Mutex
-	state     ocpp.State
-	ep        *engine.Endpoint
-	version   ocpp.Version
-	closed    bool
-	closeCh   chan struct{}
+	mu sync.Mutex
+	// state and version are written under mu and read without it, so that
+	// the state handler, which runs under mu, may read them.
+	state   atomic.Uint32 // ocpp.State
+	version atomic.Uint32 // ocpp.Version
+	// stateErr is the error of the last state change; changed is closed
+	// and replaced on every state change, for Connect to wait on.
+	stateErr error
+	changed  chan struct{}
+	ep       *engine.Endpoint
+	closed   bool
+	closeCh  chan struct{}
+	// redial is the back-off a redial loop finishes with after
+	// SetReconnect(nil); nil until then.
+	redial    *Reconnect
 	superDone chan struct{} // closed when the supervisor has exited; nil if none
 }
 
@@ -129,7 +140,8 @@ func New(rawURL string, opts ...Option) (*Client, error) {
 	}
 	log = log.With("component", "ocpp.client")
 	o.logger = log // the engine's entries carry the component too
-	c := &Client{url: rawURL, id: id, o: o, log: log.With("station_id", id), header: http.Header{}, closeCh: make(chan struct{})}
+	c := &Client{url: rawURL, id: id, o: o, log: log.With("station_id", id), header: http.Header{},
+		closeCh: make(chan struct{}), changed: make(chan struct{})}
 	for _, h := range o.headers {
 		if err := checkHeader(h[0], h[1]); err != nil {
 			return nil, err
@@ -141,20 +153,55 @@ func New(rawURL string, opts ...Option) (*Client, error) {
 		// identity; a CSMS refuses any other.
 		return nil, fmt.Errorf("%w: the Basic authentication user name %q is not the station identity %q", ocpp.ErrInvalidOption, o.username, id)
 	}
+	if o.basicAuth && strings.Contains(o.username, ":") {
+		// RFC 7617 §2: the CSMS would split the user-id at the colon.
+		return nil, fmt.Errorf("%w: a Basic authentication user name must not contain a colon", ocpp.ErrInvalidOption)
+	}
 	if o.basicAuth {
 		c.header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(o.username+":"+o.password)))
 	}
 	switch {
 	case o.httpClient != nil:
-		c.http = o.httpClient
+		c.http = c.noDowngrade(o.httpClient)
 	case o.tlsConfig != nil:
 		cfg := o.tlsConfig.Clone()
 		if cfg.MinVersion < tls.VersionTLS12 {
 			cfg.MinVersion = tls.VersionTLS12
 		}
-		c.http = &http.Client{Transport: &http.Transport{Proxy: http.ProxyFromEnvironment, TLSClientConfig: cfg, ForceAttemptHTTP2: false}}
+		c.http = c.noDowngrade(&http.Client{Transport: &http.Transport{Proxy: http.ProxyFromEnvironment, TLSClientConfig: cfg, ForceAttemptHTTP2: false}})
+	default:
+		c.http = c.noDowngrade(http.DefaultClient)
 	}
 	return c, nil
+}
+
+// maxRedirects is the redirect limit of an http.Client without
+// CheckRedirect.
+const maxRedirects = 10
+
+// noDowngrade returns a copy of hc that refuses a redirect from https
+// (wss) to http (ws): following it would put the station on a clear-text
+// connection, its Basic credentials included, without WithInsecureTransport.
+// The handshake then fails with a *HandshakeError carrying the redirect's
+// status. hc's own redirect policy applies to the redirects it lets through;
+// hc itself is not changed.
+func (c *Client) noDowngrade(hc *http.Client) *http.Client {
+	cp := *hc
+	prev := hc.CheckRedirect
+	cp.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if via[0].URL.Scheme == "https" && req.URL.Scheme != "https" {
+			c.log.Warn("refused a redirect from wss to ws", "location", req.URL.Redacted())
+			return http.ErrUseLastResponse
+		}
+		if prev != nil {
+			return prev(req, via)
+		}
+		if len(via) >= maxRedirects {
+			return fmt.Errorf("stopped after %d redirects", maxRedirects)
+		}
+		return nil
+	}
+	return &cp
 }
 
 func identity(u *url.URL) (string, error) {
@@ -177,36 +224,39 @@ func (c *Client) Role() ocpp.Role { return ocpp.ChargingStation }
 // Version returns the version negotiated on the current connection, or the
 // last one; zero before the first connection.
 func (c *Client) Version() ocpp.Version {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.version
+	return ocpp.Version(c.version.Load() & 0xFF) // only uint8 values are stored
 }
 
 // State returns the connection state.
 func (c *Client) State() ocpp.State {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.state
+	return ocpp.State(c.state.Load() & 0xFF) // only uint8 values are stored
 }
 
 // Connect opens the connection and returns once it is open, or with an
 // error wrapping ocpp.ErrConnectFailed. It does not retry: with
 // WithReconnect, redialling starts only after an open connection is lost.
-// Connect on a connected client does nothing.
+// Connect on a connected client does nothing. While another Connect, or a
+// redial of WithReconnect, is in progress, Connect waits for it, until ctx
+// ends: it returns nil once the connection is open, or the other Connect's
+// error. Close ends a Connect in progress with ocpp.ErrClosed.
 func (c *Client) Connect(ctx context.Context) error {
 	c.mu.Lock()
 	switch {
 	case c.closed:
 		c.mu.Unlock()
 		return ocpp.ErrClosed
-	case c.state == ocpp.Connected || c.state == ocpp.Connecting:
+	case c.State() == ocpp.Connected:
 		c.mu.Unlock()
 		return nil
+	case c.State() == ocpp.Connecting:
+		return c.waitConnectingLocked(ctx)
 	}
 	c.setStateLocked(ocpp.Connecting, nil)
 	c.mu.Unlock()
 
-	ep, v, err := c.dial(ctx)
+	dctx, cancel := c.untilClosed(ctx)
+	ep, v, err := c.dial(dctx)
+	cancel()
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.closed {
@@ -222,12 +272,54 @@ func (c *Client) Connect(ctx context.Context) error {
 	c.attachLocked(ep, v)
 	done := make(chan struct{})
 	c.superDone = done
-	go c.supervise(ep, done)
+	// The supervisor outlives Connect: it keeps the values of ctx but not
+	// its cancellation or deadline.
+	go c.supervise(context.WithoutCancel(ctx), ep, done)
 	return nil
 }
 
+// waitConnectingLocked waits, with c.mu held and returning with it
+// released, until the connection being opened opens or fails.
+func (c *Client) waitConnectingLocked(ctx context.Context) error {
+	for !c.closed && c.State() == ocpp.Connecting {
+		ch := c.changed
+		c.mu.Unlock()
+		select {
+		case <-ch:
+		case <-ctx.Done():
+			return fmt.Errorf("%w: %w", ocpp.ErrConnectFailed, ctx.Err())
+		}
+		c.mu.Lock()
+	}
+	defer c.mu.Unlock()
+	switch {
+	case c.closed:
+		return ocpp.ErrClosed
+	case c.State() == ocpp.Connected:
+		return nil
+	default:
+		// Disconnected: only a failed Connect leaves Connecting for it, and
+		// it does so with its error, which wraps ocpp.ErrConnectFailed.
+		return c.stateErr
+	}
+}
+
+// untilClosed returns a context derived from parent that Close cancels.
+func (c *Client) untilClosed(parent context.Context) (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(parent)
+	go func() {
+		select {
+		case <-c.closeCh:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+	return ctx, cancel
+}
+
 func (c *Client) attachLocked(ep *engine.Endpoint, v ocpp.Version) {
-	c.ep, c.version = ep, v
+	c.ep = ep
+	c.version.Store(uint32(v))
 	ep.Start()
 	c.o.metrics.OnConnect(c.info(v))
 	c.log.Info("connected", "ocpp_version", v.String())
@@ -251,7 +343,8 @@ func (c *Client) dial(ctx context.Context) (*engine.Endpoint, ocpp.Version, erro
 		Compression: c.o.compression,
 	})
 	if err != nil {
-		if resp != nil {
+		if resp != nil && resp.StatusCode != http.StatusSwitchingProtocols {
+			// A 101 whose upgrade is broken is no refusal: no status to report.
 			err = fmt.Errorf("%w: %w: %w", ocpp.ErrConnectFailed, &HandshakeError{StatusCode: resp.StatusCode}, err)
 		} else {
 			err = fmt.Errorf("%w: %w", ocpp.ErrConnectFailed, err)
@@ -293,7 +386,7 @@ func (c *Client) dial(ctx context.Context) (*engine.Endpoint, ocpp.Version, erro
 
 // supervise waits for the connection to end and, with WithReconnect,
 // redials until a connection opens or the client is closed.
-func (c *Client) supervise(ep *engine.Endpoint, done chan struct{}) {
+func (c *Client) supervise(base context.Context, ep *engine.Endpoint, done chan struct{}) {
 	defer close(done)
 	for {
 		select {
@@ -309,7 +402,7 @@ func (c *Client) supervise(ep *engine.Endpoint, done chan struct{}) {
 			return
 		}
 		c.ep = nil
-		c.o.metrics.OnDisconnect(c.info(c.version), cause)
+		c.o.metrics.OnDisconnect(c.info(c.Version()), cause)
 		c.setStateLocked(ocpp.Disconnected, cause)
 		if c.o.reconnect == nil {
 			c.mu.Unlock()
@@ -325,14 +418,7 @@ func (c *Client) supervise(ep *engine.Endpoint, done chan struct{}) {
 				return
 			}
 			c.o.metrics.OnReconnectAttempt(c.info(0), attempt)
-			ctx, cancel := context.WithCancel(context.Background())
-			go func() {
-				select {
-				case <-c.closeCh:
-					cancel()
-				case <-ctx.Done():
-				}
-			}()
+			ctx, cancel := c.untilClosed(base)
 			next, v, err := c.dial(ctx)
 			cancel()
 			c.mu.Lock()
@@ -358,16 +444,36 @@ func (c *Client) supervise(ep *engine.Endpoint, done chan struct{}) {
 // §5.4; see Reconnect). The doubling saturates instead of overflowing.
 func (c *Client) backoff(attempt int) time.Duration {
 	c.mu.Lock()
-	r := *c.o.reconnect
+	rp := c.o.reconnect
+	if rp == nil {
+		rp = c.redial // SetReconnect(nil) during the redial loop
+	}
+	r := *rp
 	c.mu.Unlock()
 	d := r.WaitMinimum
 	for i := 1; i < attempt && i <= r.RepeatTimes && d < math.MaxInt64/2; i++ {
 		d *= 2
 	}
-	if r.RandomRange > 0 {
-		d += rand.N(r.RandomRange + 1)
+	if j := jitter(r.RandomRange); j > math.MaxInt64-d {
+		d = math.MaxInt64 // saturate: a wrapped sum would reconnect at once
+	} else {
+		d += j
 	}
 	return d
+}
+
+// jitter returns a uniformly random duration in [0, max], from crypto/rand
+// so that stations sharing a seed (or a math/rand default) do not reconnect
+// in lockstep.
+func jitter(max time.Duration) time.Duration {
+	if max <= 0 {
+		return 0
+	}
+	bound := new(big.Int).Add(big.NewInt(int64(max)), big.NewInt(1))
+	// crypto/rand.Reader never fails (Go 1.24+: it crashes the program
+	// instead), so rand.Int cannot either.
+	n, _ := rand.Int(rand.Reader, bound)
+	return time.Duration(n.Int64())
 }
 
 // SetReconnect changes the reconnection back-off from the next attempt on:
@@ -383,6 +489,9 @@ func (c *Client) SetReconnect(r *Reconnect) error {
 		r = &cp
 	}
 	c.mu.Lock()
+	if r == nil && c.o.reconnect != nil {
+		c.redial = c.o.reconnect
+	}
 	c.o.reconnect = r
 	c.mu.Unlock()
 	return nil
@@ -392,7 +501,10 @@ func (c *Client) SetReconnect(r *Reconnect) error {
 // changes the state: the transitions are Disconnected → Connecting →
 // Connected → Disconnected (→ Connecting …), and any → Closed once.
 func (c *Client) setStateLocked(s ocpp.State, err error) {
-	c.state = s
+	c.state.Store(uint32(s))
+	c.stateErr = err
+	close(c.changed)
+	c.changed = make(chan struct{})
 	if c.o.stateHandler != nil {
 		c.o.stateHandler(s, err)
 	}
@@ -453,8 +565,8 @@ func (c *Client) Close() error {
 		<-done
 	}
 	c.mu.Lock()
-	if ep != nil && c.state == ocpp.Connected {
-		c.o.metrics.OnDisconnect(c.info(c.version), nil)
+	if ep != nil && c.State() == ocpp.Connected {
+		c.o.metrics.OnDisconnect(c.info(c.Version()), nil)
 	}
 	c.setStateLocked(ocpp.Closed, nil)
 	c.mu.Unlock()
@@ -465,7 +577,8 @@ func (c *Client) Close() error {
 // WebSocket handshake. Connect's error wraps it next to
 // ocpp.ErrConnectFailed, so that an application can decide how to go on:
 // 401 wrong credentials, 404 unknown identity, 409 already connected, 503
-// try later.
+// try later. A 101 whose upgrade headers are broken is not reported as one;
+// a refused redirect from wss:// to ws:// is, with the redirect's status.
 //
 //	var he *client.HandshakeError
 //	if errors.As(err, &he) && he.StatusCode == http.StatusUnauthorized { ... }

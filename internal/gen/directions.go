@@ -2,6 +2,8 @@
 
 package main
 
+import "maps"
+
 // Which role sends each action. The schemas do not say; the specifications
 // do: OCPP 1.6 §4 and §5 (and the Security Whitepaper Ed. 4 §4–§6 for its
 // extensions), and the "PDU sent by the … to the …" sentences and use
@@ -84,11 +86,7 @@ var directions21 = map[string]string{
 
 func init() {
 	d := map[string]string{}
-	for a, from := range directions["2.0.1"] {
-		d[a] = from
-	}
-	for a, from := range directions21 {
-		d[a] = from
-	}
+	maps.Copy(d, directions["2.0.1"])
+	maps.Copy(d, directions21)
 	directions["2.1"] = d
 }

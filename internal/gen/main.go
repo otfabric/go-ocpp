@@ -71,14 +71,14 @@ func run(version, pkg string, dirs []string, out string) error {
 	for name, src := range files {
 		formatted, err := format.Source([]byte(src))
 		if err != nil {
-			_ = os.WriteFile(filepath.Join(out, name+".broken"), []byte(src), 0o644)
+			_ = os.WriteFile(filepath.Join(out, name+".broken"), []byte(src), 0o600)
 			return fmt.Errorf("%s: %w", name, err)
 		}
-		if err := os.WriteFile(filepath.Join(out, name), formatted, 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(out, name), formatted, 0o600); err != nil {
 			return err
 		}
 	}
-	return os.WriteFile(filepath.Join(out, "coverage.json"), []byte(emitCoverage(m, rel)), 0o644)
+	return os.WriteFile(filepath.Join(out, "coverage.json"), []byte(emitCoverage(m, rel)), 0o600)
 }
 
 // checkNames fails when two generated identifiers would collide.

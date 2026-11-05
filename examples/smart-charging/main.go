@@ -313,7 +313,7 @@ func (s station201) ClearChargingProfile(ctx context.Context, p ocpp.Peer, req *
 	if c := req.ChargingProfileCriteria; c != nil {
 		evse, stackLevel = c.EVSEID, c.StackLevel
 		if c.ChargingProfilePurpose != nil {
-			purpose = ocpp.Ptr(string(*c.ChargingProfilePurpose))
+			purpose = new(string(*c.ChargingProfilePurpose))
 		}
 	}
 	if s.profiles.clear(req.ChargingProfileID, evse, purpose, stackLevel) {
@@ -367,11 +367,11 @@ func run201() error {
 	if err := set(0, ocpp201.ChargingProfileType{
 		ID: 2, StackLevel: 0, ChargingProfilePurpose: ocpp201.ChargingProfilePurposeTxDefaultProfile,
 		ChargingProfileKind: ocpp201.ChargingProfileKindAbsolute,
-		ChargingSchedule: []ocpp201.ChargingScheduleType{{ID: 2, ChargingRateUnit: ocpp201.ChargingRateUnitA, StartSchedule: &now, Duration: ocpp.Ptr(3 * 3600),
+		ChargingSchedule: []ocpp201.ChargingScheduleType{{ID: 2, ChargingRateUnit: ocpp201.ChargingRateUnitA, StartSchedule: &now, Duration: new(3 * 3600),
 			ChargingSchedulePeriod: []ocpp201.ChargingSchedulePeriodType{
-				{StartPeriod: 0, Limit: 32, NumberPhases: ocpp.Ptr(3)},
-				{StartPeriod: 1800, Limit: 10, NumberPhases: ocpp.Ptr(3)},
-				{StartPeriod: 5400, Limit: 32, NumberPhases: ocpp.Ptr(3)},
+				{StartPeriod: 0, Limit: 32, NumberPhases: new(3)},
+				{StartPeriod: 1800, Limit: 10, NumberPhases: new(3)},
+				{StartPeriod: 5400, Limit: 32, NumberPhases: new(3)},
 			}}},
 	}); err != nil {
 		return err
@@ -415,7 +415,7 @@ func run201() error {
 	if err := composite(); err != nil {
 		return err
 	}
-	clr, err = ocpp201.ClearChargingProfile(ctx, session, &ocpp201.ClearChargingProfileRequest{ChargingProfileID: ocpp.Ptr(99)})
+	clr, err = ocpp201.ClearChargingProfile(ctx, session, &ocpp201.ClearChargingProfileRequest{ChargingProfileID: new(99)})
 	if err != nil {
 		return err
 	}
@@ -479,15 +479,15 @@ func (s chargePoint16) GetCompositeSchedule(ctx context.Context, p ocpp.Peer, re
 		out[i] = ocpp16.ChargingSchedulePeriod{StartPeriod: per.start, Limit: per.limit}
 	}
 	return &ocpp16.GetCompositeScheduleResponse{Status: ocpp16.GetCompositeScheduleStatusAccepted,
-		ConnectorID: ocpp.Ptr(req.ConnectorID), ScheduleStart: &start,
-		ChargingSchedule: &ocpp16.ChargingSchedule{ChargingRateUnit: unit, Duration: ocpp.Ptr(req.Duration), StartSchedule: &start, ChargingSchedulePeriod: out},
+		ConnectorID: new(req.ConnectorID), ScheduleStart: &start,
+		ChargingSchedule: &ocpp16.ChargingSchedule{ChargingRateUnit: unit, Duration: new(req.Duration), StartSchedule: &start, ChargingSchedulePeriod: out},
 	}, nil
 }
 
 func (s chargePoint16) ClearChargingProfile(ctx context.Context, p ocpp.Peer, req *ocpp16.ClearChargingProfileRequest) (*ocpp16.ClearChargingProfileResponse, error) {
 	var purpose *string
 	if req.ChargingProfilePurpose != nil {
-		purpose = ocpp.Ptr(purpose16(*req.ChargingProfilePurpose))
+		purpose = new(purpose16(*req.ChargingProfilePurpose))
 	}
 	if s.profiles.clear(req.ID, req.ConnectorID, purpose, req.StackLevel) {
 		return &ocpp16.ClearChargingProfileResponse{Status: ocpp16.ClearChargingProfileStatusAccepted}, nil
@@ -536,11 +536,11 @@ func run16() error {
 	if err := set(0, ocpp16.ChargingProfile{
 		ChargingProfileID: 2, StackLevel: 0, ChargingProfilePurpose: ocpp16.ChargingProfilePurposeTxDefaultProfile,
 		ChargingProfileKind: ocpp16.ChargingProfileKindAbsolute,
-		ChargingSchedule: ocpp16.ChargingSchedule{ChargingRateUnit: ocpp16.ChargingRateUnitA, StartSchedule: &now, Duration: ocpp.Ptr(3 * 3600),
+		ChargingSchedule: ocpp16.ChargingSchedule{ChargingRateUnit: ocpp16.ChargingRateUnitA, StartSchedule: &now, Duration: new(3 * 3600),
 			ChargingSchedulePeriod: []ocpp16.ChargingSchedulePeriod{
-				{StartPeriod: 0, Limit: 32, NumberPhases: ocpp.Ptr(3)},
-				{StartPeriod: 1800, Limit: 10, NumberPhases: ocpp.Ptr(3)},
-				{StartPeriod: 5400, Limit: 32, NumberPhases: ocpp.Ptr(3)},
+				{StartPeriod: 0, Limit: 32, NumberPhases: new(3)},
+				{StartPeriod: 1800, Limit: 10, NumberPhases: new(3)},
+				{StartPeriod: 5400, Limit: 32, NumberPhases: new(3)},
 			}},
 	}); err != nil {
 		return err
@@ -582,7 +582,7 @@ func run16() error {
 	if err := composite(); err != nil {
 		return err
 	}
-	clr, err = ocpp16.ClearChargingProfile(ctx, session, &ocpp16.ClearChargingProfileRequest{ID: ocpp.Ptr(99)})
+	clr, err = ocpp16.ClearChargingProfile(ctx, session, &ocpp16.ClearChargingProfileRequest{ID: new(99)})
 	if err != nil {
 		return err
 	}

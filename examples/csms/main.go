@@ -505,14 +505,14 @@ func remoteStart(ctx context.Context, reg *registry, s *server.Session, token st
 	switch s.Version() {
 	case ocpp.V16:
 		reg.update(func() { reg.remote16[s.ID()] = true })
-		resp, err := ocpp16.RemoteStartTransaction(ctx, s, &ocpp16.RemoteStartTransactionRequest{IDTag: token, ConnectorID: ocpp.Ptr(1)})
+		resp, err := ocpp16.RemoteStartTransaction(ctx, s, &ocpp16.RemoteStartTransactionRequest{IDTag: token, ConnectorID: new(1)})
 		if err != nil {
 			return err
 		}
 		status = string(resp.Status)
 	case ocpp.V201:
 		resp, err := ocpp201.RequestStartTransaction(ctx, s, &ocpp201.RequestStartTransactionRequest{
-			RemoteStartID: remoteStartID, EVSEID: ocpp.Ptr(1),
+			RemoteStartID: remoteStartID, EVSEID: new(1),
 			IDToken: ocpp201.IDTokenType{IDToken: token, Type: ocpp201.IDTokenISO14443},
 		})
 		if err != nil {
@@ -521,7 +521,7 @@ func remoteStart(ctx context.Context, reg *registry, s *server.Session, token st
 		status = string(resp.Status)
 	case ocpp.V21:
 		resp, err := ocpp21.RequestStartTransaction(ctx, s, &ocpp21.RequestStartTransactionRequest{
-			RemoteStartID: remoteStartID, EVSEID: ocpp.Ptr(1),
+			RemoteStartID: remoteStartID, EVSEID: new(1),
 			IDToken: ocpp21.IDTokenType{IDToken: token, Type: "ISO14443"}, // a string in 2.1, no enumeration
 		})
 		if err != nil {
@@ -822,7 +822,7 @@ type station201 struct {
 }
 
 func (h station201) RequestStartTransaction(ctx context.Context, p ocpp.Peer, req *ocpp201.RequestStartTransactionRequest) (*ocpp201.RequestStartTransactionResponse, error) {
-	if h.st.post(command{start: true, token: req.IDToken.IDToken, remoteStartID: ocpp.Ptr(req.RemoteStartID)}) {
+	if h.st.post(command{start: true, token: req.IDToken.IDToken, remoteStartID: new(req.RemoteStartID)}) {
 		return &ocpp201.RequestStartTransactionResponse{Status: ocpp201.RequestStartStopStatusAccepted}, nil
 	}
 	return &ocpp201.RequestStartTransactionResponse{Status: ocpp201.RequestStartStopStatusRejected}, nil
@@ -841,7 +841,7 @@ type station21 struct {
 }
 
 func (h station21) RequestStartTransaction(ctx context.Context, p ocpp.Peer, req *ocpp21.RequestStartTransactionRequest) (*ocpp21.RequestStartTransactionResponse, error) {
-	if h.st.post(command{start: true, token: req.IDToken.IDToken, remoteStartID: ocpp.Ptr(req.RemoteStartID)}) {
+	if h.st.post(command{start: true, token: req.IDToken.IDToken, remoteStartID: new(req.RemoteStartID)}) {
 		return &ocpp21.RequestStartTransactionResponse{Status: ocpp21.RequestStartStopStatusAccepted}, nil
 	}
 	return &ocpp21.RequestStartTransactionResponse{Status: ocpp21.RequestStartStopStatusRejected}, nil
@@ -945,7 +945,7 @@ func (o *ops201) authorize(ctx context.Context, token string) (bool, error) {
 func meter201(wh float64, rc ocpp201.ReadingContextEnumType) []ocpp201.MeterValueType {
 	return []ocpp201.MeterValueType{{Timestamp: time.Now().UTC(), SampledValue: []ocpp201.SampledValueType{{
 		Value: wh, Context: &rc, Measurand: ocpp.Ptr(ocpp201.MeasurandEnergyActiveImportRegister),
-		UnitOfMeasure: &ocpp201.UnitOfMeasureType{Unit: ocpp.Ptr("Wh")},
+		UnitOfMeasure: &ocpp201.UnitOfMeasureType{Unit: new("Wh")},
 	}}}}
 }
 
@@ -968,7 +968,7 @@ func (o *ops201) start(ctx context.Context, token string, remoteStartID *int, wh
 	_, err := o.event(ctx, ocpp201.TransactionEventRequest{
 		EventType: ocpp201.TransactionEventStarted, TriggerReason: trigger,
 		TransactionInfo: ocpp201.TransactionType{TransactionID: id, ChargingState: ocpp.Ptr(ocpp201.ChargingStateCharging), RemoteStartID: remoteStartID},
-		EVSE:            &ocpp201.EVSEType{ID: 1, ConnectorID: ocpp.Ptr(1)},
+		EVSE:            &ocpp201.EVSEType{ID: 1, ConnectorID: new(1)},
 		IDToken:         &ocpp201.IDTokenType{IDToken: token, Type: ocpp201.IDTokenISO14443},
 		MeterValue:      meter201(wh, ocpp201.ReadingContextTransactionBegin),
 	})
@@ -1033,7 +1033,7 @@ func (o *ops21) authorize(ctx context.Context, token string) (bool, error) {
 func meter21(wh float64, rc ocpp21.ReadingContextEnumType) []ocpp21.MeterValueType {
 	return []ocpp21.MeterValueType{{Timestamp: time.Now().UTC(), SampledValue: []ocpp21.SampledValueType{{
 		Value: wh, Context: &rc, Measurand: ocpp.Ptr(ocpp21.MeasurandEnergyActiveImportRegister),
-		UnitOfMeasure: &ocpp21.UnitOfMeasureType{Unit: ocpp.Ptr("Wh")},
+		UnitOfMeasure: &ocpp21.UnitOfMeasureType{Unit: new("Wh")},
 	}}}}
 }
 
@@ -1056,7 +1056,7 @@ func (o *ops21) start(ctx context.Context, token string, remoteStartID *int, wh 
 	_, err := o.event(ctx, ocpp21.TransactionEventRequest{
 		EventType: ocpp21.TransactionEventStarted, TriggerReason: trigger,
 		TransactionInfo: ocpp21.TransactionType{TransactionID: id, ChargingState: ocpp.Ptr(ocpp21.ChargingStateCharging), RemoteStartID: remoteStartID},
-		EVSE:            &ocpp21.EVSEType{ID: 1, ConnectorID: ocpp.Ptr(1)},
+		EVSE:            &ocpp21.EVSEType{ID: 1, ConnectorID: new(1)},
 		IDToken:         &ocpp21.IDTokenType{IDToken: token, Type: "ISO14443"},
 		MeterValue:      meter21(wh, ocpp21.ReadingContextTransactionBegin),
 	})

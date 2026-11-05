@@ -14,7 +14,7 @@ Without them the library is silent.
 | Debug | Each call done or handled, with its duration; connections closed locally |
 | Info | Listening, connected, disconnected, session replaced, connection lost; CALLERRORs a handler chose to send |
 | Warn | Connect failures; refused connections; malformed frames; unexpected responses; a missing pong; too many malformed frames |
-| Error | Handler errors and panics (answered with `InternalError`; a panic with its `panic` value and `stack`); handler error codes the version does not define |
+| Error | Handler errors and panics (answered with `InternalError`; a panic with its `panic` value and `stack`); handler error codes the version does not define; a panic in the server's onConnect session handler (the session goes on) |
 
 Attributes: `component` (`ocpp.client` or `ocpp.server`, on every entry),
 `station_id`, `ocpp_version`, `session_id`, `message_id`, `action`,

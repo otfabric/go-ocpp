@@ -18,6 +18,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -143,6 +144,7 @@ func (s *Server) Stations() []*Session {
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	id, ok := stationID(r.URL)
 	if !ok {
+		w.Header().Set("Connection", "close")
 		http.Error(w, "the URL must end with the station identity", http.StatusNotFound)
 		return
 	}
@@ -270,7 +272,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.o.metrics.OnConnect(info)
 	log.Info("station connected", "ocpp_version", v.String(), "session_id", sess.sessionID)
 	if s.o.onConnect != nil {
-		s.o.onConnect(sess)
+		s.connected(log, sess)
 	}
 
 	<-sess.ep.Done()
@@ -294,9 +296,24 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// connected runs the onConnect function of WithSessionHandler. A panic in it
+// is logged, like a handler's: it must not unwind ServeHTTP, which would leave
+// the session registered after it ends.
+func (s *Server) connected(log *slog.Logger, sess *Session) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Error("session handler panic", "session_id", sess.sessionID, "panic", fmt.Sprint(r), "stack", string(debug.Stack()))
+		}
+	}()
+	s.o.onConnect(sess)
+}
+
 func (s *Server) refuse(w http.ResponseWriter, log *slog.Logger, info ocpp.ConnInfo, status int, msg string, err error) {
 	s.o.metrics.OnConnectFailed(info, err)
 	log.Warn("connection refused", "status", status, "error", err)
+	// A refused station has nothing more to ask on this connection: closing
+	// it keeps a peer from holding idle connections with refused requests.
+	w.Header().Set("Connection", "close")
 	http.Error(w, msg, status)
 }
 
@@ -304,7 +321,7 @@ func (s *Server) refuse(w http.ResponseWriter, log *slog.Logger, info ocpp.ConnI
 // server has a handler for (SPECIFICATIONS.md T1).
 func (s *Server) selectVersion(h http.Header) (ocpp.Version, bool) {
 	for _, value := range h.Values("Sec-WebSocket-Protocol") {
-		for _, token := range strings.Split(value, ",") {
+		for token := range strings.SplitSeq(value, ",") {
 			v, ok := ocpp.ParseSubprotocol(strings.TrimSpace(token))
 			if ok && s.o.handlers[v] != nil {
 				return v, true
@@ -380,7 +397,9 @@ func (s *Server) Serve(ln net.Listener) error {
 		cfg.NextProtos = []string{"http/1.1"}
 		ln = tls.NewListener(ln, cfg)
 	}
-	hs := &http.Server{Handler: s, ReadHeaderTimeout: s.o.handshakeTimeout, ErrorLog: slog.NewLogLogger(s.log.Handler(), slog.LevelWarn)}
+	// IdleTimeout: a connection that is not upgraded (a request the
+	// WebSocket handshake refused) does not stay open waiting for another.
+	hs := &http.Server{Handler: s, ReadHeaderTimeout: s.o.handshakeTimeout, IdleTimeout: s.o.handshakeTimeout, ErrorLog: slog.NewLogLogger(s.log.Handler(), slog.LevelWarn)}
 	s.mu.Lock()
 	if s.closing {
 		s.mu.Unlock()

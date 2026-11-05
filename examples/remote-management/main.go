@@ -137,7 +137,7 @@ func (s *station) UpdateFirmware(ctx context.Context, p ocpp.Peer, req *ocpp201.
 				s.firmware.Store("1.2.0")
 			}
 			if _, err := ocpp201.FirmwareStatusNotification(ctx, p, &ocpp201.FirmwareStatusNotificationRequest{
-				Status: st, RequestID: ocpp.Ptr(req.RequestID)}); err != nil {
+				Status: st, RequestID: new(req.RequestID)}); err != nil {
 				fmt.Printf("station: %v\n", err)
 				return
 			}
@@ -156,14 +156,14 @@ func (s *station) GetLog(ctx context.Context, p ocpp.Peer, req *ocpp201.GetLogRe
 		defer s.uploading.Store(false)
 		for _, st := range []ocpp201.UploadLogStatusEnumType{ocpp201.UploadLogStatusUploading, ocpp201.UploadLogStatusUploaded} {
 			if _, err := ocpp201.LogStatusNotification(ctx, p, &ocpp201.LogStatusNotificationRequest{
-				Status: st, RequestID: ocpp.Ptr(req.RequestID)}); err != nil {
+				Status: st, RequestID: new(req.RequestID)}); err != nil {
 				fmt.Printf("station: %v\n", err)
 				return
 			}
 			time.Sleep(step)
 		}
 	})
-	return &ocpp201.GetLogResponse{Status: ocpp201.LogStatusAccepted, Filename: ocpp.Ptr(name)}, nil
+	return &ocpp201.GetLogResponse{Status: ocpp201.LogStatusAccepted, Filename: new(name)}, nil
 }
 
 // Reset (B11, B12): OnIdle waits for the transaction to end; Immediate
@@ -187,7 +187,7 @@ func (s *station) transaction(ctx context.Context, c ocpp.Caller) (func() error,
 	if _, err := ocpp201.TransactionEvent(ctx, c, &ocpp201.TransactionEventRequest{
 		EventType: ocpp201.TransactionEventStarted, Timestamp: time.Now().UTC(), TriggerReason: ocpp201.TriggerReasonAuthorized, SeqNo: 0,
 		TransactionInfo: ocpp201.TransactionType{TransactionID: id, ChargingState: ocpp.Ptr(ocpp201.ChargingStateCharging)},
-		EVSE:            &ocpp201.EVSEType{ID: 1, ConnectorID: ocpp.Ptr(1)},
+		EVSE:            &ocpp201.EVSEType{ID: 1, ConnectorID: new(1)},
 		IDToken:         &ocpp201.IDTokenType{IDToken: "04A1B2C3D4E5F6", Type: ocpp201.IDTokenISO14443},
 	}); err != nil {
 		return nil, err
@@ -225,7 +225,7 @@ func (s *station) run(ctx context.Context, url string, current chan<- *client.Cl
 		}
 		fw, _ := s.firmware.Load().(string)
 		if _, err := ocpp201.BootNotification(ctx, c, &ocpp201.BootNotificationRequest{Reason: reason,
-			ChargingStation: ocpp201.ChargingStationType{VendorName: "OTFabric", Model: "ManagedStation", FirmwareVersion: ocpp.Ptr(fw)}}); err != nil {
+			ChargingStation: ocpp201.ChargingStationType{VendorName: "OTFabric", Model: "ManagedStation", FirmwareVersion: new(fw)}}); err != nil {
 			return err
 		}
 		current <- c
@@ -365,7 +365,7 @@ func run() error {
 		evse *ocpp201.EVSEType
 		want string
 	}{
-		{ocpp201.MessageTriggerStatusNotification, &ocpp201.EVSEType{ID: 1, ConnectorID: ocpp.Ptr(1)}, "status"},
+		{ocpp201.MessageTriggerStatusNotification, &ocpp201.EVSEType{ID: 1, ConnectorID: new(1)}, "status"},
 		{ocpp201.MessageTriggerMeterValues, nil, "meter"},
 		{ocpp201.MessageTriggerLogStatusNotification, nil, "log Idle"},
 		{ocpp201.MessageTriggerSignV2GCertificate, nil, ""},

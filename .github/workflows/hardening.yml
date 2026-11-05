@@ -38,6 +38,9 @@ jobs:
           - ocpp16:FuzzDispatch
           - ocpp201:FuzzDispatch
           - ocpp21:FuzzDispatch
+          - internal/wire:FuzzIntegralNumbers
+          - client:FuzzNew
+          - ocppcert:FuzzHash
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7

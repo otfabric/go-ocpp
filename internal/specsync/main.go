@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"path"
@@ -201,7 +202,7 @@ func run(dir string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(dir, "UPSTREAM.json"), append(b, '\n'), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "UPSTREAM.json"), append(b, '\n'), 0o600); err != nil {
 		return err
 	}
 	return writeSums(dir)
@@ -252,7 +253,7 @@ func collect(archive []byte, prefix string, want *regexp.Regexp, out map[string]
 
 // replace makes dir hold exactly files.
 func replace(dir string, files map[string][]byte) error {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return err
 	}
 	old, err := filepath.Glob(filepath.Join(dir, "*.json"))
@@ -267,7 +268,7 @@ func replace(dir string, files map[string][]byte) error {
 		}
 	}
 	for name, data := range files {
-		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
 			return err
 		}
 	}
@@ -276,23 +277,29 @@ func replace(dir string, files map[string][]byte) error {
 
 // writeSums writes SHA256SUMS in the format of shasum -a 256.
 func writeSums(dir string) error {
+	// Walk and read inside an os.Root, so a symbolic link swapped in during
+	// the walk cannot make the checksums cover a file outside dir.
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = root.Close() }()
 	var lines []string
-	err := filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !strings.HasSuffix(p, ".json") || filepath.Base(p) == "UPSTREAM.json" {
+	err = fs.WalkDir(root.FS(), ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(p, ".json") || path.Base(p) == "UPSTREAM.json" {
 			return err
 		}
-		data, err := os.ReadFile(p)
+		data, err := root.ReadFile(p)
 		if err != nil {
 			return err
 		}
-		rel, _ := filepath.Rel(dir, p)
 		sum := sha256.Sum256(data)
-		lines = append(lines, hex.EncodeToString(sum[:])+"  "+filepath.ToSlash(rel))
+		lines = append(lines, hex.EncodeToString(sum[:])+"  "+p)
 		return nil
 	})
 	if err != nil {
 		return err
 	}
 	sort.Slice(lines, func(i, j int) bool { return lines[i][66:] < lines[j][66:] })
-	return os.WriteFile(filepath.Join(dir, "SHA256SUMS"), []byte(strings.Join(lines, "\n")+"\n"), 0o644)
+	return os.WriteFile(filepath.Join(dir, "SHA256SUMS"), []byte(strings.Join(lines, "\n")+"\n"), 0o600)
 }

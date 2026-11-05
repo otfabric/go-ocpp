@@ -92,9 +92,7 @@ func TestSlowHandshake(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, _ = fmt.Fprintf(conn, "GET /ocpp/SLOW%d HTTP/1.1\r\nHost: x\r\n", i) // no end of headers
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			defer func() { _ = conn.Close() }()
 			_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 			start := time.Now()
@@ -102,7 +100,7 @@ func TestSlowHandshake(t *testing.T) {
 			if err != nil || time.Since(start) > 3*time.Second {
 				t.Errorf("slow connection not closed by the server: %v after %s", err, time.Since(start))
 			}
-		}()
+		})
 	}
 	healthy(t, "ws://"+addr+"/ocpp/", "FAST")
 	wg.Wait()
@@ -121,9 +119,7 @@ func TestStationFlood(t *testing.T) {
 	var in []*client.Client
 	var wg sync.WaitGroup
 	for i := range stations {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			c := station(t, fmt.Sprintf("%sFLOOD%02d", base, i), client.WithInsecureTransport(), client.WithVersions(ocpp.V201))
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
@@ -138,7 +134,7 @@ func TestStationFlood(t *testing.T) {
 			default:
 				t.Errorf("connect: %v", err)
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	if admitted.Load() > limit || admitted.Load()+refused.Load() != stations || len(srv.Stations()) > limit {
@@ -244,9 +240,7 @@ func TestQueueSaturation(t *testing.T) {
 	var busy, done atomic.Int64
 	var wg sync.WaitGroup
 	for range 20 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			switch err := c.Call(context.Background(), "Heartbeat", nil, nil); {
 			case err == nil:
 				done.Add(1)
@@ -255,7 +249,7 @@ func TestQueueSaturation(t *testing.T) {
 			default:
 				t.Errorf("call: %v", err)
 			}
-		}()
+		})
 	}
 	eventually(t, "the excess refused", func() bool { return busy.Load() == 20-1-queued })
 	close(release)

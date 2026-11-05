@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"html"
+	"maps"
 	"regexp"
 	"sort"
 	"strconv"
@@ -73,7 +74,7 @@ func comment(b *strings.Builder, indent, text string) {
 
 func wrap(s string, width int) []string {
 	var out []string
-	for _, para := range strings.Split(s, "\n") {
+	for para := range strings.SplitSeq(s, "\n") {
 		w := strings.Fields(para)
 		line := ""
 		for _, x := range w {
@@ -137,9 +138,7 @@ func emitTypes(m *model) string {
 	sort.Strings(names)
 	seen := map[string]bool{}
 	types := map[string]*goType{}
-	for n, t := range m.Types {
-		types[n] = t
-	}
+	maps.Copy(types, m.Types)
 	for _, msg := range m.Messages {
 		types[msg.Request.Name] = msg.Request
 		if msg.Response != nil {

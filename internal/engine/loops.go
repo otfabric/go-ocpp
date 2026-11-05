@@ -20,8 +20,7 @@ func (e *Endpoint) readLoop() {
 	for {
 		data, err := e.conn.ReadMessage(e.ctx)
 		if err != nil {
-			var ce *transport.CloseError
-			if errors.As(err, &ce) {
+			if ce, ok := errors.AsType[*transport.CloseError](err); ok {
 				e.shutdown(lost(&ocpp.CloseError{Code: ce.Code, Reason: ce.Reason}), ce.Code, "")
 			} else {
 				e.shutdown(lost(err), transport.StatusInternalError, "")
@@ -84,6 +83,13 @@ func (e *Endpoint) malformed(err error) {
 	errors.As(err, &de)
 	if de == nil || de.UnknownType || (de.Type != ocppj.Call && de.Type != 0) {
 		e.log.Warn("malformed frame dropped", "error", err)
+		return
+	}
+	if e.draining.Load() {
+		// While draining, CALLs that have not started get no answer (Drain);
+		// a malformed one gets none either, so that a peer cannot keep the
+		// drain from ending by sending them.
+		e.log.Warn("malformed frame dropped while draining", "error", err)
 		return
 	}
 	id := de.ID
@@ -352,8 +358,7 @@ func (e *Endpoint) limit(desc string) string {
 // errorCode chooses the CALLERROR code for a handler error. Only a
 // *ocpp.CallError with a code the version defines is sent as is.
 func (e *Endpoint) errorCode(err error, f ocppj.Frame) ocpp.ErrorCode {
-	var ce *ocpp.CallError
-	if errors.As(err, &ce) {
+	if ce, ok := errors.AsType[*ocpp.CallError](err); ok {
 		if ocppj.ValidErrorCode(e.cfg.Info.Version, ce.Code) {
 			if ce.Code != ocpp.NotImplemented {
 				e.log.Info("call answered with CALLERROR", "action", f.Action, "message_id", f.ID, "error_code", string(ce.Code))

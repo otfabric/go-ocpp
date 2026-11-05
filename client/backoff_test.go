@@ -4,6 +4,7 @@ package client
 
 import (
 	"errors"
+	"math"
 	"testing"
 	"time"
 
@@ -43,6 +44,20 @@ func TestBackoff(t *testing.T) {
 	if d := huge.backoff(1000); d < time.Hour {
 		t.Fatalf("saturated back-off: %v", d)
 	}
+	// WaitMinimum plus RandomRange past MaxInt64 saturates too: a wrapped,
+	// negative delay would reconnect at once, in a tight loop.
+	edge := newReconnecting(t, Reconnect{WaitMinimum: math.MaxInt64 - 1, RandomRange: math.MaxInt64})
+	for range 100 {
+		if d := edge.backoff(1); d < math.MaxInt64-1 {
+			t.Fatalf("wrapped back-off: %v", d)
+		}
+	}
+	if j := jitter(math.MaxInt64); j < 0 {
+		t.Fatalf("jitter(MaxInt64) = %v", j)
+	}
+	if j := jitter(0); j != 0 {
+		t.Fatalf("jitter(0) = %v", j)
+	}
 	if DefaultReconnect().WaitMinimum <= 0 {
 		t.Fatal("DefaultReconnect is not usable")
 	}
@@ -70,5 +85,20 @@ func TestSetReconnect(t *testing.T) {
 	}
 	if err := c.SetReconnect(nil); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// SetReconnect(nil) while a redial loop runs: the loop finishes with the
+// settings it had (SetReconnect's contract) instead of dereferencing nil.
+func TestSetReconnectNilDuringRedial(t *testing.T) {
+	c := newReconnecting(t, Reconnect{WaitMinimum: 3 * time.Second})
+	if err := c.SetReconnect(nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.SetReconnect(nil); err != nil { // twice: the settings it had stay
+		t.Fatal(err)
+	}
+	if d := c.backoff(2); d != 3*time.Second {
+		t.Fatalf("backoff %s", d)
 	}
 }

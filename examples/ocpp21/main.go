@@ -105,7 +105,7 @@ func run() error {
 
 	open, err := ocpp21.OpenPeriodicEventStream(ctx, c, &ocpp21.OpenPeriodicEventStreamRequest{
 		ConstantStreamData: ocpp21.ConstantStreamDataType{ID: 1, VariableMonitoringID: 12,
-			Params: ocpp21.PeriodicEventStreamParamsType{Interval: ocpp.Ptr(1), Values: ocpp.Ptr(2)}},
+			Params: ocpp21.PeriodicEventStreamParamsType{Interval: new(1), Values: new(2)}},
 	})
 	if err != nil {
 		return err

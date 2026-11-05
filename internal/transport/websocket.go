@@ -6,7 +6,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
+	"sync"
 
 	"github.com/coder/websocket"
 )
@@ -27,14 +29,21 @@ type DialOptions struct {
 // Dial opens a WebSocket to url. The *http.Response is returned when the
 // server answered the handshake, also on failure, so that its status can be
 // reported.
+//
+// Dial does not outlast ctx when the HTTP client's transport is an
+// *http.Transport (http.DefaultClient's is): a copy of it closes the
+// connections it opens once ctx ends, until Dial returns. coder/websocket
+// reads the start of a broken 101 response under a 3 s timer of its own,
+// which would otherwise hold Dial past ctx.
 func Dial(ctx context.Context, url string, o DialOptions) (Conn, *http.Response, error) {
+	hc, release := bound(ctx, o.HTTPClient)
 	c, resp, err := websocket.Dial(ctx, url, &websocket.DialOptions{
-		HTTPClient:      o.HTTPClient,
+		HTTPClient:      hc,
 		HTTPHeader:      o.Header,
 		Subprotocols:    o.Subprotocols,
 		CompressionMode: compression(o.Compression),
 	})
-	if err != nil {
+	if err = released(ctx, c, err, release()); err != nil {
 		return nil, resp, err
 	}
 	if o.ReadLimit > 0 {
@@ -126,12 +135,83 @@ func convert(err error) error {
 		return nil
 	}
 	if code := websocket.CloseStatus(err); code != -1 {
-		var ce websocket.CloseError
 		reason := ""
-		if errors.As(err, &ce) {
+		if ce, ok := errors.AsType[websocket.CloseError](err); ok {
 			reason = ce.Reason
 		}
 		return &CloseError{Code: int(code), Reason: reason}
 	}
 	return fmt.Errorf("%w: %w", ErrClosed, err)
+}
+
+// released returns the error of a Dial. When ctx ended as the handshake
+// completed (ok is false: bound closed a connection), it closes c and says
+// why; a failed handshake whose ctx ended is reported with ctx's error,
+// which closing its connection may have hidden.
+func released(ctx context.Context, c *websocket.Conn, err error, ok bool) error {
+	if !ok && err == nil {
+		_ = c.CloseNow()
+		return fmt.Errorf("%w: %w", ErrClosed, ctx.Err())
+	}
+	if cerr := ctx.Err(); err != nil && !ok && !errors.Is(err, cerr) {
+		return fmt.Errorf("%w: %w", err, cerr)
+	}
+	return err
+}
+
+// bound returns a copy of hc whose connections are closed when ctx ends,
+// and release, which stops that and reports whether none was closed. hc is
+// returned as it is when its transport is not an *http.Transport, or dials
+// with the deprecated Dial or DialTLS functions.
+func bound(ctx context.Context, hc *http.Client) (*http.Client, func() bool) {
+	if hc == nil {
+		hc = http.DefaultClient
+	}
+	rt := hc.Transport
+	if rt == nil {
+		rt = http.DefaultTransport
+	}
+	base, ok := rt.(*http.Transport)
+	//lint:ignore SA1019 checked, so that a transport that dials with them is left alone
+	if !ok || base.Dial != nil || base.DialTLS != nil { //nolint:staticcheck // SA1019: checked, see above
+		return hc, func() bool { return true }
+	}
+	tr := base.Clone()
+	var mu sync.Mutex
+	var stops []func() bool
+	wrap := func(dial func(context.Context, string, string) (net.Conn, error)) func(context.Context, string, string) (net.Conn, error) {
+		return func(dctx context.Context, network, addr string) (net.Conn, error) {
+			conn, err := dial(dctx, network, addr)
+			if err != nil {
+				return nil, err
+			}
+			stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+			mu.Lock()
+			stops = append(stops, stop)
+			mu.Unlock()
+			return conn, nil
+		}
+	}
+	dial := tr.DialContext
+	if dial == nil {
+		dial = new(net.Dialer).DialContext
+	}
+	tr.DialContext = wrap(dial)
+	if tr.DialTLSContext != nil {
+		tr.DialTLSContext = wrap(tr.DialTLSContext)
+	}
+	cp := *hc
+	cp.Transport = tr
+	return &cp, func() bool {
+		tr.CloseIdleConnections() // the copy is not used again
+		mu.Lock()
+		defer mu.Unlock()
+		ok := true
+		for _, stop := range stops {
+			if !stop() {
+				ok = false
+			}
+		}
+		return ok
+	}
 }

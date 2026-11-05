@@ -56,8 +56,7 @@ func (e *Endpoint) refuseResult(messageID string, err error) {
 		return
 	}
 	code, desc := ocppj.FormatErrorCode(e.cfg.Info.Version), err.Error()
-	var ve *ocpp.ValidationError
-	if errors.As(err, &ve) {
+	if ve, ok := errors.AsType[*ocpp.ValidationError](err); ok {
 		ce := ve.CallError()
 		code, desc = ce.Code, ce.Description
 	}

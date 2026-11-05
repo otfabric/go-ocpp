@@ -109,7 +109,7 @@ func (csms16) DataTransfer(ctx context.Context, p ocpp.Peer, req *ocpp16.DataTra
 	status, reply := csmsDataTransfer(req.VendorID, deref(req.MessageID), data)
 	resp := &ocpp16.DataTransferResponse{Status: ocpp16.DataTransferStatus(status)}
 	if reply != nil {
-		resp.Data = ocpp.Ptr(string(reply))
+		resp.Data = new(string(reply))
 	}
 	return resp, nil
 }
@@ -285,14 +285,14 @@ func demo16(ctx context.Context, c *client.Client, s *server.Session) error {
 	}
 	// Station to CSMS: data is a string; JSON inside it is a convention.
 	for _, msg := range []struct{ vendor, id string }{{vendorID, "GetTariff"}, {vendorID, "GetWeather"}, {"com.example", "GetTariff"}} {
-		resp, err := ocpp16.DataTransfer(ctx, c, &ocpp16.DataTransferRequest{VendorID: msg.vendor, MessageID: ocpp.Ptr(msg.id), Data: ocpp.Ptr(`{"connectorId":1}`)})
+		resp, err := ocpp16.DataTransfer(ctx, c, &ocpp16.DataTransferRequest{VendorID: msg.vendor, MessageID: new(msg.id), Data: new(`{"connectorId":1}`)})
 		if err != nil {
 			return err
 		}
 		fmt.Printf("station: DataTransfer %s/%s: %s %s\n", msg.vendor, msg.id, resp.Status, deref(resp.Data))
 	}
 	// CSMS to station.
-	resp, err := ocpp16.DataTransfer(ctx, s, &ocpp16.DataTransferRequest{VendorID: vendorID, MessageID: ocpp.Ptr("SetLedColor"), Data: ocpp.Ptr(`{"color":"green"}`)})
+	resp, err := ocpp16.DataTransfer(ctx, s, &ocpp16.DataTransferRequest{VendorID: vendorID, MessageID: new("SetLedColor"), Data: new(`{"color":"green"}`)})
 	if err != nil {
 		return err
 	}
@@ -300,9 +300,8 @@ func demo16(ctx context.Context, c *client.Client, s *server.Session) error {
 
 	// Validation: messageId is at most 50 characters in 1.6. The request
 	// is refused before it is sent.
-	_, err = ocpp16.DataTransfer(ctx, c, &ocpp16.DataTransferRequest{VendorID: vendorID, MessageID: ocpp.Ptr(strings.Repeat("x", 51))})
-	var ve *ocpp.ValidationError
-	if !errors.As(err, &ve) {
+	_, err = ocpp16.DataTransfer(ctx, c, &ocpp16.DataTransferRequest{VendorID: vendorID, MessageID: new(strings.Repeat("x", 51))})
+	if _, ok := errors.AsType[*ocpp.ValidationError](err); !ok {
 		return fmt.Errorf("expected a validation error, got %v", err)
 	}
 	fmt.Printf("station: not sent: %v\n", err)
@@ -337,13 +336,13 @@ func demo201(ctx context.Context, c *client.Client, s *server.Session) error {
 
 	// DataTransfer: data is any JSON value in 2.x.
 	for _, msg := range []struct{ vendor, id string }{{vendorID, "GetTariff"}, {vendorID, "GetWeather"}, {"com.example", "GetTariff"}} {
-		resp, err := ocpp201.DataTransfer(ctx, c, &ocpp201.DataTransferRequest{VendorID: msg.vendor, MessageID: ocpp.Ptr(msg.id), Data: json.RawMessage(`{"connectorId":1}`)})
+		resp, err := ocpp201.DataTransfer(ctx, c, &ocpp201.DataTransferRequest{VendorID: msg.vendor, MessageID: new(msg.id), Data: json.RawMessage(`{"connectorId":1}`)})
 		if err != nil {
 			return err
 		}
 		fmt.Printf("station: DataTransfer %s/%s: %s %s\n", msg.vendor, msg.id, resp.Status, string(resp.Data))
 	}
-	resp, err := ocpp201.DataTransfer(ctx, s, &ocpp201.DataTransferRequest{VendorID: vendorID, MessageID: ocpp.Ptr("SetLedColor"), Data: json.RawMessage(`{"color":"blue"}`)})
+	resp, err := ocpp201.DataTransfer(ctx, s, &ocpp201.DataTransferRequest{VendorID: vendorID, MessageID: new("SetLedColor"), Data: json.RawMessage(`{"color":"blue"}`)})
 	if err != nil {
 		return err
 	}
@@ -360,8 +359,7 @@ func demo201(ctx context.Context, c *client.Client, s *server.Session) error {
 	// Validation still applies. A typed call refuses an invalid message
 	// (customData.vendorId is at most 255 characters) ...
 	_, err = ocpp201.Heartbeat(ctx, c, &ocpp201.HeartbeatRequest{CustomData: &ocpp201.CustomData{VendorID: strings.Repeat("v", 256)}})
-	var ve *ocpp.ValidationError
-	if !errors.As(err, &ve) {
+	if _, ok := errors.AsType[*ocpp.ValidationError](err); !ok {
 		return fmt.Errorf("expected a validation error, got %v", err)
 	}
 	fmt.Printf("station: not sent: %v\n", err)
@@ -389,12 +387,12 @@ func demo21(ctx context.Context, c *client.Client, s *server.Session) error {
 	}); err != nil {
 		return err
 	}
-	resp, err := ocpp21.DataTransfer(ctx, c, &ocpp21.DataTransferRequest{VendorID: vendorID, MessageID: ocpp.Ptr("GetTariff"), Data: json.RawMessage(`{"connectorId":2}`)})
+	resp, err := ocpp21.DataTransfer(ctx, c, &ocpp21.DataTransferRequest{VendorID: vendorID, MessageID: new("GetTariff"), Data: json.RawMessage(`{"connectorId":2}`)})
 	if err != nil {
 		return err
 	}
 	fmt.Printf("station: DataTransfer %s/GetTariff: %s %s\n", vendorID, resp.Status, string(resp.Data))
-	back, err := ocpp21.DataTransfer(ctx, s, &ocpp21.DataTransferRequest{VendorID: vendorID, MessageID: ocpp.Ptr("SetLedColor"), Data: json.RawMessage(`{"color":"amber"}`)})
+	back, err := ocpp21.DataTransfer(ctx, s, &ocpp21.DataTransferRequest{VendorID: vendorID, MessageID: new("SetLedColor"), Data: json.RawMessage(`{"color":"amber"}`)})
 	if err != nil {
 		return err
 	}

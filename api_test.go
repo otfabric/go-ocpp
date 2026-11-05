@@ -166,19 +166,19 @@ func dropUnexported(typ ast.Expr) {
 func lineDiff(want, got string) string {
 	in := func(s string) map[string]bool {
 		m := map[string]bool{}
-		for _, l := range strings.Split(s, "\n") {
+		for l := range strings.SplitSeq(s, "\n") {
 			m[l] = true
 		}
 		return m
 	}
 	w, g := in(want), in(got)
 	var b strings.Builder
-	for _, l := range strings.Split(want, "\n") {
+	for l := range strings.SplitSeq(want, "\n") {
 		if !g[l] {
 			b.WriteString("- " + l + "\n")
 		}
 	}
-	for _, l := range strings.Split(got, "\n") {
+	for l := range strings.SplitSeq(got, "\n") {
 		if !w[l] {
 			b.WriteString("+ " + l + "\n")
 		}

@@ -54,4 +54,4 @@ func (e *ValidationError) CallError() *CallError {
 //	    ChargePointModel:        "TestStation",
 //	    ChargePointSerialNumber: ocpp.Ptr("OTF-0001"),
 //	}
-func Ptr[T any](v T) *T { return &v }
+func Ptr[T any](v T) *T { return new(v) }

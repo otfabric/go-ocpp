@@ -285,7 +285,7 @@ type handler16 struct {
 
 func (h handler16) RemoteStartTransaction(ctx context.Context, p ocpp.Peer, req *ocpp16.RemoteStartTransactionRequest) (*ocpp16.RemoteStartTransactionResponse, error) {
 	fmt.Printf("station: remote start for %s\n", req.IDTag)
-	if h.st.charging.Load() || !h.st.post(command{remoteStartID: ocpp.Ptr(0)}) {
+	if h.st.charging.Load() || !h.st.post(command{remoteStartID: new(0)}) {
 		return &ocpp16.RemoteStartTransactionResponse{Status: ocpp16.RemoteStartStopStatusRejected}, nil
 	}
 	return &ocpp16.RemoteStartTransactionResponse{Status: ocpp16.RemoteStartStopStatusAccepted}, nil
@@ -305,7 +305,7 @@ type handler201 struct {
 
 func (h handler201) RequestStartTransaction(ctx context.Context, p ocpp.Peer, req *ocpp201.RequestStartTransactionRequest) (*ocpp201.RequestStartTransactionResponse, error) {
 	fmt.Printf("station: remote start %d for %s\n", req.RemoteStartID, req.IDToken.IDToken)
-	if h.st.charging.Load() || !h.st.post(command{remoteStartID: ocpp.Ptr(req.RemoteStartID)}) {
+	if h.st.charging.Load() || !h.st.post(command{remoteStartID: new(req.RemoteStartID)}) {
 		return &ocpp201.RequestStartTransactionResponse{Status: ocpp201.RequestStartStopStatusRejected}, nil
 	}
 	return &ocpp201.RequestStartTransactionResponse{Status: ocpp201.RequestStartStopStatusAccepted}, nil
@@ -329,7 +329,7 @@ type handler21 struct {
 
 func (h handler21) RequestStartTransaction(ctx context.Context, p ocpp.Peer, req *ocpp21.RequestStartTransactionRequest) (*ocpp21.RequestStartTransactionResponse, error) {
 	fmt.Printf("station: remote start %d for %s\n", req.RemoteStartID, req.IDToken.IDToken)
-	if h.st.charging.Load() || !h.st.post(command{remoteStartID: ocpp.Ptr(req.RemoteStartID)}) {
+	if h.st.charging.Load() || !h.st.post(command{remoteStartID: new(req.RemoteStartID)}) {
 		return &ocpp21.RequestStartTransactionResponse{Status: ocpp21.RequestStartStopStatusRejected}, nil
 	}
 	return &ocpp21.RequestStartTransactionResponse{Status: ocpp21.RequestStartStopStatusAccepted}, nil
@@ -352,7 +352,7 @@ type ops16 struct{ c *client.Client }
 
 func (o *ops16) boot(ctx context.Context) (string, int, error) {
 	resp, err := ocpp16.BootNotification(ctx, o.c, &ocpp16.BootNotificationRequest{
-		ChargePointVendor: "OTFabric", ChargePointModel: "Simulator", FirmwareVersion: ocpp.Ptr("0.1.0"),
+		ChargePointVendor: "OTFabric", ChargePointModel: "Simulator", FirmwareVersion: new("0.1.0"),
 	})
 	if err != nil {
 		return "", 0, err
@@ -370,7 +370,7 @@ func (o *ops16) status(ctx context.Context, occupied bool) error {
 	if occupied {
 		s = ocpp16.ChargePointStatusCharging
 	}
-	_, err := ocpp16.StatusNotification(ctx, o.c, &ocpp16.StatusNotificationRequest{ConnectorID: 1, ErrorCode: ocpp16.ChargePointErrorCodeNoError, Status: s, Timestamp: ocpp.Ptr(time.Now().UTC())})
+	_, err := ocpp16.StatusNotification(ctx, o.c, &ocpp16.StatusNotificationRequest{ConnectorID: 1, ErrorCode: ocpp16.ChargePointErrorCodeNoError, Status: s, Timestamp: new(time.Now().UTC())})
 	return err
 }
 
@@ -410,7 +410,7 @@ func (o *ops16) meter(ctx context.Context, txID string, wh float64) error {
 func (o *ops16) stop(ctx context.Context, txID string, wh float64) error {
 	id, _ := strconv.Atoi(txID)
 	_, err := ocpp16.StopTransaction(ctx, o.c, &ocpp16.StopTransactionRequest{
-		TransactionID: id, Timestamp: time.Now().UTC(), MeterStop: int(wh), IDTag: ocpp.Ptr(token), Reason: ocpp.Ptr(ocpp16.ReasonLocal),
+		TransactionID: id, Timestamp: time.Now().UTC(), MeterStop: int(wh), IDTag: new(token), Reason: ocpp.Ptr(ocpp16.ReasonLocal),
 	})
 	return err
 }
@@ -427,7 +427,7 @@ type ops201 struct {
 
 func (o *ops201) boot(ctx context.Context) (string, int, error) {
 	resp, err := ocpp201.BootNotification(ctx, o.c, &ocpp201.BootNotificationRequest{Reason: ocpp201.BootReasonPowerUp,
-		ChargingStation: ocpp201.ChargingStationType{VendorName: "OTFabric", Model: "Simulator", FirmwareVersion: ocpp.Ptr("0.1.0")}})
+		ChargingStation: ocpp201.ChargingStationType{VendorName: "OTFabric", Model: "Simulator", FirmwareVersion: new("0.1.0")}})
 	if err != nil {
 		return "", 0, err
 	}
@@ -465,7 +465,7 @@ func (o *ops201) event(ctx context.Context, req ocpp201.TransactionEventRequest,
 	o.seqNo++
 	req.MeterValue = []ocpp201.MeterValueType{{Timestamp: req.Timestamp, SampledValue: []ocpp201.SampledValueType{{
 		Value: wh, Context: &rc, Measurand: ocpp.Ptr(ocpp201.MeasurandEnergyActiveImportRegister),
-		UnitOfMeasure: &ocpp201.UnitOfMeasureType{Unit: ocpp.Ptr("Wh")},
+		UnitOfMeasure: &ocpp201.UnitOfMeasureType{Unit: new("Wh")},
 	}}}}
 	_, err := ocpp201.TransactionEvent(ctx, o.c, &req)
 	return err
@@ -482,7 +482,7 @@ func (o *ops201) start(ctx context.Context, remoteStartID *int, wh float64) (str
 	return id, o.event(ctx, ocpp201.TransactionEventRequest{
 		EventType: ocpp201.TransactionEventStarted, TriggerReason: trigger,
 		TransactionInfo: ocpp201.TransactionType{TransactionID: id, ChargingState: ocpp.Ptr(ocpp201.ChargingStateCharging), RemoteStartID: remoteStartID},
-		EVSE:            &ocpp201.EVSEType{ID: 1, ConnectorID: ocpp.Ptr(1)}, IDToken: &tok,
+		EVSE:            &ocpp201.EVSEType{ID: 1, ConnectorID: new(1)}, IDToken: &tok,
 	}, wh, ocpp201.ReadingContextTransactionBegin)
 }
 
@@ -512,7 +512,7 @@ type ops21 struct {
 
 func (o *ops21) boot(ctx context.Context) (string, int, error) {
 	resp, err := ocpp21.BootNotification(ctx, o.c, &ocpp21.BootNotificationRequest{Reason: ocpp21.BootReasonPowerUp,
-		ChargingStation: ocpp21.ChargingStationType{VendorName: "OTFabric", Model: "Simulator", FirmwareVersion: ocpp.Ptr("0.1.0")}})
+		ChargingStation: ocpp21.ChargingStationType{VendorName: "OTFabric", Model: "Simulator", FirmwareVersion: new("0.1.0")}})
 	if err != nil {
 		return "", 0, err
 	}
@@ -550,7 +550,7 @@ func (o *ops21) event(ctx context.Context, req ocpp21.TransactionEventRequest, w
 	o.seqNo++
 	req.MeterValue = []ocpp21.MeterValueType{{Timestamp: req.Timestamp, SampledValue: []ocpp21.SampledValueType{{
 		Value: wh, Context: &rc, Measurand: ocpp.Ptr(ocpp21.MeasurandEnergyActiveImportRegister),
-		UnitOfMeasure: &ocpp21.UnitOfMeasureType{Unit: ocpp.Ptr("Wh")},
+		UnitOfMeasure: &ocpp21.UnitOfMeasureType{Unit: new("Wh")},
 	}}}}
 	_, err := ocpp21.TransactionEvent(ctx, o.c, &req)
 	return err
@@ -567,7 +567,7 @@ func (o *ops21) start(ctx context.Context, remoteStartID *int, wh float64) (stri
 	return id, o.event(ctx, ocpp21.TransactionEventRequest{
 		EventType: ocpp21.TransactionEventStarted, TriggerReason: trigger,
 		TransactionInfo: ocpp21.TransactionType{TransactionID: id, ChargingState: ocpp.Ptr(ocpp21.ChargingStateCharging), RemoteStartID: remoteStartID},
-		EVSE:            &ocpp21.EVSEType{ID: 1, ConnectorID: ocpp.Ptr(1)}, IDToken: &tok,
+		EVSE:            &ocpp21.EVSEType{ID: 1, ConnectorID: new(1)}, IDToken: &tok,
 	}, wh, ocpp21.ReadingContextTransactionBegin)
 }
 
@@ -657,20 +657,20 @@ func (e *embeddedCSMS) remoteStart(ctx context.Context, s *server.Session) error
 	var status any
 	switch s.Version() {
 	case ocpp.V16:
-		resp, err := ocpp16.RemoteStartTransaction(ctx, s, &ocpp16.RemoteStartTransactionRequest{IDTag: token, ConnectorID: ocpp.Ptr(1)})
+		resp, err := ocpp16.RemoteStartTransaction(ctx, s, &ocpp16.RemoteStartTransactionRequest{IDTag: token, ConnectorID: new(1)})
 		if err != nil {
 			return err
 		}
 		status = resp.Status
 	case ocpp.V201:
-		resp, err := ocpp201.RequestStartTransaction(ctx, s, &ocpp201.RequestStartTransactionRequest{RemoteStartID: 42, EVSEID: ocpp.Ptr(1),
+		resp, err := ocpp201.RequestStartTransaction(ctx, s, &ocpp201.RequestStartTransactionRequest{RemoteStartID: 42, EVSEID: new(1),
 			IDToken: ocpp201.IDTokenType{IDToken: token, Type: ocpp201.IDTokenISO14443}})
 		if err != nil {
 			return err
 		}
 		status = resp.Status
 	case ocpp.V21:
-		resp, err := ocpp21.RequestStartTransaction(ctx, s, &ocpp21.RequestStartTransactionRequest{RemoteStartID: 42, EVSEID: ocpp.Ptr(1),
+		resp, err := ocpp21.RequestStartTransaction(ctx, s, &ocpp21.RequestStartTransactionRequest{RemoteStartID: 42, EVSEID: new(1),
 			IDToken: ocpp21.IDTokenType{IDToken: token, Type: "ISO14443"}})
 		if err != nil {
 			return err

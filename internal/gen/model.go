@@ -206,7 +206,7 @@ type generator struct {
 
 // message builds the type of one schema file.
 func (g *generator) message(path, typeName, file string) (*goType, string, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		return nil, "", err
 	}
@@ -319,18 +319,19 @@ func (g *generator) object(s *schema, typeName, path, where string) (*goType, er
 }
 
 func refKey(r ref) string {
-	k := r.Base + "/" + r.Format
+	var k strings.Builder
+	k.WriteString(r.Base + "/" + r.Format)
 	if r.MaxLength != nil {
-		k += fmt.Sprintf("/len%d", *r.MaxLength)
+		fmt.Fprintf(&k, "/len%d", *r.MaxLength)
 	}
 	for _, p := range []*float64{r.Minimum, r.Maximum, r.MultipleOf} {
 		if p != nil {
-			k += fmt.Sprintf("/%v", *p)
+			fmt.Fprintf(&k, "/%v", *p)
 		} else {
-			k += "/-"
+			k.WriteString("/-")
 		}
 	}
-	return k
+	return k.String()
 }
 
 func (g *generator) field(s *schema, name string, required bool, path, where string) (*field, error) {

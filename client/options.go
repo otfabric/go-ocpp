@@ -73,7 +73,8 @@ func WithHandler(v ocpp.Version, d ocpp.Dispatcher) Option {
 
 // WithBasicAuth sends HTTP Basic credentials in the opening handshake
 // (security profiles 1 and 2). OCPP uses the station identity as the user
-// name. The password is never logged.
+// name, which must not contain a colon (RFC 7617 §2). The password is never
+// logged.
 func WithBasicAuth(username, password string) Option {
 	return func(o *options) { o.username, o.password, o.basicAuth = username, password, true }
 }
@@ -88,7 +89,12 @@ func WithTLS(cfg *tls.Config) Option {
 
 // WithHTTPClient sets the HTTP client used for the opening handshake, for
 // proxies or custom transports. It cannot be combined with WithTLS: configure
-// TLS on the client's transport instead.
+// TLS on the client's transport instead. The client uses a copy of c that
+// also refuses a redirect from wss:// to ws://; c's CheckRedirect applies to
+// the other redirects, and c itself is not changed. The handshake timeout
+// and Connect's ctx bound a handshake that stalls after its response only
+// when c's Transport is an *http.Transport (or nil); another RoundTripper
+// must bound its own connections.
 func WithHTTPClient(c *http.Client) Option {
 	return func(o *options) { o.httpClient = c }
 }
@@ -146,7 +152,8 @@ func (r Reconnect) check() error {
 
 // WithStateHandler sets a function called on every state change, with the
 // error that caused it, if any. It is called synchronously and in order; it
-// must not block and must not call Close.
+// may read State, Version and ID, but must not block and must not call
+// Close, Connect or Call.
 func WithStateHandler(f func(state ocpp.State, err error)) Option {
 	return func(o *options) { o.stateHandler = f }
 }
