@@ -224,12 +224,12 @@ func (c *Client) Role() ocpp.Role { return ocpp.ChargingStation }
 // Version returns the version negotiated on the current connection, or the
 // last one; zero before the first connection.
 func (c *Client) Version() ocpp.Version {
-	return ocpp.Version(c.version.Load())
+	return ocpp.Version(c.version.Load() & 0xFF) // only uint8 values are stored
 }
 
 // State returns the connection state.
 func (c *Client) State() ocpp.State {
-	return ocpp.State(c.state.Load())
+	return ocpp.State(c.state.Load() & 0xFF) // only uint8 values are stored
 }
 
 // Connect opens the connection and returns once it is open, or with an
