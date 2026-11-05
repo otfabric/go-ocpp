@@ -46,6 +46,12 @@ are added.
 
 Every callback receives the station identity in `ConnInfo`. Labelling by it
 gives one series per station: the cardinality is the application's choice.
+Two values are chosen by the peer, not the application: the `action` of an
+incoming CALL or SEND (also an unknown one, answered with `NotImplemented`),
+and the identity in `OnConnectFailed`, which a refused connection reports
+before any authentication. Map actions outside the version's set (`ocpp16.Actions`
+and the like) to a fixed value, and leave the identity out of failed-connection labels, or a hostile
+peer can create any number of series ([LIMITATIONS.md](LIMITATIONS.md#bounds-left-to-the-application)).
 
 ## Tracing
 
@@ -61,7 +67,8 @@ func(ctx context.Context, info ocpp.CallInfo, next func(context.Context) error) 
 ```
 
 `CallInfo` carries the station, version, role, session, action, message ID
-and direction.
+and direction. For incoming CALLs the action is the peer's: a span name built
+from it has the cardinality the peer chooses (see Metrics).
 
 ## Frames
 
