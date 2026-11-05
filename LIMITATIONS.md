@@ -29,6 +29,44 @@ status is in [COMPATIBILITY.md](COMPATIBILITY.md) and
   security messages are ordinary messages, and the library holds no
   certificates. `ocppcert` covers CertificateHashData only.
 
+## Bounds left to the application
+
+What a hostile or broken peer can still make cost, because the library does
+not bound it. Each is a design choice not yet made, listed here so that an
+application can bound it itself.
+
+- **Peer-chosen metric and span labels.** The `action` of `OnCallHandled`
+  and `CallInfo.Action` of an incoming CALL or SEND is the action name the
+  peer sent, also when it is unknown and answered with `NotImplemented`.
+  Likewise `ConnInfo.StationID` of `OnConnectFailed` is the identity a
+  refused connection asked for, before any authentication. A peer that
+  sends random action names, or connects with random identities, creates
+  one series (or span name) per name. Applications that label by them
+  should map names outside the version's action set (`ocpp16.Actions`,
+  `ocpp201.Actions`, `ocpp21.Actions`) to a fixed value such as `unknown`, and label failed connections
+  without the identity ([OBSERVABILITY.md](OBSERVABILITY.md#metrics)).
+- **`WithMaxStations` counts registered sessions only.** Two kinds of
+  connection that are still closing are not counted: a session replaced by
+  a new connection of its identity (`ReplaceExisting`), until its close
+  handshake ends, and a connection refused after the WebSocket upgrade
+  because it offered no supported subprotocol. A peer that does not answer
+  the close frame holds each for the WebSocket close timeouts (seconds),
+  so the number of open connections can exceed `WithMaxStations` by what
+  arrives in that time. The refused-subprotocol connections are also not
+  waited for by `Shutdown`. Rate-limit connection attempts in front of the
+  server (a reverse proxy, or a listener wrapper) when that matters.
+- **No length bound on an OCPP 1.6 identity.** For 2.x the server refuses an
+  identity that is not an identifierString of at most 48 characters (Part 4
+  §3.1.1). For 1.6 it applies no bound of its own: the request line is
+  bounded only by the HTTP server's header limit (`http.Server`
+  `MaxHeaderBytes`, 1 MiB by default, which `Serve` uses; the
+  application's own server when it mounts the `Server` as an
+  `http.Handler`). The identity is in `ConnInfo`, the `Authenticator`'s
+  `ConnectRequest` and every log entry of the connection. An `Authenticator`
+  that refuses identities it does not know (`ErrUnknownStation`, 404)
+  keeps such a connection from being registered, but not from being logged
+  once.
+
 ## Verification
 
 - Independently tested against the reference builds of

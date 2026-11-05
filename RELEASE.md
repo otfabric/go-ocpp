@@ -112,6 +112,10 @@ idle server connections.
 
 ### Added
 
+- LIMITATIONS.md "Bounds left to the application": peer-chosen metric and
+  span labels (incoming actions, identities of refused connections),
+  closing connections not counted by `WithMaxStations`, and no length bound
+  on a 1.6 identity; OBSERVABILITY.md says which labels the peer chooses.
 - `e2e/hostile_server_test.go` and `e2e/hostile_client_test.go`: raw
   WebSocket peers that abuse the handshake, redirects, framing, control
   frames, results, floods, Close in every state and reconnect races, with
