@@ -7,12 +7,13 @@ package client
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"math"
-	"math/rand/v2"
+	"math/big"
 	"net/http"
 	"net/url"
 	"strings"
@@ -222,7 +223,9 @@ func (c *Client) Connect(ctx context.Context) error {
 	c.attachLocked(ep, v)
 	done := make(chan struct{})
 	c.superDone = done
-	go c.supervise(ep, done)
+	// The supervisor outlives Connect: it keeps the values of ctx but not
+	// its cancellation or deadline.
+	go c.supervise(context.WithoutCancel(ctx), ep, done)
 	return nil
 }
 
@@ -293,7 +296,7 @@ func (c *Client) dial(ctx context.Context) (*engine.Endpoint, ocpp.Version, erro
 
 // supervise waits for the connection to end and, with WithReconnect,
 // redials until a connection opens or the client is closed.
-func (c *Client) supervise(ep *engine.Endpoint, done chan struct{}) {
+func (c *Client) supervise(base context.Context, ep *engine.Endpoint, done chan struct{}) {
 	defer close(done)
 	for {
 		select {
@@ -325,7 +328,7 @@ func (c *Client) supervise(ep *engine.Endpoint, done chan struct{}) {
 				return
 			}
 			c.o.metrics.OnReconnectAttempt(c.info(0), attempt)
-			ctx, cancel := context.WithCancel(context.Background())
+			ctx, cancel := context.WithCancel(base)
 			go func() {
 				select {
 				case <-c.closeCh:
@@ -364,10 +367,27 @@ func (c *Client) backoff(attempt int) time.Duration {
 	for i := 1; i < attempt && i <= r.RepeatTimes && d < math.MaxInt64/2; i++ {
 		d *= 2
 	}
-	if r.RandomRange > 0 {
-		d += rand.N(r.RandomRange + 1)
+	if j := jitter(r.RandomRange); j > math.MaxInt64-d {
+		d = math.MaxInt64 // saturate: a wrapped sum would reconnect at once
+	} else {
+		d += j
 	}
 	return d
+}
+
+// jitter returns a uniformly random duration in [0, max], from crypto/rand
+// so that stations sharing a seed (or a math/rand default) do not reconnect
+// in lockstep. It returns 0 if the system random source fails.
+func jitter(max time.Duration) time.Duration {
+	if max <= 0 {
+		return 0
+	}
+	bound := new(big.Int).Add(big.NewInt(int64(max)), big.NewInt(1))
+	n, err := rand.Int(rand.Reader, bound)
+	if err != nil {
+		return 0
+	}
+	return time.Duration(n.Int64())
 }
 
 // SetReconnect changes the reconnection back-off from the next attempt on:

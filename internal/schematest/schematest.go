@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -95,7 +96,7 @@ type suiteSchema struct {
 
 func load(t testing.TB, file string) *suiteSchema {
 	t.Helper()
-	data, err := os.ReadFile(file)
+	data, err := os.ReadFile(filepath.Clean(file))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -369,9 +370,7 @@ func (s *suiteSchema) mutations(n map[string]any, inst any, path string) []mutat
 
 func with(obj map[string]any, k string, v any) map[string]any {
 	out := make(map[string]any, len(obj)+1)
-	for kk, vv := range obj {
-		out[kk] = vv
-	}
+	maps.Copy(out, obj)
 	out[k] = v
 	return out
 }
