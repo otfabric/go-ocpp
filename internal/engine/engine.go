@@ -189,8 +189,7 @@ func (e *Endpoint) Start() {
 		go func() { defer io.Done(); e.readLoop() }()
 		go func() { defer io.Done(); e.writeLoop() }()
 		if e.cfg.PingInterval > 0 {
-			io.Add(1)
-			go func() { defer io.Done(); e.pingLoop() }()
+			io.Go(func() { ; e.pingLoop() })
 		}
 		dispatched := make(chan struct{})
 		go func() { defer close(dispatched); e.dispatchLoop() }()

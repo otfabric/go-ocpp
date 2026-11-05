@@ -67,7 +67,7 @@ type chargePoint struct {
 }
 
 func (chargePoint) GetConfiguration(ctx context.Context, p ocpp.Peer, req *ocpp16.GetConfigurationRequest) (*ocpp16.GetConfigurationResponse, error) {
-	return &ocpp16.GetConfigurationResponse{ConfigurationKey: []ocpp16.KeyValue{{Key: "HeartbeatInterval", Value: ocpp.Ptr("300")}}}, nil
+	return &ocpp16.GetConfigurationResponse{ConfigurationKey: []ocpp16.KeyValue{{Key: "HeartbeatInterval", Value: new("300")}}}, nil
 }
 
 func (chargePoint) RemoteStartTransaction(ctx context.Context, p ocpp.Peer, req *ocpp16.RemoteStartTransactionRequest) (*ocpp16.RemoteStartTransactionResponse, error) {
@@ -143,7 +143,7 @@ func run() error {
 	if !ok {
 		return fmt.Errorf("no session for %s", stationID)
 	}
-	start, err := ocpp16.RemoteStartTransaction(ctx, session, &ocpp16.RemoteStartTransactionRequest{IDTag: "04A1B2C3D4E5F6", ConnectorID: ocpp.Ptr(1)})
+	start, err := ocpp16.RemoteStartTransaction(ctx, session, &ocpp16.RemoteStartTransactionRequest{IDTag: "04A1B2C3D4E5F6", ConnectorID: new(1)})
 	if err != nil {
 		return err
 	}

@@ -17,7 +17,7 @@ import (
 func TestClassify(t *testing.T) {
 	c := CodesFor(ocpp.V201)
 	var syntax error = &json.SyntaxError{}
-	var typ error = &json.UnmarshalTypeError{Value: "number", Type: reflect.TypeOf("")}
+	var typ error = &json.UnmarshalTypeError{Value: "number", Type: reflect.TypeFor[string]()}
 	_, parse := time.Parse(time.RFC3339, "yesterday")
 	for name, tt := range map[string]struct {
 		err  error

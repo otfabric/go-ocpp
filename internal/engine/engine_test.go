@@ -195,11 +195,9 @@ func TestOneOutstandingCall(t *testing.T) {
 	var wg sync.WaitGroup
 	errs := make(chan error, n)
 	for i := range n {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			errs <- e.Call(context.Background(), "Heartbeat", map[string]int{"n": i}, nil)
-		}()
+		})
 	}
 	for range n {
 		f := readFrame(t, raw, ocpp.V16)

@@ -56,7 +56,7 @@ func (s station) GetVariables(ctx context.Context, p ocpp.Peer, req *ocpp201.Get
 	for _, d := range req.GetVariableData {
 		r := ocpp201.GetVariableResultType{Component: d.Component, Variable: d.Variable, AttributeStatus: ocpp201.GetVariableStatusUnknownVariable}
 		if v, ok := s.variables[[2]string{d.Component.Name, d.Variable.Name}]; ok {
-			r.AttributeStatus, r.AttributeValue = ocpp201.GetVariableStatusAccepted, ocpp.Ptr(v)
+			r.AttributeStatus, r.AttributeValue = ocpp201.GetVariableStatusAccepted, new(v)
 		}
 		resp.GetVariableResult = append(resp.GetVariableResult, r)
 	}
@@ -148,7 +148,7 @@ func run() error {
 	if _, err := ocpp201.TransactionEvent(ctx, c, &ocpp201.TransactionEventRequest{
 		EventType: ocpp201.TransactionEventStarted, Timestamp: time.Now().UTC(), TriggerReason: ocpp201.TriggerReasonAuthorized,
 		SeqNo: 0, TransactionInfo: ocpp201.TransactionType{TransactionID: "TX-0001"},
-		EVSE:    &ocpp201.EVSEType{ID: 1, ConnectorID: ocpp.Ptr(1)},
+		EVSE:    &ocpp201.EVSEType{ID: 1, ConnectorID: new(1)},
 		IDToken: &ocpp201.IDTokenType{IDToken: "04A1B2C3D4E5F6", Type: ocpp201.IDTokenISO14443},
 	}); err != nil {
 		return err

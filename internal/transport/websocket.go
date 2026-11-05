@@ -126,9 +126,8 @@ func convert(err error) error {
 		return nil
 	}
 	if code := websocket.CloseStatus(err); code != -1 {
-		var ce websocket.CloseError
 		reason := ""
-		if errors.As(err, &ce) {
+		if ce, ok := errors.AsType[websocket.CloseError](err); ok {
 			reason = ce.Reason
 		}
 		return &CloseError{Code: int(code), Reason: reason}

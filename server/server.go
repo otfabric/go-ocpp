@@ -304,7 +304,7 @@ func (s *Server) refuse(w http.ResponseWriter, log *slog.Logger, info ocpp.ConnI
 // server has a handler for (SPECIFICATIONS.md T1).
 func (s *Server) selectVersion(h http.Header) (ocpp.Version, bool) {
 	for _, value := range h.Values("Sec-WebSocket-Protocol") {
-		for _, token := range strings.Split(value, ",") {
+		for token := range strings.SplitSeq(value, ",") {
 			v, ok := ocpp.ParseSubprotocol(strings.TrimSpace(token))
 			if ok && s.o.handlers[v] != nil {
 				return v, true

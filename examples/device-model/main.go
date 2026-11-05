@@ -70,7 +70,7 @@ func newDeviceModel() *deviceModel {
 		{component: "AuthCtrlr", name: "AuthorizeRemoteStart", value: "true", dataType: "boolean"},
 		{component: "DeviceDataCtrlr", name: "ItemsPerMessage", instance: "GetReport", value: "4", readOnly: true, dataType: "integer"},
 		{component: "EVSE", evse: 1, name: "AvailabilityState", value: "Available", readOnly: true, dataType: "OptionList"},
-		{component: "EVSE", evse: 1, name: "Power", value: "0", readOnly: true, dataType: "decimal", unit: "W", maxLimit: ocpp.Ptr(22000.0), monitorable: true},
+		{component: "EVSE", evse: 1, name: "Power", value: "0", readOnly: true, dataType: "decimal", unit: "W", maxLimit: new(22000.0), monitorable: true},
 	}}
 }
 
@@ -320,7 +320,7 @@ func (s station201) GetBaseReport(ctx context.Context, p ocpp.Peer, req *ocpp201
 				data[j] = reportData201(v)
 			}
 			if _, err := ocpp201.NotifyReport(ctx, p, &ocpp201.NotifyReportRequest{RequestID: req.RequestID, GeneratedAt: generated,
-				SeqNo: i, Tbc: ocpp.Ptr(i < len(parts)-1), ReportData: data}); err != nil {
+				SeqNo: i, Tbc: new(i < len(parts)-1), ReportData: data}); err != nil {
 				fmt.Printf("station: NotifyReport: %v\n", err)
 				return
 			}
@@ -335,11 +335,11 @@ func reportData201(v variable) ocpp201.ReportDataType {
 		c.EVSE = &ocpp201.EVSEType{ID: v.evse}
 	}
 	if v.componentInstance != "" {
-		c.Instance = ocpp.Ptr(v.componentInstance)
+		c.Instance = new(v.componentInstance)
 	}
 	vt := ocpp201.VariableType{Name: v.name}
 	if v.instance != "" {
-		vt.Instance = ocpp.Ptr(v.instance)
+		vt.Instance = new(v.instance)
 	}
 	mut := ocpp201.MutabilityReadWrite
 	if v.readOnly {
@@ -347,13 +347,13 @@ func reportData201(v variable) ocpp201.ReportDataType {
 	}
 	ch := &ocpp201.VariableCharacteristicsType{DataType: ocpp201.DataEnumType(v.dataType), SupportsMonitoring: v.monitorable, MaxLimit: v.maxLimit}
 	if v.unit != "" {
-		ch.Unit = ocpp.Ptr(v.unit)
+		ch.Unit = new(v.unit)
 	}
 	if v.dataType == "OptionList" {
-		ch.ValuesList = ocpp.Ptr("Available,Occupied,Reserved,Unavailable,Faulted")
+		ch.ValuesList = new("Available,Occupied,Reserved,Unavailable,Faulted")
 	}
 	return ocpp201.ReportDataType{Component: c, Variable: vt, VariableCharacteristics: ch,
-		VariableAttribute: []ocpp201.VariableAttributeType{{Type: ocpp.Ptr(ocpp201.AttributeActual), Value: ocpp.Ptr(v.value), Mutability: &mut}}}
+		VariableAttribute: []ocpp201.VariableAttributeType{{Type: ocpp.Ptr(ocpp201.AttributeActual), Value: new(v.value), Mutability: &mut}}}
 }
 
 func (s station201) GetVariables(ctx context.Context, p ocpp.Peer, req *ocpp201.GetVariablesRequest) (*ocpp201.GetVariablesResponse, error) {
@@ -367,7 +367,7 @@ func (s station201) GetVariables(ctx context.Context, p ocpp.Peer, req *ocpp201.
 			value, status := s.dm.get(name, evse, d.Variable.Name, instance201(d.Variable))
 			r.AttributeStatus = ocpp201.GetVariableStatusEnumType(status)
 			if status == "Accepted" {
-				r.AttributeValue = ocpp.Ptr(value)
+				r.AttributeValue = new(value)
 			}
 		}
 		resp.GetVariableResult = append(resp.GetVariableResult, r)
@@ -402,7 +402,7 @@ func (s station201) SetVariableMonitoring(ctx context.Context, p ocpp.Peer, req 
 		r := ocpp201.SetMonitoringResultType{Status: ocpp201.SetMonitoringStatusEnumType(status), Type: d.Type, Severity: d.Severity,
 			Component: d.Component, Variable: d.Variable}
 		if id != 0 {
-			r.ID = ocpp.Ptr(id)
+			r.ID = new(id)
 		}
 		resp.SetMonitoringResult = append(resp.SetMonitoringResult, r)
 	}
@@ -563,7 +563,7 @@ func (s station21) GetBaseReport(ctx context.Context, p ocpp.Peer, req *ocpp21.G
 				data[j] = reportData21(v)
 			}
 			if _, err := ocpp21.NotifyReport(ctx, p, &ocpp21.NotifyReportRequest{RequestID: req.RequestID, GeneratedAt: generated,
-				SeqNo: i, Tbc: ocpp.Ptr(i < len(parts)-1), ReportData: data}); err != nil {
+				SeqNo: i, Tbc: new(i < len(parts)-1), ReportData: data}); err != nil {
 				fmt.Printf("station: NotifyReport: %v\n", err)
 				return
 			}
@@ -578,11 +578,11 @@ func reportData21(v variable) ocpp21.ReportDataType {
 		c.EVSE = &ocpp21.EVSEType{ID: v.evse}
 	}
 	if v.componentInstance != "" {
-		c.Instance = ocpp.Ptr(v.componentInstance)
+		c.Instance = new(v.componentInstance)
 	}
 	vt := ocpp21.VariableType{Name: v.name}
 	if v.instance != "" {
-		vt.Instance = ocpp.Ptr(v.instance)
+		vt.Instance = new(v.instance)
 	}
 	mut := ocpp21.MutabilityReadWrite
 	if v.readOnly {
@@ -590,13 +590,13 @@ func reportData21(v variable) ocpp21.ReportDataType {
 	}
 	ch := &ocpp21.VariableCharacteristicsType{DataType: ocpp21.DataEnumType(v.dataType), SupportsMonitoring: v.monitorable, MaxLimit: v.maxLimit}
 	if v.unit != "" {
-		ch.Unit = ocpp.Ptr(v.unit)
+		ch.Unit = new(v.unit)
 	}
 	if v.dataType == "OptionList" {
-		ch.ValuesList = ocpp.Ptr("Available,Occupied,Reserved,Unavailable,Faulted")
+		ch.ValuesList = new("Available,Occupied,Reserved,Unavailable,Faulted")
 	}
 	return ocpp21.ReportDataType{Component: c, Variable: vt, VariableCharacteristics: ch,
-		VariableAttribute: []ocpp21.VariableAttributeType{{Type: ocpp.Ptr(ocpp21.AttributeActual), Value: ocpp.Ptr(v.value), Mutability: &mut}}}
+		VariableAttribute: []ocpp21.VariableAttributeType{{Type: ocpp.Ptr(ocpp21.AttributeActual), Value: new(v.value), Mutability: &mut}}}
 }
 
 func (s station21) GetVariables(ctx context.Context, p ocpp.Peer, req *ocpp21.GetVariablesRequest) (*ocpp21.GetVariablesResponse, error) {
@@ -610,7 +610,7 @@ func (s station21) GetVariables(ctx context.Context, p ocpp.Peer, req *ocpp21.Ge
 			value, status := s.dm.get(name, evse, d.Variable.Name, instance21(d.Variable))
 			r.AttributeStatus = ocpp21.GetVariableStatusEnumType(status)
 			if status == "Accepted" {
-				r.AttributeValue = ocpp.Ptr(value)
+				r.AttributeValue = new(value)
 			}
 		}
 		resp.GetVariableResult = append(resp.GetVariableResult, r)
@@ -645,7 +645,7 @@ func (s station21) SetVariableMonitoring(ctx context.Context, p ocpp.Peer, req *
 		r := ocpp21.SetMonitoringResultType{Status: ocpp21.SetMonitoringStatusEnumType(status), Type: d.Type, Severity: d.Severity,
 			Component: d.Component, Variable: d.Variable}
 		if id != 0 {
-			r.ID = ocpp.Ptr(id)
+			r.ID = new(id)
 		}
 		resp.SetMonitoringResult = append(resp.SetMonitoringResult, r)
 	}

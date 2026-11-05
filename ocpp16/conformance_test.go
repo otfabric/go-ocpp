@@ -48,7 +48,7 @@ func TestCoverageManifest(t *testing.T) {
 		t.Fatalf("manifest version %q", m.Version)
 	}
 	var fromSchemas []string
-	for _, dir := range strings.Fields(testSchemaDirs) {
+	for dir := range strings.FieldsSeq(testSchemaDirs) {
 		files, _ := filepath.Glob(filepath.Join(dir, "*.json"))
 		for _, f := range files {
 			base := strings.TrimSuffix(filepath.Base(f), ".json")

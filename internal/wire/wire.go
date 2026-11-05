@@ -15,6 +15,7 @@ import (
 	"math"
 	"net/url"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -96,12 +97,7 @@ func Object(b []byte, path string, c Codes, known, required []string, strict boo
 }
 
 func contains(list []string, s string) bool {
-	for _, x := range list {
-		if x == s {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(list, s)
 }
 
 // Decode unmarshals payload into m strictly and validates it. Errors are
@@ -268,8 +264,7 @@ func Respond(action string, resp Message, isNil bool, err error) (json.RawMessag
 // CALLERROR to answer with when it is invalid.
 func Request(payload json.RawMessage, req Message, c Codes) error {
 	if err := Decode(payload, req, c); err != nil {
-		var ve *ocpp.ValidationError
-		if errors.As(err, &ve) {
+		if ve, ok := errors.AsType[*ocpp.ValidationError](err); ok {
 			return ve.CallError()
 		}
 		return ocpp.NewCallError(c.Format, err.Error())

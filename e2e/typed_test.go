@@ -41,7 +41,7 @@ type chargePoint16 struct {
 }
 
 func (chargePoint16) GetConfiguration(ctx context.Context, p ocpp.Peer, req *ocpp16.GetConfigurationRequest) (*ocpp16.GetConfigurationResponse, error) {
-	return &ocpp16.GetConfigurationResponse{ConfigurationKey: []ocpp16.KeyValue{{Key: "HeartbeatInterval", Value: ocpp.Ptr("300")}}}, nil
+	return &ocpp16.GetConfigurationResponse{ConfigurationKey: []ocpp16.KeyValue{{Key: "HeartbeatInterval", Value: new("300")}}}, nil
 }
 
 func (chargePoint16) Reset(ctx context.Context, p ocpp.Peer, req *ocpp16.ResetRequest) (*ocpp16.ResetResponse, error) {

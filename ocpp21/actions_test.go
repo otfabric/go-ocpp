@@ -229,10 +229,9 @@ func TestDispatchSend(t *testing.T) {
 	if err := d.DispatchSend(ctx, peer, "NotifyPeriodicEventStream", payload); err != nil || h.got == nil || h.got.ID != 1 {
 		t.Fatalf("%v %+v", err, h.got)
 	}
-	var ve *ocpp.ValidationError
 	if err := d.DispatchSend(ctx, peer, "NotifyPeriodicEventStream", json.RawMessage(`{"id":1}`)); err == nil {
 		t.Fatal("an invalid SEND was dispatched")
-	} else if errors.As(err, &ve) {
+	} else if _, ok := errors.AsType[*ocpp.ValidationError](err); ok {
 		t.Fatalf("a ValidationError, not its CallError: %v", err)
 	}
 	// A CALL action as a SEND, and an unknown action.

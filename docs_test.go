@@ -32,7 +32,7 @@ func TestDocsCoverAPI(t *testing.T) {
 	errorsDoc := read("ERRORS.md")
 	for pkg, doc := range apiDocs {
 		text := read(doc)
-		for _, line := range strings.Split(read(filepath.Join("testdata", "api", pkg+".txt")), "\n") {
+		for line := range strings.SplitSeq(read(filepath.Join("testdata", "api", pkg+".txt")), "\n") {
 			m := declName.FindStringSubmatch(line)
 			if m == nil {
 				continue

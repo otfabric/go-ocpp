@@ -109,8 +109,7 @@ func (c *conformingPeer) index() int {
 
 func (c *conformingPeer) Dispatch(ctx context.Context, p ocpp.Peer, action string, payload json.RawMessage) (json.RawMessage, error) {
 	if err := c.pkg.validateRequest(action, payload); err != nil {
-		var ve *ocpp.ValidationError
-		if errors.As(err, &ve) {
+		if ve, ok := errors.AsType[*ocpp.ValidationError](err); ok {
 			return nil, ve.CallError()
 		}
 		return nil, err

@@ -22,7 +22,7 @@ func (s station) GetVariables(ctx context.Context, p ocpp.Peer, req *GetVariable
 	for _, d := range req.GetVariableData {
 		r := GetVariableResultType{Component: d.Component, Variable: d.Variable, AttributeStatus: GetVariableStatusUnknownVariable}
 		if v, ok := s.vars[[2]string{d.Component.Name, d.Variable.Name}]; ok {
-			r.AttributeStatus, r.AttributeValue = GetVariableStatusAccepted, ocpp.Ptr(v)
+			r.AttributeStatus, r.AttributeValue = GetVariableStatusAccepted, new(v)
 		}
 		resp.GetVariableResult = append(resp.GetVariableResult, r)
 	}
