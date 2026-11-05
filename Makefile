@@ -127,7 +127,8 @@ COVER_MIN := 98
 COVER_PKG_MIN := 90
 FUZZTIME ?= 30s
 FUZZ_TARGETS := ocppj:FuzzDecode internal/engine:FuzzEndpoint server:FuzzHandshake \
-	ocpp16:FuzzDispatch ocpp201:FuzzDispatch ocpp21:FuzzDispatch
+	ocpp16:FuzzDispatch ocpp201:FuzzDispatch ocpp21:FuzzDispatch internal/wire:FuzzIntegralNumbers \
+	client:FuzzNew ocppcert:FuzzHash
 fuzz: ## Run the fuzz targets for FUZZTIME each (default 30s)
 	@echo "Fuzzing (FUZZTIME=$(FUZZTIME))"
 	@for t in $(FUZZ_TARGETS); do \

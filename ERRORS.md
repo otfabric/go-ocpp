@@ -80,7 +80,7 @@ Typed errors, not sentinels:
 | `*ocpp.CallError` | `ocpp` | A CALLERROR: `Code`, `Description`, `Details` |
 | `*ocpp.ValidationError` | `ocpp` | A schema violation: `Code`, `Field`, `Reason` |
 | `*ocpp.CloseError` | `ocpp` | How the peer closed: `Code`, `Reason`, `Normal()`; wrapped next to `ErrConnectionLost` |
-| `*client.HandshakeError` | `client` | The HTTP status of a refused handshake, `StatusCode`; wrapped next to `ErrConnectFailed` |
+| `*client.HandshakeError` | `client` | The HTTP status of a refused handshake, `StatusCode`; wrapped next to `ErrConnectFailed`. Not for a 101 whose upgrade headers are broken; a 3xx when the client refused a redirect from `wss://` to `ws://` |
 | `*server.StatusError` | `server` | Returned by an authenticator to refuse with its own HTTP status (`Code`, `Err`) |
 | `*ocppj.DecodeError` | `ocppj` | How far a malformed frame decoded |
 

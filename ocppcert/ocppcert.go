@@ -51,6 +51,8 @@ var hashNames = map[crypto.Hash]string{crypto.SHA256: "SHA256", crypto.SHA384: "
 
 // Hash returns the HashData of cert, issued by issuer, with the hash alg.
 // For a self-signed (root) certificate, issuer is cert.
+// A certificate without a serial number or with a negative one (RFC 5280
+// §4.1.2.2 requires a positive integer) is refused.
 func Hash(cert, issuer *x509.Certificate, alg crypto.Hash) (HashData, error) {
 	name, ok := hashNames[alg]
 	if !ok {
@@ -58,6 +60,11 @@ func Hash(cert, issuer *x509.Certificate, alg crypto.Hash) (HashData, error) {
 	}
 	if cert == nil || issuer == nil {
 		return HashData{}, errors.New("ocppcert: nil certificate")
+	}
+	if cert.SerialNumber == nil || cert.SerialNumber.Sign() < 0 {
+		// RFC 5280 §4.1.2.2: a positive integer; crypto/x509 refuses to
+		// parse a negative one.
+		return HashData{}, errors.New("ocppcert: certificate without a non-negative serial number")
 	}
 	var spki struct {
 		Algorithm pkix.AlgorithmIdentifier

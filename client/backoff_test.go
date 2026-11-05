@@ -87,3 +87,18 @@ func TestSetReconnect(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// SetReconnect(nil) while a redial loop runs: the loop finishes with the
+// settings it had (SetReconnect's contract) instead of dereferencing nil.
+func TestSetReconnectNilDuringRedial(t *testing.T) {
+	c := newReconnecting(t, Reconnect{WaitMinimum: 3 * time.Second})
+	if err := c.SetReconnect(nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.SetReconnect(nil); err != nil { // twice: the settings it had stay
+		t.Fatal(err)
+	}
+	if d := c.backoff(2); d != 3*time.Second {
+		t.Fatalf("backoff %s", d)
+	}
+}

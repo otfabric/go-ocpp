@@ -17,7 +17,7 @@ import (
 	"time"
 )
 
-func certs(t *testing.T) (leaf, ca *x509.Certificate) {
+func certs(t testing.TB) (leaf, ca *x509.Certificate) {
 	t.Helper()
 	caKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	caTmpl := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "CA"},
@@ -78,5 +78,24 @@ func TestHashBadIssuerKey(t *testing.T) {
 	broken.RawSubjectPublicKeyInfo = []byte{0x30, 0x03, 0x01}
 	if _, err := Hash(leaf, &broken, crypto.SHA256); err == nil {
 		t.Fatal("a malformed issuer key was hashed")
+	}
+}
+
+// A certificate without a serial number, or with a negative one (RFC 5280
+// §4.1.2.2: a positive integer; crypto/x509 refuses to parse one), has no
+// SerialNumber to give: Hash refuses it rather than return "<nil>" or "-…".
+func TestHashBadSerial(t *testing.T) {
+	leaf, ca := certs(t)
+	for _, serial := range []*big.Int{nil, big.NewInt(-5)} {
+		c := *leaf
+		c.SerialNumber = serial
+		if h, err := Hash(&c, ca, crypto.SHA256); err == nil {
+			t.Errorf("serial %v: got %+v", serial, h)
+		}
+	}
+	c := *leaf
+	c.SerialNumber = big.NewInt(0)
+	if h, err := Hash(&c, ca, crypto.SHA256); err != nil || h.SerialNumber != "0" {
+		t.Errorf("serial 0: %+v %v", h, err)
 	}
 }

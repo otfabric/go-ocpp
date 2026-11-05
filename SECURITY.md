@@ -33,6 +33,11 @@ Implemented in the client and server (Phase 2); see
 | 3 | `wss://` | Client certificate (mutual TLS) |
 
 - TLS verification cannot be disabled through any go-ocpp option.
+- The client refuses an HTTP redirect from `wss://` to `ws://` during the
+  handshake, so that a CSMS (or what answers in its name) cannot move the
+  station, and its Basic credentials, onto clear text. Redirects that keep
+  TLS are followed; Go's HTTP client drops the Authorization header when
+  one leads to another host.
 - A server needs an authenticator, or an explicitly named option that turns
   authentication off. Authentication runs before the WebSocket upgrade.
 - Credentials and authorization tokens are never logged, and never appear in
@@ -48,6 +53,10 @@ Implemented in the client and server (Phase 2); see
 - The server refuses WebSocket upgrades whose browser Origin names another
   host (403), unless `WithOriginPatterns` allows it: a web page cannot
   open a station session in a user's browser.
+- A handshake the server refuses (path, identity, authentication, limits)
+  closes its connection, and on the server's own listener an idle
+  connection that was not upgraded is closed after the handshake timeout:
+  refused requests cannot hold idle keep-alive connections.
 - `WithIncomingRateLimit` bounds how fast one station's CALLs reach the
   handlers.
 - `WithWriteTimeout` (default 10 s) bounds a peer that stops reading;

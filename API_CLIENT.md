@@ -83,7 +83,7 @@ const (
 
 | Method | Behaviour |
 |---|---|
-| `Connect` | Dials once: TCP, TLS, the WebSocket handshake with the offered subprotocols. Returns nil when the connection is open. It does not retry; `WithReconnect` redials only after an open connection is lost. On a connected client it does nothing. |
+| `Connect` | Dials once: TCP, TLS, the WebSocket handshake with the offered subprotocols. Returns nil when the connection is open. It does not retry; `WithReconnect` redials only after an open connection is lost. On a connected client it does nothing; while another `Connect` or a redial is in progress it waits for that one (until ctx ends) and returns its outcome. `Close` ends a `Connect` in progress with `ErrClosed`. A redirect from `wss://` to `ws://` is refused (the `*HandshakeError` carries the redirect's status); other redirects are followed as the HTTP client's policy allows. |
 | `Call` | Sends a CALL and waits for its result. Calls from many goroutines are sent one at a time (one outstanding CALL per direction); up to `WithMaxQueuedCalls` wait, more get `ErrBusy`. Fails at once with `ErrNotConnected` while disconnected: nothing is queued. The typed call functions (`ocpp201.BootNotification(ctx, c, …)`) use it. |
 | `Send` | OCPP 2.1 SEND: queued and returned at once, never answered, does not wait for the CALL slot. `ErrUnsupportedVersion` on other versions. |
 | `Close` | Closes now: pending calls fail with `ErrClosed`, frames still queued or being written are dropped, reconnection stops. Idempotent and final: a closed client does not connect again (make a new one, as a restarting station would); from a handler it does not wait for that handler. |
@@ -96,14 +96,14 @@ const (
 |---|---|---|
 | `WithVersions(v...)` | versions with a handler, newest first | Versions offered, in order of preference |
 | `WithHandler(v, d)` | none: the CSMS's CALLs get `NotImplemented` | Dispatcher for the CSMS's CALLs on version `v`; for 2.1 SENDs it also implements `ocpp.SendDispatcher` (the ocpp21 dispatchers do) |
-| `WithBasicAuth(user, pass)` | none | HTTP Basic credentials (security profiles 1 and 2); the user name must be the identity in the URL (2.x Part 2 A00), or `New` refuses it |
+| `WithBasicAuth(user, pass)` | none | HTTP Basic credentials (security profiles 1 and 2); the user name must be the identity in the URL (2.x Part 2 A00) and contain no colon (RFC 7617 §2), or `New` refuses it |
 | `WithTLS(cfg)` | system roots | Trust roots and client certificate (profile 3); MinVersion raised to TLS 1.2; rotation via `GetClientCertificate` |
-| `WithHTTPClient(c)` | `http.DefaultClient` | Handshake HTTP client (proxies); not with `WithTLS` |
+| `WithHTTPClient(c)` | `http.DefaultClient` | Handshake HTTP client (proxies); not with `WithTLS`. Used through a copy that also refuses redirects from `wss://` to `ws://`; its own `CheckRedirect` applies to the rest. A handshake stalled after its response is bounded by the timeout and ctx only with an `*http.Transport` |
 | `WithHeader(name, value)` | none | Extra handshake header (an API key for a proxy, a tenant); Authorization, Host, Connection, Upgrade and Sec-WebSocket-* are refused |
 | `WithInsecureTransport()` | off | Allow `ws://` |
 | `WithCompression()` | off | Offer RFC 7692 compression (2.x CSMSs must support it) |
 | `WithReconnect(Reconnect{…})` | off | Redial after a lost connection with the back-off of 2.x Part 4 §5.4; see `DefaultReconnect()` |
-| `WithStateHandler(f)` | none | Called on every state change with its cause; must not block or call `Close` |
+| `WithStateHandler(f)` | none | Called on every state change with its cause; may read `State`, `Version` and `ID`; must not block or call `Close`, `Connect` or `Call` |
 | `WithHandshakeTimeout(d)` | 30 s | Dial, TLS and WebSocket handshakes |
 | `WithResponseTimeout(d)` | 30 s | Wait for a CALL's response (2.x: MessageTimeout of OCPPCommCtrlr) |
 | `WithWriteTimeout(d)` | 10 s | Writing one message; then the connection is lost |
@@ -161,7 +161,7 @@ func (e *HandshakeError) Error() string // "HTTP 401 Unauthorized"
 | Method | Errors (test with `errors.Is` / `errors.As`) |
 |---|---|
 | `New` | `ocpp.ErrInvalidOption` |
-| `Connect` | `ocpp.ErrConnectFailed`, with a `*HandshakeError` (`StatusCode`) when the CSMS refused the handshake, and `ocpp.ErrUnsupportedVersion` when no subprotocol was agreed; `ocpp.ErrClosed` |
+| `Connect` | `ocpp.ErrConnectFailed`, with a `*HandshakeError` (`StatusCode`) when the CSMS refused the handshake with an HTTP status other than 101 (a 101 whose upgrade is broken has none), and `ocpp.ErrUnsupportedVersion` when no subprotocol was agreed; `ocpp.ErrClosed` |
 | `Call` | `*ocpp.CallError` (the CSMS answered with a CALLERROR), `ocpp.ErrTimeout`, `ocpp.ErrNotConnected`, `ocpp.ErrConnectionLost`, `ocpp.ErrClosed`, `ocpp.ErrBusy`, `ctx.Err()`, `ocpp.ErrProtocol` (a response that does not decode) |
 | typed call functions | as `Call`, and `*ocpp.ValidationError` (wraps `ocpp.ErrInvalidMessage`; a response failing validation also wraps `ocpp.ErrProtocol`), `ocpp.ErrWrongDirection`, `ocpp.ErrUnsupportedVersion` |
 | `Send` | `ocpp.ErrUnsupportedVersion` (not 2.1), `ocpp.ErrNotConnected`, `ocpp.ErrClosed`, `ctx.Err()` |
