@@ -322,11 +322,11 @@ func refKey(r ref) string {
 	var k strings.Builder
 	k.WriteString(r.Base + "/" + r.Format)
 	if r.MaxLength != nil {
-		k.WriteString(fmt.Sprintf("/len%d", *r.MaxLength))
+		fmt.Fprintf(&k, "/len%d", *r.MaxLength)
 	}
 	for _, p := range []*float64{r.Minimum, r.Maximum, r.MultipleOf} {
 		if p != nil {
-			k.WriteString(fmt.Sprintf("/%v", *p))
+			fmt.Fprintf(&k, "/%v", *p)
 		} else {
 			k.WriteString("/-")
 		}

@@ -301,8 +301,11 @@ const maxExact = 1 << 53
 
 // IntegralNumbers returns b with every number that has a zero fractional
 // part but is not written as an integer (20000.0, 2.5e3, 1E2) written as an
-// integer, and whether it changed anything. Strings are left alone, and so
-// are numbers beyond ±2^53, which a float64 cannot hold exactly.
+// integer, and whether it changed anything. Whether a number is integral is
+// decided on its decimal text, not on the nearest float64, so that
+// 0.99999999999999999999 and 1e-400 stay what they are. Strings are left
+// alone, and so are numbers beyond ±2^53, which a float64 cannot hold
+// exactly.
 func IntegralNumbers(b []byte) ([]byte, bool) {
 	var out []byte
 	changed := false
@@ -337,8 +340,8 @@ func IntegralNumbers(b []byte) ([]byte, bool) {
 		lit := string(b[i:j])
 		i = j - 1
 		if strings.ContainsAny(lit, ".eE") {
-			if f, err := strconv.ParseFloat(lit, 64); err == nil && f == math.Trunc(f) && math.Abs(f) <= maxExact {
-				out = strconv.AppendInt(out, int64(f), 10)
+			if n, ok := integral(lit); ok {
+				out = strconv.AppendInt(out, n, 10)
 				changed = true
 				continue
 			}
@@ -346,4 +349,61 @@ func IntegralNumbers(b []byte) ([]byte, bool) {
 		out = append(out, lit...)
 	}
 	return out, changed
+}
+
+// integral returns the value of the JSON number lit when it is an integer
+// of at most 2^53 in magnitude, computed from its digits: mantissa × 10^exp.
+func integral(lit string) (int64, bool) {
+	neg := strings.HasPrefix(lit, "-")
+	lit = strings.TrimPrefix(lit, "-")
+	mant, exp, hasExp := strings.Cut(strings.ToLower(lit), "e")
+	whole, frac, _ := strings.Cut(mant, ".")
+	if whole == "" || !allDigits(whole) || !allDigits(frac) {
+		return 0, false
+	}
+	digits := strings.TrimLeft(whole+frac, "0")
+	if digits == "" {
+		return 0, !hasExp || validExponent(exp) // zero, whatever the exponent
+	}
+	if !validExponent(exp) && hasExp {
+		return 0, false
+	}
+	e := strings.TrimLeft(strings.TrimLeft(exp, "+-"), "0")
+	if len(e) > 9 {
+		return 0, false // |exponent| ≥ 10^9: a fraction, or far beyond 2^53
+	}
+	shift, _ := strconv.Atoi(e) // at most 9 digits: cannot fail
+	if strings.HasPrefix(exp, "-") {
+		shift = -shift
+	}
+	shift -= len(frac)
+	trimmed := strings.TrimRight(digits, "0")
+	shift += len(digits) - len(trimmed)
+	if shift < 0 || len(trimmed)+shift > 16 { // a fraction, or more than 16 digits (> 2^53)
+		return 0, false
+	}
+	n, err := strconv.ParseInt(trimmed+strings.Repeat("0", shift), 10, 64)
+	if err != nil || n > maxExact {
+		return 0, false
+	}
+	if neg {
+		n = -n
+	}
+	return n, true
+}
+
+func allDigits(s string) bool {
+	for _, c := range []byte(s) {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// validExponent reports whether s is the exponent of a JSON number: an
+// optional sign and at least one digit.
+func validExponent(s string) bool {
+	s = strings.TrimPrefix(strings.TrimPrefix(s, "+"), "-")
+	return s != "" && allDigits(s)
 }

@@ -76,8 +76,9 @@ const (
   TLS and must set `ReadHeaderTimeout` against slow clients.
 - `ListenAndServe` and `Serve` run their own `http.Server` with TLS
   (`WithTLS`, at least TLS 1.2) and the handshake timeout as
-  `ReadHeaderTimeout`; they log `listening`. Several listeners may serve
-  one `Server`.
+  `ReadHeaderTimeout` and `IdleTimeout`; they log `listening`. Several
+  listeners may serve one `Server`. A refused handshake is answered with
+  `Connection: close`, mounted or not.
 - `New` needs at least one `WithHandler` and exactly one of
   `WithAuthenticator` and `WithoutAuthentication`; refusals wrap
   `ocpp.ErrInvalidOption`.
@@ -186,11 +187,11 @@ var ErrUnauthorized error   // BasicAuth's error for refused credentials: HTTP 4
 | `WithAuthenticator(a)` | required, or `WithoutAuthentication()` | Decides before the upgrade |
 | `WithoutAuthentication()` | — | Accepts every identity: closed networks and tests only |
 | `WithTLS(cfg)` | none | TLS for `ListenAndServe` and `Serve` (profiles 2 and 3; `ClientAuth`, `ClientCAs` for 3) |
-| `WithSessionHandler(onConnect, onDisconnect)` | none | Session start; session end with nil (local Close or Shutdown), `ErrReplaced`, or the cause |
+| `WithSessionHandler(onConnect, onDisconnect)` | none | Session start; session end with nil (local Close or Shutdown), `ErrReplaced`, or the cause. A panic in onConnect is logged (Error) and the session goes on |
 | `WithReplacePolicy(p)` | `ReplaceExisting` | Or `RejectNew` (HTTP 409) |
 | `WithMaxStations(n)` | 10 000 | Simultaneous sessions; then HTTP 503 |
 | `WithOriginPatterns(p...)` | none | Hosts besides the server's own that a browser's Origin may name |
-| `WithHandshakeTimeout(d)` | 10 s | Reading the request headers (own listener only) |
+| `WithHandshakeTimeout(d)` | 10 s | Reading the request headers, and an idle connection that was not upgraded (own listener only) |
 | `WithResponseTimeout(d)` | 30 s | Wait for a station's response |
 | `WithWriteTimeout(d)` | 10 s | Writing one message to a station; then its connection is lost |
 | `WithPingInterval(d)` | off | WebSocket ping to every station every `d`; no pong within `d` loses the connection |
@@ -208,7 +209,7 @@ var ErrUnauthorized error   // BasicAuth's error for refused credentials: HTTP 4
 - `Shutdown(ctx)` stops accepting connections (new upgrades get 503) and
   drains every session: new CALLs and SENDs to stations fail with
   `ocpp.ErrClosed`, CALLs from stations that have not started are no longer
-  dispatched, and what is in flight (a CALL awaiting its answer, a handler
+  dispatched (nor are malformed ones answered), and what is in flight (a CALL awaiting its answer, a handler
   that has started, a frame queued or being written) is finished or ctx
   ends. It then closes every session with status 1001 (going away) and
   waits until they have ended or ctx ends. `ListenAndServe` and `Serve` then return

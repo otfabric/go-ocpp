@@ -2,9 +2,11 @@
 
 package ocppj
 
-import "slices"
+import (
+	"slices"
 
-import "github.com/otfabric/go-ocpp"
+	"github.com/otfabric/go-ocpp"
+)
 
 var errorCodes16 = []ocpp.ErrorCode{
 	ocpp.NotImplemented, ocpp.NotSupported, ocpp.InternalError, ocpp.ProtocolError,

@@ -85,6 +85,13 @@ func (e *Endpoint) malformed(err error) {
 		e.log.Warn("malformed frame dropped", "error", err)
 		return
 	}
+	if e.draining.Load() {
+		// While draining, CALLs that have not started get no answer (Drain);
+		// a malformed one gets none either, so that a peer cannot keep the
+		// drain from ending by sending them.
+		e.log.Warn("malformed frame dropped while draining", "error", err)
+		return
+	}
 	id := de.ID
 	if !de.IDKnown {
 		if e.cfg.Info.Version == ocpp.V16 {
