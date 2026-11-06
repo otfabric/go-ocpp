@@ -124,6 +124,11 @@ send passes go-ocpp's schema validation. See
 make interop   # needs Docker
 ```
 
+The Self-interop workflow, run by hand, runs a commit against the latest
+published go-ocpp (`ocpp-interop-otfabric:latest`). It finds a change on the
+wire that breaks an earlier release. A pass is not independent verification: it
+is go-ocpp on both sides.
+
 ## Assurance
 
 go-ocpp distinguishes three levels of assurance and claims only the first

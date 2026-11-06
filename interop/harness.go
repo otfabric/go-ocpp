@@ -55,6 +55,12 @@ type adapter struct {
 //	OCPP_INTEROP_LORENZODONINI_IMAGE, OCPP_INTEROP_EVEREST_IMAGE,
 //	OCPP_INTEROP_CITRINEOS_IMAGE
 //
+// OCPP_INTEROP_OTFABRIC_IMAGE adds a released go-ocpp, the adapter otfabric:
+// ghcr.io/otfabric/ocpp-interop-otfabric, which otfabric/ocpp-interop
+// publishes. It is not a reference: it runs only when the variable names an
+// image (there is no default), and what it shows is compatibility between
+// releases of this library, not independent verification.
+//
 // OCPP_INTEROP_ADAPTERS restricts the run to a comma-separated subset.
 // Without Docker the tests skip, unless OCPP_INTEROP_REQUIRE=1, which
 // 'make interop' and CI set: asked to test against the references, passing
@@ -74,6 +80,7 @@ func adapters(t testing.TB) []adapter {
 		image("lorenzodonini", "OCPP_INTEROP_LORENZODONINI_IMAGE", defaultLorenzodoniniImage),
 		image("everest", "OCPP_INTEROP_EVEREST_IMAGE", defaultEverestImage),
 		image("citrineos", "OCPP_INTEROP_CITRINEOS_IMAGE", defaultCitrineOSImage),
+		image("otfabric", "OCPP_INTEROP_OTFABRIC_IMAGE", ""),
 	} {
 		if a.image != "" {
 			all = append(all, a)
