@@ -231,8 +231,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sess := &Session{srv: s, id: id, version: v, remote: r.RemoteAddr, sessionID: engine.NewUUID(), connectedAt: time.Now(), tls: r.TLS}
+	sess := &Session{srv: s, id: id, version: v, remote: r.RemoteAddr, sessionID: engine.NewUUID(), connectedAt: time.Now(), tls: r.TLS,
+		compression: conn.Compression()}
 	info.SessionID = sess.sessionID
+	info.Compression = sess.compression
 	sess.ep = engine.New(conn, engine.Config{
 		Info:               info,
 		Peer:               sess,
@@ -466,6 +468,7 @@ type Session struct {
 	sessionID   string
 	connectedAt time.Time
 	tls         *tls.ConnectionState
+	compression bool
 	ep          *engine.Endpoint
 }
 
@@ -473,6 +476,11 @@ type Session struct {
 // certificate for security profile 3), or nil without TLS. Handlers reach
 // it by asserting their ocpp.Peer to *server.Session.
 func (s *Session) TLS() *tls.ConnectionState { return s.tls }
+
+// Compression reports whether the station's connection negotiated
+// permessage-deflate (RFC 7692). The CSMS accepts it whenever the station
+// offers it.
+func (s *Session) Compression() bool { return s.compression }
 
 // ID returns the station identity.
 func (s *Session) ID() string { return s.id }

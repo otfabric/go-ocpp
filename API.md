@@ -157,7 +157,7 @@ func Ptr[T any](v T) *T // for optional fields
 ```go
 type State uint8     // Disconnected, Connecting, Connected, Closed
 type Direction uint8 // Outgoing, Incoming
-type ConnInfo struct{ StationID string; Version Version; Role Role; SessionID string }
+type ConnInfo struct{ StationID string; Version Version; Role Role; SessionID string; Compression bool }
 type CallInfo struct{ ConnInfo; Action, MessageID string; Direction Direction }
 
 type Interceptor func(ctx context.Context, info CallInfo, next func(context.Context) error) error

@@ -20,6 +20,7 @@ func (s *Server) Stations() []*Session
 func (s *Server) Versions() []ocpp.Version
 func (s *Session) Call(ctx context.Context, action string, req, resp any) error
 func (s *Session) Close() error
+func (s *Session) Compression() bool
 func (s *Session) ConnectedAt() time.Time
 func (s *Session) Done() <-chan struct{}
 func (s *Session) Err() error

@@ -5,6 +5,47 @@ tag, GitHub release); the section of the version below is the release's
 notes. Before v1.0.0 a minor release may change the API: every change is
 listed here, and COMPATIBILITY.md has the stability rules.
 
+## v0.3.0
+
+**Date:** 2026-11-06
+**Previous release:** v0.2.0
+
+## Summary
+
+An application can now see whether a connection's WebSocket handshake
+negotiated compression (RFC 7692 permessage-deflate). Additive: no existing
+behaviour changes.
+
+## Changes
+
+### Added
+
+- `ocpp.ConnInfo.Compression`: true when the handshake negotiated
+  permessage-deflate, in every callback that gets the connection's
+  `ConnInfo` (metrics, frame observer, interceptors). At the client, it is
+  true when `WithCompression` offered it and the CSMS accepted it; at the
+  server, when the station offered it (the server accepts it whenever it is
+  offered). False before the handshake completes (`OnConnectFailed`,
+  `OnReconnectAttempt`). It is read from the `Sec-WebSocket-Extensions`
+  header of the handshake's answer.
+- `server.Session.Compression()`: the same for a station's session.
+
+## Verification
+
+- `TestConnInfoCompression` (e2e): OCPP 1.6, 2.0.1 and 2.1, with and without
+  `WithCompression`, at both ends, in `OnConnect`, `OnDisconnect`, the frame
+  observer and `Session.Compression`. `TestCompressionReported` and
+  `TestDeflate` (transport): every combination of offered and accepted, and
+  the header parsing.
+- Interop (`-tags=interop`, the pinned ocpp-interop v0.5.3 images):
+  `TestStationCompression` checks `ConnInfo.Compression` against each
+  reference CSMS that accepts compression (The Mobility House and CitrineOS,
+  OCPP 1.6, 2.0.1 and 2.1), `TestReferenceStationCompression`
+  `Session.Compression` against each reference station that offers it (The
+  Mobility House, 1.6, 2.0.1 and 2.1). 9 passed, 0 failed.
+
+---
+
 ## v0.2.0
 
 **Date:** 2026-11-05

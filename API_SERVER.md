@@ -99,6 +99,7 @@ func (s *Session) SessionID() string     // unique per connection (a UUID), in l
 func (s *Session) RemoteAddr() string
 func (s *Session) ConnectedAt() time.Time
 func (s *Session) TLS() *tls.ConnectionState // nil without TLS; the client certificate for profile 3
+func (s *Session) Compression() bool         // permessage-deflate negotiated (the station offered it)
 ```
 
 - A `Session` is an `ocpp.Peer`: pass it to the typed call functions. It

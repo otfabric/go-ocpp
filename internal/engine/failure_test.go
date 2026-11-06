@@ -80,6 +80,8 @@ func (c *fakeConn) Close(int, string) error {
 
 func (c *fakeConn) Subprotocol() string { return "ocpp1.6" }
 
+func (c *fakeConn) Compression() bool { return false }
+
 func (c *fakeConn) Abort() { _ = c.Close(0, "") }
 
 func (c *fakeConn) Ping(ctx context.Context) error {

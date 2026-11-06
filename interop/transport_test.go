@@ -311,9 +311,13 @@ func TestStationCompression(t *testing.T) {
 				}
 
 				d := newDispatcher(f, f.Answers.Station, v)
-				c := newStation(t, v, url, client.WithCompression(), client.WithHandler(v, d))
+				m := &connectInfo{info: make(chan ocpp.ConnInfo, 1)}
+				c := newStation(t, v, url, client.WithCompression(), client.WithHandler(v, d), client.WithMetrics(m))
 				if err := c.Connect(ctx); err != nil {
 					t.Fatalf("connect: %v", err)
+				}
+				if info := <-m.info; !info.Compression {
+					t.Errorf("ConnInfo.Compression is false, although %s accepted permessage-deflate", a.name)
 				}
 				for _, name := range f.samplesFrom("station") {
 					s := f.Samples[name]
@@ -386,11 +390,27 @@ func TestReferenceStationCompression(t *testing.T) {
 				if !strings.Contains(got, "permessage-deflate") {
 					t.Fatalf("the reference station did not offer compression: %q", got)
 				}
+				if !sess.Compression() {
+					t.Errorf("Session.Compression is false, although %s offered permessage-deflate", a.name)
+				}
 				var resp json.RawMessage
 				if err := sess.Call(context.Background(), "ClearCache", json.RawMessage(`{}`), &resp); err != nil {
 					t.Fatalf("call over the compressed connection: %v", err)
 				}
 			})
 		}
+	}
+}
+
+// connectInfo keeps the ConnInfo of OnConnect.
+type connectInfo struct {
+	ocpp.NopMetrics
+	info chan ocpp.ConnInfo
+}
+
+func (m *connectInfo) OnConnect(info ocpp.ConnInfo) {
+	select {
+	case m.info <- info:
+	default:
 	}
 }

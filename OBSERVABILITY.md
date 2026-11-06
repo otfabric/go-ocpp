@@ -44,6 +44,11 @@ are added.
 | `OnCallHandled(info, action, d, err)` | An incoming CALL has been answered, or an incoming SEND (2.1) handled |
 | `OnProtocolError(info, err)` | A malformed frame, a response matching no pending CALL (`ErrUnexpectedResponse`), or a CALLRESULTERROR received (2.1) |
 
+`ConnInfo.Compression` says whether the connection's handshake negotiated
+permessage-deflate (RFC 7692): with the client's `WithCompression`, when the
+CSMS accepted it; at the server, when the station offered it. It is false
+before the handshake completes (`OnConnectFailed`, `OnReconnectAttempt`).
+
 Every callback receives the station identity in `ConnInfo`. Labelling by it
 gives one series per station: the cardinality is the application's choice.
 Two values are chosen by the peer, not the application: the `action` of an

@@ -321,7 +321,7 @@ func (c *Client) attachLocked(ep *engine.Endpoint, v ocpp.Version) {
 	c.ep = ep
 	c.version.Store(uint32(v))
 	ep.Start()
-	c.o.metrics.OnConnect(c.info(v))
+	c.o.metrics.OnConnect(ep.Info())
 	c.log.Info("connected", "ocpp_version", v.String())
 	c.setStateLocked(ocpp.Connected, nil)
 }
@@ -363,8 +363,10 @@ func (c *Client) dial(ctx context.Context) (*engine.Endpoint, ocpp.Version, erro
 		c.log.Warn("connect failed", "error", err)
 		return nil, 0, err
 	}
+	info := c.info(v)
+	info.Compression = conn.Compression()
 	ep := engine.New(conn, engine.Config{
-		Info:               c.info(v),
+		Info:               info,
 		Peer:               c,
 		Dispatcher:         c.o.handlers[v],
 		ResponseTimeout:    c.o.responseTimeout,
@@ -402,7 +404,7 @@ func (c *Client) supervise(base context.Context, ep *engine.Endpoint, done chan 
 			return
 		}
 		c.ep = nil
-		c.o.metrics.OnDisconnect(c.info(c.Version()), cause)
+		c.o.metrics.OnDisconnect(ep.Info(), cause)
 		c.setStateLocked(ocpp.Disconnected, cause)
 		if c.o.reconnect == nil {
 			c.mu.Unlock()
@@ -566,7 +568,7 @@ func (c *Client) Close() error {
 	}
 	c.mu.Lock()
 	if ep != nil && c.State() == ocpp.Connected {
-		c.o.metrics.OnDisconnect(c.info(c.Version()), nil)
+		c.o.metrics.OnDisconnect(ep.Info(), nil)
 	}
 	c.setStateLocked(ocpp.Closed, nil)
 	c.mu.Unlock()
