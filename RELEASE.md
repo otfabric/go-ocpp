@@ -5,6 +5,39 @@ tag, GitHub release); the section of the version below is the release's
 notes. Before v1.0.0 a minor release may change the API: every change is
 listed here, and COMPATIBILITY.md has the stability rules.
 
+## v0.3.1
+
+**Date:** 2026-11-06
+**Previous release:** v0.3.0
+
+## Summary
+
+Interop qualified against otfabric/ocpp-interop v0.6.2: CitrineOS core
+v2.1.0, EVerest libocpp of everest-core 2026.02.2 and new base images. No
+library code changes.
+
+## Changes
+
+### Changed
+
+- Interop pinned to the ocpp-interop v0.6.2 reference images by digest
+  (`interop/harness.go`, the Makefile, `.github/workflows/interop.yml`).
+- CitrineOS v2.1.0 gives its TLS server a certificate of its own, so the
+  known issue of TLS by IP address (profiles 2 and 3, `tls-profile2-csms`,
+  `tls-profile3-csms`) is gone: those six scenarios run and pass. It also
+  answers the 1.6 SecurityEventNotification, which v2.0.1 answered
+  `NotImplemented`.
+- INTEROPERABILITY.md, FEATURES.md, README and `docs/compatibility`
+  (`make compat`) describe the new run.
+
+## Verification
+
+- `make test-interop` against the v0.6.2 images (linux/arm64): 1468
+  scenarios pass, 0 fail, 153 skipped with their reasons (v0.5.3: 1458 /
+  163); by version 1.6J 399 / 34, 2.0.1 634 / 32, 2.1 434 / 86.
+
+---
+
 ## v0.3.0
 
 **Date:** 2026-11-06

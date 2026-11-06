@@ -27,17 +27,17 @@ Both are required. In each, CALLs are sent from both ends of the connection.
 
 ## Status
 
-Qualified against **otfabric/ocpp-interop v0.5.3** (contract 0.5), pinned
+Qualified against **otfabric/ocpp-interop v0.6.2** (contract 0.5), pinned
 by digest in `interop/harness.go`, the Makefile and
 `.github/workflows/interop.yml`:
 
 | Reference | Upstream | OCPP | Roles | TLS (profiles 2, 3) | Compression | Image |
 |---|---|---|---|---|---|---|
-| `mobilityhouse` | The Mobility House ocpp 2.1.0 (Python) | 1.6J, 2.0.1, 2.1 | station, CSMS | yes | yes | `ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:14d8da52…` |
-| `chargetime` | ChargeTimeEU Java-OCA-OCPP v2.0 (Java) | 1.6J, 2.0.1 | station, CSMS | yes | 2.0.1, with upstream defects | `ghcr.io/otfabric/ocpp-interop-chargetime@sha256:45c8706c…` |
-| `lorenzodonini` | lorenzodonini/ocpp-go v0.19.0 (Go) | 1.6J, 2.0.1 | station, CSMS | yes | no (its CSMS cannot accept it) | `ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:4409b306…` |
-| `everest` | EVerest libocpp, everest-core 2026.02.1 (C++) | 1.6J, 2.0.1, 2.1 | station only (libocpp has no CSMS) | yes | no (libocpp cannot offer it) | `ghcr.io/otfabric/ocpp-interop-everest@sha256:3ed9f3ac…` |
-| `citrineos` | CitrineOS core v2.0.1 (TypeScript) | 1.6J, 2.0.1, 2.1 | CSMS only (CitrineOS has no station) | yes, with SNI only (upstream defect) | yes | `ghcr.io/otfabric/ocpp-interop-citrineos@sha256:4d0c4b5d…` |
+| `mobilityhouse` | The Mobility House ocpp 2.1.0 (Python) | 1.6J, 2.0.1, 2.1 | station, CSMS | yes | yes | `ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:6acab461…` |
+| `chargetime` | ChargeTimeEU Java-OCA-OCPP v2.0 (Java) | 1.6J, 2.0.1 | station, CSMS | yes | 2.0.1, with upstream defects | `ghcr.io/otfabric/ocpp-interop-chargetime@sha256:d1795086…` |
+| `lorenzodonini` | lorenzodonini/ocpp-go v0.19.0 (Go) | 1.6J, 2.0.1 | station, CSMS | yes | no (its CSMS cannot accept it) | `ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:9b6f0781…` |
+| `everest` | EVerest libocpp, everest-core 2026.02.2 (C++) | 1.6J, 2.0.1, 2.1 | station only (libocpp has no CSMS) | yes | no (libocpp cannot offer it) | `ghcr.io/otfabric/ocpp-interop-everest@sha256:2113ee3a…` |
+| `citrineos` | CitrineOS core v2.1.0 (TypeScript) | 1.6J, 2.0.1, 2.1 | CSMS only (CitrineOS has no station) | yes | yes | `ghcr.io/otfabric/ocpp-interop-citrineos@sha256:74840826…` |
 
 `TestReferences` checks that each pinned image reports this release. The
 per-version action matrices against these references are in
@@ -92,14 +92,18 @@ the `-sni` scenarios); compression, with the
 negotiation checked on the wire (`TestStationCompression`,
 `TestReferenceStationCompression`).
 
-### Results (v0.5.3 images, 2026-11-05, linux/arm64; CI runs amd64 and arm64)
+### Results (v0.6.2 images, 2026-11-06, linux/arm64; CI runs amd64 and arm64)
 
-All versions, all five references, both roles: **1458 scenarios pass, 0
-fail**; 163 are skipped, each with its reason. Counted as the leaf tests of
+All versions, all five references, both roles: **1468 scenarios pass, 0
+fail**; 153 are skipped, each with its reason. Counted as the leaf tests of
 `go test -json` (a role or version a reference does not declare is one
-skipped test). By version: 1.6J 393 pass / 40 skipped, 2.0.1 632 / 34, 2.1
-432 / 88, the same as against v0.4.1 (2026-10-19): v0.5.x changed no
-upstream and nothing a scenario sees. (v0.4.1's EVerest adapter declares
+skipped test). By version: 1.6J 399 pass / 34 skipped, 2.0.1 634 / 32, 2.1
+434 / 86. Against v0.5.3 (2026-11-05: 1458 / 163) ten CitrineOS scenarios
+moved from skipped to passed: CitrineOS v2.1.0 gives its TLS server a
+certificate of its own, so profiles 2 and 3 pass by IP address (6), and it
+answers the 1.6 SecurityEventNotification, full and minimal, without and
+with compression (4). EVerest 2026.02.2 and the base images changed nothing
+a scenario sees. (v0.4.1's EVerest adapter declares
 every action libocpp exchanges, which turned 32 EVerest skips of v0.2.0
 into passes.) By reference:
 
@@ -109,15 +113,15 @@ into passes.) By reference:
 | chargetime | 244 | 16 | OCPP 2.1 not supported (12), compression: 1.6 not declared, 2.0.1 known upstream defect (4) |
 | lorenzodonini | 236 | 24 | OCPP 2.1 not supported (12), compression not supported (4), known upstream defects (8) |
 | everest | 216 | 28 | no CSMS (21), compression not supported (3), GetCertificateChainStatus not sent (libocpp has no such message type, 1), SEND (1), ReportDERControl known upstream defect (1), NotifyWebPaymentStarted not declared and answered `NotImplemented` (1) |
-| citrineos | 237 | 87 | below |
+| citrineos | 247 | 77 | below |
 
-**citrineos** (CitrineOS core v2.0.1, the second independent OCPP 2.1
+**citrineos** (CitrineOS core v2.1.0, the second independent OCPP 2.1
 CSMS), with go-ocpp as the station; station-initiated passes (compared with
 the fixture + checked against the schema only) / CSMS-initiated passes:
 
-| OCPP | Station → CSMS | CSMS → station | Basic auth, TLS 2 and 3 (SNI), compression |
+| OCPP | Station → CSMS | CSMS → station | Basic auth, TLS 2 and 3 (by address and SNI), compression |
 |---|---|---|---|
-| 1.6J | 12 (10 + 2) | 18 | pass |
+| 1.6J | 14 (10 + 4) | 18 | pass |
 | 2.0.1 | 27 (20 + 7) | 38 | pass |
 | 2.1 | 29 (20 + 9) | 39 | pass |
 
@@ -126,21 +130,21 @@ message API cannot send (29: the 1.6 reservation and Security Whitepaper
 messages, most actions OCPP 2.1 adds, and CancelReservation,
 GetCompositeSchedule, InstallCertificate, SignedUpdateFirmware for the
 baseline samples); `NotImplemented` for the 1.6 Security Whitepaper
-messages from the station (LogStatusNotification, SecurityEventNotification,
-SignCertificate, SignedFirmwareStatusNotification: 5 scenarios, twice with
-compression); `PropertyConstraintViolation` for NotifyCustomerInformation and
+messages from the station (LogStatusNotification, SignCertificate,
+SignedFirmwareStatusNotification: 3 scenarios, twice with compression;
+v2.1.0 answers SecurityEventNotification); `PropertyConstraintViolation` for NotifyCustomerInformation and
 NotifyDisplayMessages with a `requestId` it did not send (2.0.1, 2.1);
 `FormatViolation` for nine 2.1 station messages (BatterySwap,
 Open/ClosePeriodicEventStream, GetCertificateChainStatus, NotifyDERAlarm,
 NotifyDERStartStop, NotifyPriorityCharging, PullDynamicScheduleUpdate,
 ReportDERControl) whose samples validate against the OCA 2.1 schemas and pass
 go-ocpp's validation, as ocpp-interop's adapter README also records; SEND not
-supported (1); TLS by address (6, the known upstream defect below).
+supported (1).
 
 - **TLS**: profiles 2 and 3 pass with every reference CSMS (go-ocpp as the
   station: The Mobility House 1.6J, 2.0.1, 2.1; ChargeTimeEU and ocpp-go
-  1.6J, 2.0.1, by address and by host name; CitrineOS 1.6J, 2.0.1, 2.1 by
-  host name) and with every reference station (go-ocpp as the CSMS: The
+  1.6J, 2.0.1, and CitrineOS 1.6J, 2.0.1, 2.1, by address and by host
+  name) and with every reference station (go-ocpp as the CSMS: The
   Mobility House, ChargeTimeEU, ocpp-go and EVerest libocpp).
 - **Compression**: passes with The Mobility House in both roles and with
   CitrineOS as the CSMS, 1.6J, 2.0.1 and 2.1. ChargeTimeEU 2.0.1 is a known
@@ -177,8 +181,7 @@ counted in the results above.
 | ocpp-go v0.19.0 | The 2.0.1 station drops `"tbc": false` from NotifyReport (`notifyReport`) | [`provisioning/notify_report.go`](https://github.com/lorenzodonini/ocpp-go/blob/a1eec917af884db0585752f909a61893aa667480/ocpp2.0.1/provisioning/notify_report.go#L98-L104) |
 | ocpp-go v0.19.0 | GetCompositeScheduleResponse does not have the OCA structure (`getCompositeSchedule`) | [`smartcharging/get_composite_schedule.go`](https://github.com/lorenzodonini/ocpp-go/blob/a1eec917af884db0585752f909a61893aa667480/ocpp2.0.1/smartcharging/get_composite_schedule.go#L31-L50) |
 | chargetime v2.0 | Compression, 2.0.1: the CSMS announces `server_no_context_takeover` but keeps its context; the station offers `client_no_context_takeover` but keeps its context (Java-WebSocket 1.6.0) | [`PerMessageDeflateExtension.java`](https://github.com/TooTallNate/Java-WebSocket/blob/da3cf2a777aed862f2f5b5cf060cae7969958667/src/main/java/org/java_websocket/extensions/permessage_deflate/PerMessageDeflateExtension.java#L326-L340) |
-| citrineos v2.0.1 | TLS (profiles 2 and 3) by IP address: the https server has no certificate of its own, only an SNICallback, so a station that sends no server name gets the alert handshake_failure (`tls-profile2-csms`, `tls-profile3-csms`, 1.6J, 2.0.1, 2.1); the same profiles pass with a host name (`-sni`) | [`websocket-network-connection.ts`](https://github.com/citrineos/citrineos-core/blob/1a83638c31eebdb1dd8d6cdb0f5b8a9f142a1372/packages/ocpp/src/transport/network-connection/websocket-network-connection.ts#L937-L956) |
-| everest 2026.02.1 | libocpp's `ocpp::v2::MessageType` has no ReportDERControl (nor NotifyWebPaymentStarted, which the station does not declare): the station cannot send it (`reportDERControl`) | [`ocpp/v2/types.hpp`](https://github.com/EVerest/everest-core/blob/b61bb12b8cb89ee9d0fab037b05c3bb8cea9b13e/lib/everest/ocpp/include/ocpp/v2/types.hpp#L15-L195) |
+| everest 2026.02.2 | libocpp's `ocpp::v2::MessageType` has no ReportDERControl (nor NotifyWebPaymentStarted, which the station does not declare): the station cannot send it (`reportDERControl`) | [`ocpp/v2/types.hpp`](https://github.com/EVerest/everest-core/blob/45dba2c049223d05beb7611c75d59f6639c46ee0/lib/everest/ocpp/include/ocpp/v2/types.hpp#L15-L195) |
 
 A scenario that a reference does not declare in its capabilities, or that
 hits a known issue, is skipped with the reason. It is never counted as
