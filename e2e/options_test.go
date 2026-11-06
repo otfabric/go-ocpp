@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -281,6 +282,80 @@ func TestCompressionNegotiated(t *testing.T) {
 		_ = station(t, url, opts...).Connect(context.Background())
 		if got := <-offered; strings.Contains(got, "permessage-deflate") != compress {
 			t.Errorf("WithCompression %v: offered %q", compress, got)
+		}
+	}
+}
+
+// connInfoRecorder keeps the ConnInfo of OnConnect and OnDisconnect.
+type connInfoRecorder struct {
+	ocpp.NopMetrics
+	connect, disconnect chan ocpp.ConnInfo
+}
+
+func newConnInfoRecorder() *connInfoRecorder {
+	return &connInfoRecorder{connect: make(chan ocpp.ConnInfo, 4), disconnect: make(chan ocpp.ConnInfo, 4)}
+}
+
+func (m *connInfoRecorder) OnConnect(info ocpp.ConnInfo)             { m.connect <- info }
+func (m *connInfoRecorder) OnDisconnect(info ocpp.ConnInfo, _ error) { m.disconnect <- info }
+
+// ConnInfo.Compression and Session.Compression say whether the handshake
+// negotiated permessage-deflate, at both ends, in every callback of the
+// connection: true when the station offers it (the CSMS always accepts),
+// false without WithCompression.
+func TestConnInfoCompression(t *testing.T) {
+	noLeak(t)
+	for _, v := range []ocpp.Version{ocpp.V16, ocpp.V201, ocpp.V21} {
+		for _, compress := range []bool{true, false} {
+			name := fmt.Sprintf("%s/compression=%v", v, compress)
+			t.Run(name, func(t *testing.T) {
+				srvM, cliM := newConnInfoRecorder(), newConnInfoRecorder()
+				sessions := make(chan bool, 1)
+				observed := make(chan bool, 8)
+				observe := func(info ocpp.ConnInfo, _ ocpp.Direction, _ []byte) {
+					select {
+					case observed <- info.Compression:
+					default:
+					}
+				}
+				_, base := csms(t, nil, server.WithHandler(v, ocpp.DispatcherFunc(echo)), server.WithoutAuthentication(),
+					server.WithMetrics(srvM), server.WithFrameObserver(observe),
+					server.WithSessionHandler(func(s *server.Session) { sessions <- s.Compression() }, nil))
+				opts := []client.Option{client.WithInsecureTransport(), client.WithVersions(v), client.WithMetrics(cliM),
+					client.WithFrameObserver(observe)}
+				if compress {
+					opts = append(opts, client.WithCompression())
+				}
+				c := station(t, base+"CI"+strings.ReplaceAll(v.String(), ".", ""), opts...)
+				connect(t, c)
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				var resp json.RawMessage
+				if err := c.Call(ctx, "Heartbeat", json.RawMessage(`{}`), &resp); err != nil {
+					t.Fatalf("Heartbeat: %v", err)
+				}
+				for what, ch := range map[string]chan ocpp.ConnInfo{"server OnConnect": srvM.connect, "client OnConnect": cliM.connect} {
+					if info := <-ch; info.Compression != compress {
+						t.Errorf("%s: Compression %v, want %v", what, info.Compression, compress)
+					}
+				}
+				if got := <-sessions; got != compress {
+					t.Errorf("Session.Compression %v, want %v", got, compress)
+				}
+				for range 4 { // the CALL and its CALLRESULT, seen at both ends
+					if got := <-observed; got != compress {
+						t.Errorf("FrameObserver: Compression %v, want %v", got, compress)
+					}
+				}
+				if err := c.Close(); err != nil {
+					t.Fatal(err)
+				}
+				for what, ch := range map[string]chan ocpp.ConnInfo{"server OnDisconnect": srvM.disconnect, "client OnDisconnect": cliM.disconnect} {
+					if info := <-ch; info.Compression != compress {
+						t.Errorf("%s: Compression %v, want %v", what, info.Compression, compress)
+					}
+				}
+			})
 		}
 	}
 }

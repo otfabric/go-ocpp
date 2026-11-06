@@ -61,6 +61,9 @@ type ConnInfo struct {
 	Version   Version // zero before the handshake completes
 	Role      Role    // the local role
 	SessionID string  // random, unique per connection; for correlating logs
+	// Compression is true when the handshake negotiated permessage-deflate
+	// (RFC 7692); false before the handshake completes.
+	Compression bool
 }
 
 // CallInfo describes one CALL, for interceptors.

@@ -75,6 +75,8 @@ func (e *pipeEnd) Close(code int, reason string) error {
 
 func (e *pipeEnd) Subprotocol() string { return e.sub }
 
+func (e *pipeEnd) Compression() bool { return false }
+
 func (e *pipeEnd) Abort() { e.p.close(StatusGoingAway, "") }
 
 // Ping answers at once while the pipe is open: an in-memory peer is never

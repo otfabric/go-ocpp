@@ -254,3 +254,64 @@ func TestPipePingAbort(t *testing.T) {
 		t.Fatalf("read after abort: %v", err)
 	}
 }
+
+// Compression reports what the handshake negotiated, at both ends: only
+// when the client offers permessage-deflate and the server accepts it.
+func TestCompressionReported(t *testing.T) {
+	for _, tc := range []struct{ offer, accept, want bool }{
+		{true, true, true}, {true, false, false}, {false, true, false}, {false, false, false},
+	} {
+		server := make(chan bool, 1)
+		hs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			c, err := Accept(w, r, AcceptOptions{Subprotocol: "ocpp2.0.1", Compression: tc.accept})
+			if err != nil {
+				server <- !tc.want // fail the comparison below
+				return
+			}
+			server <- c.Compression()
+			_, _ = c.ReadMessage(context.Background())
+		}))
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		c, _, err := Dial(ctx, "ws"+strings.TrimPrefix(hs.URL, "http"), DialOptions{Subprotocols: []string{"ocpp2.0.1"}, Compression: tc.offer})
+		if err != nil {
+			t.Fatalf("offer %v, accept %v: %v", tc.offer, tc.accept, err)
+		}
+		if got := c.Compression(); got != tc.want {
+			t.Errorf("offer %v, accept %v: client Compression %v, want %v", tc.offer, tc.accept, got, tc.want)
+		}
+		if got := <-server; got != tc.want {
+			t.Errorf("offer %v, accept %v: server Compression %v, want %v", tc.offer, tc.accept, got, tc.want)
+		}
+		_ = c.Close(StatusNormal, "")
+		cancel()
+		hs.Close()
+	}
+	a, _ := Pipe("ocpp2.1")
+	if a.Compression() {
+		t.Error("a pipe reports compression")
+	}
+}
+
+func TestDeflate(t *testing.T) {
+	for _, tc := range []struct {
+		values []string
+		want   bool
+	}{
+		{nil, false},
+		{[]string{""}, false},
+		{[]string{"permessage-deflate"}, true},
+		{[]string{"permessage-deflate; client_no_context_takeover; server_no_context_takeover"}, true},
+		{[]string{"x-webkit-deflate-frame, Permessage-Deflate ;server_no_context_takeover"}, true},
+		{[]string{"x-webkit-deflate-frame", "permessage-deflate"}, true},
+		{[]string{"permessage-deflate-x"}, false},
+		{[]string{"x; permessage-deflate"}, false},
+	} {
+		h := http.Header{}
+		for _, v := range tc.values {
+			h.Add("Sec-WebSocket-Extensions", v)
+		}
+		if got := deflate(h); got != tc.want {
+			t.Errorf("%q: %v, want %v", tc.values, got, tc.want)
+		}
+	}
+}

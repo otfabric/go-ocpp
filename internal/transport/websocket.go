@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/coder/websocket"
@@ -49,7 +50,7 @@ func Dial(ctx context.Context, url string, o DialOptions) (Conn, *http.Response,
 	if o.ReadLimit > 0 {
 		c.SetReadLimit(o.ReadLimit)
 	}
-	return &wsConn{c: c}, resp, nil
+	return &wsConn{c: c, compression: o.Compression && deflate(resp.Header)}, resp, nil
 }
 
 // AcceptOptions configure Accept.
@@ -96,10 +97,28 @@ func Accept(w http.ResponseWriter, r *http.Request, o AcceptOptions) (Conn, erro
 	if o.ReadLimit > 0 {
 		c.SetReadLimit(o.ReadLimit)
 	}
-	return &wsConn{c: c}, nil
+	// coder/websocket sets the extension it accepts on w's header.
+	return &wsConn{c: c, compression: o.Compression && deflate(w.Header())}, nil
 }
 
-type wsConn struct{ c *websocket.Conn }
+// deflate reports whether the handshake's Sec-WebSocket-Extensions
+// header (the server's answer) holds permessage-deflate.
+func deflate(h http.Header) bool {
+	for _, v := range h.Values("Sec-WebSocket-Extensions") {
+		for ext := range strings.SplitSeq(v, ",") {
+			name, _, _ := strings.Cut(ext, ";")
+			if strings.EqualFold(strings.TrimSpace(name), "permessage-deflate") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+type wsConn struct {
+	c           *websocket.Conn
+	compression bool
+}
 
 func (w *wsConn) ReadMessage(ctx context.Context) ([]byte, error) {
 	typ, p, err := w.c.Read(ctx)
@@ -125,6 +144,8 @@ func (w *wsConn) Close(code int, reason string) error {
 }
 
 func (w *wsConn) Subprotocol() string { return w.c.Subprotocol() }
+
+func (w *wsConn) Compression() bool { return w.compression }
 
 func (w *wsConn) Abort() { _ = w.c.CloseNow() }
 

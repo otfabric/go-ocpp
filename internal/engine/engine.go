@@ -202,6 +202,9 @@ func (e *Endpoint) Start() {
 	})
 }
 
+// Info returns the connection's ConnInfo (Config.Info).
+func (e *Endpoint) Info() ocpp.ConnInfo { return e.cfg.Info }
+
 // Done is closed when the endpoint has shut down and every goroutine it
 // started, including a running handler, has returned.
 func (e *Endpoint) Done() <-chan struct{} { return e.done }

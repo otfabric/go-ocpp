@@ -38,6 +38,9 @@ type Conn interface {
 	Close(code int, reason string) error
 	// Subprotocol returns the negotiated subprotocol.
 	Subprotocol() string
+	// Compression reports whether the handshake negotiated
+	// permessage-deflate (RFC 7692).
+	Compression() bool
 	// Abort closes the connection at once, without the closing handshake:
 	// for a peer that no longer responds. It may be called concurrently
 	// with everything else and more than once.
