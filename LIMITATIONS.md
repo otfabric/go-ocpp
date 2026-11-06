@@ -75,11 +75,10 @@ application can bound it itself.
   Interoperability does not establish conformance: implementations can share a
   misreading.
 - Not covered by any independent implementation:
-  - SEND and CALLRESULTERROR: no released reference implements them. This
-    includes the 2.1 action NotifyPeriodicEventStream, which is a SEND.
+  - SEND and CALLRESULTERROR are tested against one independent
+    implementation only (cB-Sigma/ocpp; hupe1980/ocpp-kit has them too and is
+    not a reference yet).
   - Compression with go-ocpp as the CSMS against a second independent station.
-  - 2.1 BatterySwap is exchanged in one direction only: no reference station
-    can send it.
   - The station-initiated 2.1 messages that CitrineOS refuses have no second
     CSMS, and CitrineOS's answers to the others are checked only against the
     schema.

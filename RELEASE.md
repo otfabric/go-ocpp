@@ -5,6 +5,47 @@ tag, GitHub release); the section of the version below is the release's
 notes. Before v1.0.0 a minor release may change the API: every change is
 listed here, and COMPATIBILITY.md has the stability rules.
 
+## v0.3.2
+
+**Date:** 2026-11-06
+**Previous release:** v0.3.1
+
+## Summary
+
+OCPP 2.1 SEND and CALLRESULTERROR are tested against an independent
+implementation for the first time: interop is qualified against
+otfabric/ocpp-interop v0.7.0 (contract 0.6), which adds cB-Sigma/ocpp
+v0.2.0 as a reference. No library code changes.
+
+## Changes
+
+### Changed
+
+- Interop pinned to the ocpp-interop v0.7.0 reference images by digest,
+  `cbsigma` among them (`interop/harness.go`, the Makefile,
+  `.github/workflows/interop.yml`).
+- SEND: go-ocpp's SEND to a reference that declares `send` is checked
+  against the reference's `send-received` event, and a reference's SEND
+  (contract 0.6) against what go-ocpp received; the test dispatcher takes
+  SENDs (`ocpp.SendDispatcher`).
+- New `TestStationCallResultError` and `TestReferenceStationCallResultError`:
+  CALLRESULTERROR in both directions, go-ocpp as station and as CSMS.
+- INTEROPERABILITY.md, FEATURES.md, LIMITATIONS.md, README and
+  `docs/compatibility` describe the new run. They no longer say that no
+  independent implementation has SEND or CALLRESULTERROR, or a Local
+  Controller: cB-Sigma/ocpp has the first two, hupe1980/ocpp-kit v0.3.0 all
+  three (not yet a reference).
+
+## Verification
+
+- `make test-interop` against the v0.7.0 images (linux/arm64): 1918
+  scenarios pass, 0 fail, 179 skipped with their reasons (v0.6.2: 1468 /
+  153). Against cB-Sigma: 450 pass, 6 skipped (compression). SEND
+  (`notifyPeriodicEventStream`) and CALLRESULTERROR pass in both directions;
+  all 91 OCPP 2.1 actions are exchanged with an independent stack.
+
+---
+
 ## v0.3.1
 
 **Date:** 2026-11-06

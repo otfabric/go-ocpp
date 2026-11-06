@@ -53,13 +53,15 @@ were looked at and left out: they are not libraries of this kind.
 
 ## Where go-ocpp leads
 
-No other implementation combines: validation generated from the OCA
+None of the implementations compared above combines: validation generated from the OCA
 schemas, always on in both directions and cross-checked against an
 independent validator; 1.6J, 2.0.1 and 2.1 including SEND and
 CALLRESULTERROR; fail-closed authentication before the upgrade; bounded
 queues and limits everywhere; interceptors and a frame observer; slog and
 dependency-free metrics hooks; one production dependency; interop tests
-against five independent stacks; chaos, soak and fuzz testing.
+against six independent stacks; chaos, soak and fuzz testing. (cB-Sigma/ocpp
+and hupe1980/ocpp-kit, found later, are not in the comparison; cB-Sigma is
+now an interop reference.)
 
 ## Gaps
 
@@ -81,7 +83,7 @@ Library scope: belongs in go-ocpp.
 | 8 | Custom handshake headers, Origin check | P1 | **Done**: `client.WithHeader`; the server refuses foreign browser origins by default, `server.WithOriginPatterns` allows some |
 | 9 | Client close that waits for pending calls | P2 | **Done**: `Client.Shutdown(ctx)` |
 | 10 | Per-call response timeout | P2 | **By design**: the caller's context deadline bounds each call; the response timeout bounds the slot, which T6 makes a per-connection matter |
-| 11 | Local Controller role (2.x) | P2 | **Planned (P2)**: a package composing client and server with raw dispatch; no reference stack implements it to test against |
+| 11 | Local Controller role (2.x) | P2 | **Planned (P2)**: a package composing client and server with raw dispatch. None of the pinned references implements the role (they have only its firmware-publishing messages); hupe1980/ocpp-kit v0.3.0 (Rust) has a Local Controller relay (Part 4 chapter 6), not yet a reference of ocpp-interop |
 | 12 | Case-insensitive station identities | P1 | **By design**: identities are matched exactly. identifierString is case-insensitive as a data type, but the identity is also a URL path segment and the Basic authentication user name, both case-sensitive; matching exactly never merges two stations. Recorded in ARCHITECTURE.md |
 
 Application scope: out of scope per ARCHITECTURE.md; at most an optional
@@ -122,26 +124,28 @@ Found by writing the use-case examples against the public API.
 
 Against otfabric/ocpp-interop v0.4.1 (INTEROPERABILITY.md):
 
-- **Done**: every action of 1.6J (39/39) and 2.0.1 (64/64), and 90 of 91 of
-  2.1, is exchanged with an independent stack
+- **Done**: every action of 1.6J (39/39), 2.0.1 (64/64) and 2.1 (91/91) is
+  exchanged with an independent stack
   ([docs/compatibility](docs/compatibility)); TLS (security profiles 2 and
   3) and compression are tested against the references in both roles; OCPP
-  2.1 is tested against three independent implementations: two CSMSs (The
-  Mobility House, CitrineOS core v2.1.0) with go-ocpp as the station, and
-  two stations (The Mobility House, EVerest libocpp) with go-ocpp as the
-  CSMS.
+  2.1 is tested against four independent implementations: three CSMSs (The
+  Mobility House, CitrineOS core v2.1.0, cB-Sigma/ocpp v0.2.0) with go-ocpp
+  as the station, and three stations (The Mobility House, EVerest libocpp,
+  cB-Sigma) with go-ocpp as the CSMS; SEND and CALLRESULTERROR in both
+  directions against cB-Sigma.
 - CitrineOS answers by itself, not from the fixture: go-ocpp's CALLs to it
   outside the actions it declares are checked against the OCA schema only;
   it refuses nine 2.1 station messages with FormatViolation and three 1.6
   Security Whitepaper messages with NotImplemented (skipped, not passed).
   v2.1.0 serves TLS also to a station that sends no SNI.
-- **Open, blocked upstream**: SEND and CALLRESULTERROR against an
-  independent implementation (no released reference implements them; the
-  2.1 action NotifyPeriodicEventStream is a SEND); compression with go-ocpp
-  as the CSMS against a second station (ChargeTimeEU's is defective in
-  2.0.1, ocpp-go and EVerest cannot, CitrineOS has no station).
+- **Open**: SEND and CALLRESULTERROR against a second independent
+  implementation (hupe1980/ocpp-kit v0.3.0 has both and is a candidate
+  reference); compression with go-ocpp as the CSMS against a second
+  station (ChargeTimeEU's is defective in 2.0.1; ocpp-go, EVerest and
+  cB-Sigma cannot offer it; CitrineOS has no station).
 - Mobility House 2.1.0 does not answer 2.1 CALLs it has no handler for
-  (fixed on master, not released); BatterySwap cannot be sent by it.
+  (fixed on master, not released); BatterySwap cannot be sent by it
+  (cB-Sigma's station sends it).
 
 ## Sources
 

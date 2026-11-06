@@ -17,9 +17,10 @@ connected.
 > extensions), OCPP 2.0.1 and OCPP 2.1 are complete at the message level:
 > every action is typed, validated against the OCA schemas, and dispatchable
 > in both roles; 2.1 adds the SEND and CALLRESULTERROR message types. 1.6J
-> and 2.0.1 pass against five independent implementations, 2.1 against three
-> (two CSMSs, The Mobility House and CitrineOS, and the EVerest libocpp
-> station), including TLS and compression (ocpp-interop v0.6.2). See
+> and 2.0.1 pass against six independent implementations, 2.1 against four
+> (three CSMSs, The Mobility House, CitrineOS and cB-Sigma, and the EVerest
+> libocpp and cB-Sigma stations), including TLS, compression and the 2.1 SEND
+> and CALLRESULTERROR (ocpp-interop v0.7.0). See
 > [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
 
 Docs: [Architecture](ARCHITECTURE.md) · [Requirements](REQUIREMENTS.md) ·
@@ -45,7 +46,7 @@ Docs: [Architecture](ARCHITECTURE.md) · [Requirements](REQUIREMENTS.md) ·
 |---|---|---|
 | OCPP 1.6J, with the Security Whitepaper (Edition 4) extensions | P0 | 39 actions, both roles (`ocpp16`) |
 | OCPP 2.0.1 Edition 4, errata 2026-09 | P0 | 64 actions, both roles (`ocpp201`) |
-| OCPP 2.1 Edition 2, errata 2026-09 | P1 | 91 actions, both roles, SEND and CALLRESULTERROR (`ocpp21`); interop tested against three independent implementations |
+| OCPP 2.1 Edition 2, errata 2026-09 | P1 | 91 actions, both roles, SEND and CALLRESULTERROR (`ocpp21`); interop tested against four independent implementations, SEND and CALLRESULTERROR against cB-Sigma |
 | OCPP 1.6 SOAP, OCPP 1.5 and older | — | out of scope |
 
 ## Install
@@ -110,10 +111,11 @@ belong to the application's handlers.
 go-ocpp is tested in both roles against The Mobility House ocpp 2.1.0
 (1.6J, 2.0.1, 2.1), ChargeTimeEU Java-OCA-OCPP v2.0 and lorenzodonini/ocpp-go
 v0.19.0 (1.6J, 2.0.1), as a CSMS against EVerest libocpp (1.6J, 2.0.1,
-2.1), and as a station against CitrineOS core v2.1.0 (1.6J, 2.0.1, 2.1), as
-packaged by
-[otfabric/ocpp-interop v0.6.2](https://github.com/otfabric/ocpp-interop/releases/tag/v0.6.2):
-every action, security profiles 1 to 3 and compression. 1468 scenarios
+2.1), as a station against CitrineOS core v2.1.0 (1.6J, 2.0.1, 2.1), and in
+both roles against cB-Sigma/ocpp v0.2.0 (1.6J, 2.0.1, 2.1, with SEND and
+CALLRESULTERROR), as packaged by
+[otfabric/ocpp-interop v0.7.0](https://github.com/otfabric/ocpp-interop/releases/tag/v0.7.0):
+every action, security profiles 1 to 3 and compression. 1918 scenarios
 pass and none fails; the skipped ones are documented upstream defects and
 capabilities a reference does not have, and every payload the references
 send passes go-ocpp's schema validation. See

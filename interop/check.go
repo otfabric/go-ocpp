@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/otfabric/go-ocpp"
 	"github.com/otfabric/go-ocpp/ocppj"
@@ -161,4 +162,17 @@ func checkReceived(t *testing.T, d *dispatcher, s sample) {
 	if errs := d.invalid[s.Action]; len(errs) > 0 {
 		t.Fatalf("%s as the reference sent it fails go-ocpp's validation: %v", s.Action, errs[len(errs)-1])
 	}
+}
+
+// checkRefSend checks a SEND the reference sent (OCPP 2.1, contract 0.6):
+// its result has no response, and go-ocpp received the payload, never
+// answering it.
+func checkRefSend(t *testing.T, d *dispatcher, s sample, r *result) {
+	t.Helper()
+	if !r.OK || r.exit != 0 || r.CallError != nil || (len(r.Response) > 0 && string(r.Response) != "null") {
+		t.Fatalf("the reference's SEND %s: exit %d, ok %v, response %s, callError %v, error %v",
+			s.Action, r.exit, r.OK, r.Response, r.CallError, r.Error)
+	}
+	eventually(t, 10*time.Second, "go-ocpp receiving the SEND "+s.Action, func() bool { return len(d.received(s.Action)) > 0 })
+	checkReceived(t, d, s)
 }

@@ -24,21 +24,23 @@ import (
 )
 
 // The reference images this version of go-ocpp is qualified against:
-// otfabric/ocpp-interop v0.6.2 (The Mobility House ocpp 2.1.0, ChargeTimeEU
+// otfabric/ocpp-interop v0.7.0 (The Mobility House ocpp 2.1.0, ChargeTimeEU
 // Java-OCA-OCPP v2.0, lorenzodonini/ocpp-go v0.19.0: OCPP 1.6J and 2.0.1 in
 // all three, 2.1 in The Mobility House; EVerest libocpp of everest-core
 // 2026.02.2, a station for 1.6J, 2.0.1 and 2.1; CitrineOS core v2.1.0, a
-// CSMS for 1.6J, 2.0.1 and 2.1), pinned by multi-arch index digest so that a
+// CSMS for 1.6J, 2.0.1 and 2.1; cB-Sigma/ocpp v0.2.0, both roles in the
+// three versions, with SEND and CALLRESULTERROR), pinned by multi-arch index digest so that a
 // run is reproducible. Moving to another release of ocpp-interop
 // means changing these constants; the Makefile and
 // .github/workflows/interop.yml follow.
 const (
-	interopRelease            = "v0.6.2"
-	defaultMobilityHouseImage = "ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:6acab461ad5712d1c6b1f8756d07546aaa76e2c675d16519b94f22e0434a0109"
-	defaultChargeTimeImage    = "ghcr.io/otfabric/ocpp-interop-chargetime@sha256:d1795086026c1f0eae8d202352a6e24833b001a151e3ae535a085ef713d397da"
-	defaultLorenzodoniniImage = "ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:9b6f07817a21df483310eb753ad2639a80153c874f997ce1c685c4c0430f57f6"
-	defaultEverestImage       = "ghcr.io/otfabric/ocpp-interop-everest@sha256:2113ee3aaea24d43064c3734ff0669fe345de17ebfd537f4e26dcd147294fc52"
-	defaultCitrineOSImage     = "ghcr.io/otfabric/ocpp-interop-citrineos@sha256:7484082686b956e3ddff86a98171d20208887773618e6061fd22f6efc5afc0d2"
+	interopRelease            = "v0.7.0"
+	defaultMobilityHouseImage = "ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:457304683072646b04345e7d21e262cbeed3bccf17b73d5737e460189a8a802a"
+	defaultChargeTimeImage    = "ghcr.io/otfabric/ocpp-interop-chargetime@sha256:67ec87d3b4915055b5777d66cd8fb9e967be1ea6918cf77da5ba3b296d92d6ba"
+	defaultLorenzodoniniImage = "ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:f377b291ac6a83788afd8593d50dd575a99bc98392a6833ca63e21e7c59f734d"
+	defaultEverestImage       = "ghcr.io/otfabric/ocpp-interop-everest@sha256:63c2e8f859a6e18146f093b81a3a933f924206d7b184d132d299b46be9c6dd1a"
+	defaultCitrineOSImage     = "ghcr.io/otfabric/ocpp-interop-citrineos@sha256:b3cb5e7b9b4545be07995a648071b3b0ae9c716df36291f19fe2b745d71f1434"
+	defaultCBSigmaImage       = "ghcr.io/otfabric/ocpp-interop-cbsigma@sha256:9e6cc8101fb4e367d1cbf50d7f0cf9026c4d26ff39fa5e0933c8dc293b5b3a04"
 )
 
 // adapter is one reference implementation: a container image that follows
@@ -80,6 +82,7 @@ func adapters(t testing.TB) []adapter {
 		image("lorenzodonini", "OCPP_INTEROP_LORENZODONINI_IMAGE", defaultLorenzodoniniImage),
 		image("everest", "OCPP_INTEROP_EVEREST_IMAGE", defaultEverestImage),
 		image("citrineos", "OCPP_INTEROP_CITRINEOS_IMAGE", defaultCitrineOSImage),
+		image("cbsigma", "OCPP_INTEROP_CBSIGMA_IMAGE", defaultCBSigmaImage),
 		image("otfabric", "OCPP_INTEROP_OTFABRIC_IMAGE", ""),
 	} {
 		if a.image != "" {
@@ -125,8 +128,8 @@ type capabilities struct {
 		Features struct {
 			SecurityProfiles []int `json:"securityProfiles"`
 			Compression      bool  `json:"compression"`
-			Send             bool  `json:"send"`            // OCPP 2.1 SEND (contract 0.4)
-			CallResultError  bool  `json:"callResultError"` // OCPP 2.1 CALLRESULTERROR (contract 0.4)
+			Send             bool  `json:"send"`            // OCPP 2.1 SEND (contract 0.6)
+			CallResultError  bool  `json:"callResultError"` // OCPP 2.1 CALLRESULTERROR (contract 0.6)
 			// FixtureAnswers is false for an upstream that answers CALLs by
 			// itself, not from the fixture (contract 0.5: citrineos); its
 			// handles then lists only the actions whose answer is the
@@ -382,6 +385,12 @@ type result struct {
 		Code        string `json:"code"`
 		Description string `json:"description"`
 	} `json:"callError"`
+	// CallResultError is the CALLRESULTERROR the reference sent for an
+	// invalid CALLRESULT (OCPP 2.1, contract 0.6).
+	CallResultError *struct {
+		Code        string `json:"code"`
+		Description string `json:"description"`
+	} `json:"callResultError"`
 	Error *struct {
 		Code    string `json:"code"`
 		Message string `json:"message"`
