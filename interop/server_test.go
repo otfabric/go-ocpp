@@ -78,11 +78,14 @@ func TestReferenceStationAgainstCSMS(t *testing.T) {
 						s := f.Samples[name]
 						t.Run(name, func(t *testing.T) {
 							a.skipKnownIssue(t, v, name)
-							if isSend(v, s.Action) {
-								t.Skip("the container contract (0.4) has no operation to make a reference send a SEND")
-							}
 							if !slices.Contains(refCaps.Sends, s.Action) {
 								t.Skipf("%s does not declare sending %s", a.name, s.Action)
+							}
+							if isSend(v, s.Action) {
+								// Contract 0.6: the reference sends it as a SEND.
+								r := ref.call(t, "", s.Action, s.Payload)
+								checkRefSend(t, d, s, r)
+								return
 							}
 							r := ref.call(t, "", s.Action, s.Payload)
 							checkRefCall(t, f, s, r)
@@ -102,6 +105,9 @@ func TestReferenceStationAgainstCSMS(t *testing.T) {
 								}
 								if err := sess.Send(ctx, s.Action, s.Payload); err != nil {
 									t.Fatalf("SEND %s: %v", s.Action, err)
+								}
+								if !ref.waitEvent("send-received", 1, 10*time.Second) {
+									t.Fatalf("%s reported no send-received event for the SEND", a.name)
 								}
 								return
 							}

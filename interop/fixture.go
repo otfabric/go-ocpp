@@ -227,6 +227,18 @@ func (d *dispatcher) Dispatch(ctx context.Context, p ocpp.Peer, action string, p
 	return b, err
 }
 
+// DispatchSend takes a SEND (OCPP 2.1, ocpp.SendDispatcher): it is recorded
+// like a CALL and never answered.
+func (d *dispatcher) DispatchSend(_ context.Context, _ ocpp.Peer, action string, payload json.RawMessage) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.got[action] = append(d.got[action], append(json.RawMessage(nil), payload...))
+	if err := validateRequest(d.version, action, payload); err != nil {
+		d.invalid[action] = append(d.invalid[action], err)
+	}
+	return nil
+}
+
 // validateRequest and validateResponse are go-ocpp's typed validation of a
 // version: what a reference sends must pass it.
 func validateRequest(v ocpp.Version, action string, payload json.RawMessage) error {

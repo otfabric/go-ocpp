@@ -28,21 +28,25 @@ on:
       citrineos_image:
         description: "CitrineOS reference image (default: the pinned release)"
         required: false
+      cbsigma_image:
+        description: "cB-Sigma/ocpp reference image (default: the pinned release)"
+        required: false
 
 permissions:
   contents: read
   packages: read
 
 env:
-  # otfabric/ocpp-interop v0.6.2: The Mobility House ocpp 2.1.0,
+  # otfabric/ocpp-interop v0.7.0: The Mobility House ocpp 2.1.0,
   # ChargeTimeEU Java-OCA-OCPP v2.0, lorenzodonini/ocpp-go v0.19.0, EVerest
-  # libocpp of everest-core 2026.02.2, CitrineOS core v2.1.0.
+  # libocpp of everest-core 2026.02.2, CitrineOS core v2.1.0, cB-Sigma/ocpp v0.2.0.
   # Keep in step with the Makefile and interop/harness.go.
-  OCPP_INTEROP_MOBILITYHOUSE_IMAGE: ${{ inputs.mobilityhouse_image || 'ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:6acab461ad5712d1c6b1f8756d07546aaa76e2c675d16519b94f22e0434a0109' }}
-  OCPP_INTEROP_CHARGETIME_IMAGE: ${{ inputs.chargetime_image || 'ghcr.io/otfabric/ocpp-interop-chargetime@sha256:d1795086026c1f0eae8d202352a6e24833b001a151e3ae535a085ef713d397da' }}
-  OCPP_INTEROP_LORENZODONINI_IMAGE: ${{ inputs.lorenzodonini_image || 'ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:9b6f07817a21df483310eb753ad2639a80153c874f997ce1c685c4c0430f57f6' }}
-  OCPP_INTEROP_EVEREST_IMAGE: ${{ inputs.everest_image || 'ghcr.io/otfabric/ocpp-interop-everest@sha256:2113ee3aaea24d43064c3734ff0669fe345de17ebfd537f4e26dcd147294fc52' }}
-  OCPP_INTEROP_CITRINEOS_IMAGE: ${{ inputs.citrineos_image || 'ghcr.io/otfabric/ocpp-interop-citrineos@sha256:7484082686b956e3ddff86a98171d20208887773618e6061fd22f6efc5afc0d2' }}
+  OCPP_INTEROP_MOBILITYHOUSE_IMAGE: ${{ inputs.mobilityhouse_image || 'ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:457304683072646b04345e7d21e262cbeed3bccf17b73d5737e460189a8a802a' }}
+  OCPP_INTEROP_CHARGETIME_IMAGE: ${{ inputs.chargetime_image || 'ghcr.io/otfabric/ocpp-interop-chargetime@sha256:67ec87d3b4915055b5777d66cd8fb9e967be1ea6918cf77da5ba3b296d92d6ba' }}
+  OCPP_INTEROP_LORENZODONINI_IMAGE: ${{ inputs.lorenzodonini_image || 'ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:f377b291ac6a83788afd8593d50dd575a99bc98392a6833ca63e21e7c59f734d' }}
+  OCPP_INTEROP_EVEREST_IMAGE: ${{ inputs.everest_image || 'ghcr.io/otfabric/ocpp-interop-everest@sha256:63c2e8f859a6e18146f093b81a3a933f924206d7b184d132d299b46be9c6dd1a' }}
+  OCPP_INTEROP_CITRINEOS_IMAGE: ${{ inputs.citrineos_image || 'ghcr.io/otfabric/ocpp-interop-citrineos@sha256:b3cb5e7b9b4545be07995a648071b3b0ae9c716df36291f19fe2b745d71f1434' }}
+  OCPP_INTEROP_CBSIGMA_IMAGE: ${{ inputs.cbsigma_image || 'ghcr.io/otfabric/ocpp-interop-cbsigma@sha256:9e6cc8101fb4e367d1cbf50d7f0cf9026c4d26ff39fa5e0933c8dc293b5b3a04' }}
 
 jobs:
   interop:
@@ -68,7 +72,7 @@ jobs:
 
       - name: Pull reference images
         run: |
-          images=("${OCPP_INTEROP_MOBILITYHOUSE_IMAGE}" "${OCPP_INTEROP_CHARGETIME_IMAGE}" "${OCPP_INTEROP_LORENZODONINI_IMAGE}" "${OCPP_INTEROP_EVEREST_IMAGE}" "${OCPP_INTEROP_CITRINEOS_IMAGE}")
+          images=("${OCPP_INTEROP_MOBILITYHOUSE_IMAGE}" "${OCPP_INTEROP_CHARGETIME_IMAGE}" "${OCPP_INTEROP_LORENZODONINI_IMAGE}" "${OCPP_INTEROP_EVEREST_IMAGE}" "${OCPP_INTEROP_CITRINEOS_IMAGE}" "${OCPP_INTEROP_CBSIGMA_IMAGE}")
           # GHCR is occasionally slow or rate limiting: try each pull a few times.
           for image in "${images[@]}"; do
             for attempt in 1 2 3 4 5; do
