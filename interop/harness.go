@@ -24,21 +24,21 @@ import (
 )
 
 // The reference images this version of go-ocpp is qualified against:
-// otfabric/ocpp-interop v0.5.3 (The Mobility House ocpp 2.1.0, ChargeTimeEU
+// otfabric/ocpp-interop v0.6.2 (The Mobility House ocpp 2.1.0, ChargeTimeEU
 // Java-OCA-OCPP v2.0, lorenzodonini/ocpp-go v0.19.0: OCPP 1.6J and 2.0.1 in
 // all three, 2.1 in The Mobility House; EVerest libocpp of everest-core
-// 2026.02.1, a station for 1.6J, 2.0.1 and 2.1; CitrineOS core v2.0.1, a
+// 2026.02.2, a station for 1.6J, 2.0.1 and 2.1; CitrineOS core v2.1.0, a
 // CSMS for 1.6J, 2.0.1 and 2.1), pinned by multi-arch index digest so that a
 // run is reproducible. Moving to another release of ocpp-interop
 // means changing these constants; the Makefile and
 // .github/workflows/interop.yml follow.
 const (
-	interopRelease            = "v0.5.3"
-	defaultMobilityHouseImage = "ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:14d8da52ba062873fdc55834585dcd97b2405557004a3c438f04ee60e1bff1b5"
-	defaultChargeTimeImage    = "ghcr.io/otfabric/ocpp-interop-chargetime@sha256:45c8706c8556d66f356289b72c7f6462a8c2eeb4ca280f7e990fd877f195f868"
-	defaultLorenzodoniniImage = "ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:4409b30613fb081e0b6378d6bb87faa78a4986c82f0006618e33ace9730c4ae6"
-	defaultEverestImage       = "ghcr.io/otfabric/ocpp-interop-everest@sha256:3ed9f3acf531dc1681c6b372a0b23cc69c8806568729f92973eb80820becab72"
-	defaultCitrineOSImage     = "ghcr.io/otfabric/ocpp-interop-citrineos@sha256:4d0c4b5d4192ed5d85260a30000fdea2e77a3b33e97db184c9473a4971d2c93f"
+	interopRelease            = "v0.6.2"
+	defaultMobilityHouseImage = "ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:6acab461ad5712d1c6b1f8756d07546aaa76e2c675d16519b94f22e0434a0109"
+	defaultChargeTimeImage    = "ghcr.io/otfabric/ocpp-interop-chargetime@sha256:d1795086026c1f0eae8d202352a6e24833b001a151e3ae535a085ef713d397da"
+	defaultLorenzodoniniImage = "ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:9b6f07817a21df483310eb753ad2639a80153c874f997ce1c685c4c0430f57f6"
+	defaultEverestImage       = "ghcr.io/otfabric/ocpp-interop-everest@sha256:2113ee3aaea24d43064c3734ff0669fe345de17ebfd537f4e26dcd147294fc52"
+	defaultCitrineOSImage     = "ghcr.io/otfabric/ocpp-interop-citrineos@sha256:7484082686b956e3ddff86a98171d20208887773618e6061fd22f6efc5afc0d2"
 )
 
 // adapter is one reference implementation: a container image that follows
@@ -238,10 +238,10 @@ var knownIssues = map[string]string{
 	// on master in ae716a1, #744, not released). The fixtures answer every
 	// action; only an unknown action is left unanswered.
 	"mobilityhouse/2.1/unknown-action": mobilityhouse21NoAnswer,
-	// EVerest libocpp (everest-core 2026.02.1): ocpp::v2::MessageType has no
+	// EVerest libocpp (everest-core 2026.02.2): ocpp::v2::MessageType has no
 	// ReportDERControl, so libocpp's message queue cannot send it, although
 	// the adapter declares it (libocpp has its request and response types).
-	"everest/2.1/reportDERControl": "https://github.com/EVerest/everest-core/blob/b61bb12b8cb89ee9d0fab037b05c3bb8cea9b13e/lib/everest/ocpp/include/ocpp/v2/types.hpp#L15-L195",
+	"everest/2.1/reportDERControl": "https://github.com/EVerest/everest-core/blob/45dba2c049223d05beb7611c75d59f6639c46ee0/lib/everest/ocpp/include/ocpp/v2/types.hpp#L15-L195",
 	// ocpp-go v0.19.0: GetCompositeScheduleResponse does not have the OCA
 	// structure: a top-level evseId the schema does not allow, no
 	// statusInfo, and a schedule of {startDateTime, chargingSchedule}
@@ -256,21 +256,6 @@ var knownIssues = map[string]string{
 	"chargetime/2.0.1/compression-csms": "https://github.com/TooTallNate/Java-WebSocket/blob/da3cf2a777aed862f2f5b5cf060cae7969958667/src/main/java/org/java_websocket/extensions/permessage_deflate/PerMessageDeflateExtension.java#L335-L340",
 	// The station offers client_no_context_takeover but keeps its context.
 	"chargetime/2.0.1/compression-station": "https://github.com/TooTallNate/Java-WebSocket/blob/da3cf2a777aed862f2f5b5cf060cae7969958667/src/main/java/org/java_websocket/extensions/permessage_deflate/PerMessageDeflateExtension.java#L326-L333",
-}
-
-// CitrineOS core v2.0.1: the https server of security profiles 2 and 3 has
-// no certificate of its own, only an SNICallback, which Node.js calls only
-// for a ClientHello with a server name; a station that connects by IP
-// address sends none (RFC 6066 section 3) and gets the TLS alert
-// handshake_failure. The same profiles pass with the host name (-sni).
-const citrineosNoSNI = "https://github.com/citrineos/citrineos-core/blob/1a83638c31eebdb1dd8d6cdb0f5b8a9f142a1372/packages/ocpp/src/transport/network-connection/websocket-network-connection.ts#L937-L956"
-
-func init() {
-	for _, v := range []string{"1.6", "2.0.1", "2.1"} {
-		for _, p := range []string{"2", "3"} {
-			knownIssues["citrineos/"+v+"/tls-profile"+p+"-csms"] = citrineosNoSNI
-		}
-	}
 }
 
 const mobilityhouse21NoAnswer = "https://github.com/mobilityhouse/ocpp/blob/91f4f89140a2198dc5a300cfea88d947ac91ae28/ocpp/charge_point.py#L161-L193"

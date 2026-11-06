@@ -127,14 +127,14 @@ Against otfabric/ocpp-interop v0.4.1 (INTEROPERABILITY.md):
   ([docs/compatibility](docs/compatibility)); TLS (security profiles 2 and
   3) and compression are tested against the references in both roles; OCPP
   2.1 is tested against three independent implementations: two CSMSs (The
-  Mobility House, CitrineOS core v2.0.1) with go-ocpp as the station, and
+  Mobility House, CitrineOS core v2.1.0) with go-ocpp as the station, and
   two stations (The Mobility House, EVerest libocpp) with go-ocpp as the
   CSMS.
 - CitrineOS answers by itself, not from the fixture: go-ocpp's CALLs to it
   outside the actions it declares are checked against the OCA schema only;
-  it refuses nine 2.1 station messages with FormatViolation and the 1.6
-  Security Whitepaper messages with NotImplemented (skipped, not passed),
-  and serves TLS only to a station that sends SNI.
+  it refuses nine 2.1 station messages with FormatViolation and three 1.6
+  Security Whitepaper messages with NotImplemented (skipped, not passed).
+  v2.1.0 serves TLS also to a station that sends no SNI.
 - **Open, blocked upstream**: SEND and CALLRESULTERROR against an
   independent implementation (no released reference implements them; the
   2.1 action NotifyPeriodicEventStream is a SEND); compression with go-ocpp

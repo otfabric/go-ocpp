@@ -19,7 +19,7 @@ connected.
 > in both roles; 2.1 adds the SEND and CALLRESULTERROR message types. 1.6J
 > and 2.0.1 pass against five independent implementations, 2.1 against three
 > (two CSMSs, The Mobility House and CitrineOS, and the EVerest libocpp
-> station), including TLS and compression (ocpp-interop v0.5.3). See
+> station), including TLS and compression (ocpp-interop v0.6.2). See
 > [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
 
 Docs: [Architecture](ARCHITECTURE.md) · [Requirements](REQUIREMENTS.md) ·
@@ -110,10 +110,10 @@ belong to the application's handlers.
 go-ocpp is tested in both roles against The Mobility House ocpp 2.1.0
 (1.6J, 2.0.1, 2.1), ChargeTimeEU Java-OCA-OCPP v2.0 and lorenzodonini/ocpp-go
 v0.19.0 (1.6J, 2.0.1), as a CSMS against EVerest libocpp (1.6J, 2.0.1,
-2.1), and as a station against CitrineOS core v2.0.1 (1.6J, 2.0.1, 2.1), as
+2.1), and as a station against CitrineOS core v2.1.0 (1.6J, 2.0.1, 2.1), as
 packaged by
-[otfabric/ocpp-interop v0.5.3](https://github.com/otfabric/ocpp-interop/releases/tag/v0.5.3):
-every action, security profiles 1 to 3 and compression. 1458 scenarios
+[otfabric/ocpp-interop v0.6.2](https://github.com/otfabric/ocpp-interop/releases/tag/v0.6.2):
+every action, security profiles 1 to 3 and compression. 1468 scenarios
 pass and none fails; the skipped ones are documented upstream defects and
 capabilities a reference does not have, and every payload the references
 send passes go-ocpp's schema validation. See
