@@ -21,6 +21,9 @@ make check     # everything CI runs, except interop
 make test      # tests with the race detector
 make fuzz      # fuzz targets (FUZZTIME=30s each)
 make interop   # against the otfabric/ocpp-interop images (from Phase 4)
+
+# Against the latest published go-ocpp (the Self-interop workflow, run by hand)
+OCPP_INTEROP_ADAPTERS=otfabric OCPP_INTEROP_OTFABRIC_IMAGE=ghcr.io/otfabric/ocpp-interop-otfabric:latest make interop
 ```
 
 ## Code Style

@@ -155,6 +155,18 @@ supported (1); TLS by address (6, the known upstream defect below).
   the new one then gets no answers. The test therefore connects again only
   after the reference reports the probe's `connection-closed` event.
 
+### Against a released go-ocpp
+
+otfabric/ocpp-interop also publishes go-ocpp itself behind the same contract,
+`ghcr.io/otfabric/ocpp-interop-otfabric` (adapter `otfabric`, tagged with
+go-ocpp versions and `latest`), so that other stacks can test against it. The
+suite runs against it only when `OCPP_INTEROP_OTFABRIC_IMAGE` names an image;
+there is no default and no pin. The Self-interop workflow, run by hand and never
+required, runs a commit against `:latest` and logs the digest it used: it finds
+a change on the wire that breaks an earlier release. A pass is go-ocpp on both
+sides, compatibility between releases, not independent verification, and is not
+counted in the results above.
+
 ### Known issues
 
 | Reference | Scenario | Evidence |
