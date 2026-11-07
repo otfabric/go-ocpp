@@ -61,7 +61,7 @@ env:
 
 jobs:
   interop:
-    name: Mobility House + ChargeTimeEU + ocpp-go + EVerest + CitrineOS (${{ matrix.arch }})
+    name: ocpp-interop references (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     strategy:
