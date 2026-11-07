@@ -213,8 +213,11 @@ The SEND action of 2.1, NotifyPeriodicEventStream, has no response:
 
 ```go
 func NotifyPeriodicEventStream(ctx context.Context, s ocpp.Sender, req *NotifyPeriodicEventStreamRequest) error
-// CSMSHandler method:
-NotifyPeriodicEventStream(ctx context.Context, p ocpp.Peer, req *NotifyPeriodicEventStreamRequest) error
+
+type CSMSHandler interface {
+    // ... the other actions ...
+    NotifyPeriodicEventStream(ctx context.Context, p ocpp.Peer, req *NotifyPeriodicEventStreamRequest) error
+}
 ```
 
 - Call functions check, before sending, that the connection is of their

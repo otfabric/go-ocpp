@@ -413,7 +413,7 @@ http.Handle("/ocpp/", srv)                             // srv is an http.Handler
 
 station, ok := srv.Station("STATION001")
 if ok {
-    _, err := ocpp201.Reset(ctx, station, &ocpp201.ResetRequest{Type: ocpp201.ResetEnumTypeImmediate})
+    _, err := ocpp201.Reset(ctx, station, &ocpp201.ResetRequest{Type: ocpp201.ResetImmediate})
 }
 ```
 
