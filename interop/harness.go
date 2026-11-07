@@ -6,6 +6,7 @@ package interop
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,26 +22,30 @@ import (
 
 	"github.com/otfabric/go-ocpp"
 	"github.com/otfabric/go-ocpp/ocpp21"
+	"github.com/otfabric/go-ocpp/server"
 )
 
 // The reference images this version of go-ocpp is qualified against:
-// otfabric/ocpp-interop v0.7.0 (The Mobility House ocpp 2.1.0, ChargeTimeEU
+// otfabric/ocpp-interop v0.10.0 (The Mobility House ocpp 2.1.0, ChargeTimeEU
 // Java-OCA-OCPP v2.0, lorenzodonini/ocpp-go v0.19.0: OCPP 1.6J and 2.0.1 in
 // all three, 2.1 in The Mobility House; EVerest libocpp of everest-core
 // 2026.02.2, a station for 1.6J, 2.0.1 and 2.1; CitrineOS core v2.1.0, a
-// CSMS for 1.6J, 2.0.1 and 2.1; cB-Sigma/ocpp v0.2.0, both roles in the
-// three versions, with SEND and CALLRESULTERROR), pinned by multi-arch index digest so that a
+// CSMS for 1.6J, 2.0.1 and 2.1; cB-Sigma/ocpp v0.2.0 and hupe1980/ocpp-kit
+// 0.3.0, both roles in the three versions, with SEND and CALLRESULTERROR;
+// seanlee0923/ocpp v0.3.0, both roles in the three versions), pinned by multi-arch index digest so that a
 // run is reproducible. Moving to another release of ocpp-interop
 // means changing these constants; the Makefile and
 // .github/workflows/interop.yml follow.
 const (
-	interopRelease            = "v0.7.0"
-	defaultMobilityHouseImage = "ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:457304683072646b04345e7d21e262cbeed3bccf17b73d5737e460189a8a802a"
-	defaultChargeTimeImage    = "ghcr.io/otfabric/ocpp-interop-chargetime@sha256:67ec87d3b4915055b5777d66cd8fb9e967be1ea6918cf77da5ba3b296d92d6ba"
-	defaultLorenzodoniniImage = "ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:f377b291ac6a83788afd8593d50dd575a99bc98392a6833ca63e21e7c59f734d"
-	defaultEverestImage       = "ghcr.io/otfabric/ocpp-interop-everest@sha256:63c2e8f859a6e18146f093b81a3a933f924206d7b184d132d299b46be9c6dd1a"
-	defaultCitrineOSImage     = "ghcr.io/otfabric/ocpp-interop-citrineos@sha256:b3cb5e7b9b4545be07995a648071b3b0ae9c716df36291f19fe2b745d71f1434"
-	defaultCBSigmaImage       = "ghcr.io/otfabric/ocpp-interop-cbsigma@sha256:9e6cc8101fb4e367d1cbf50d7f0cf9026c4d26ff39fa5e0933c8dc293b5b3a04"
+	interopRelease            = "v0.10.0"
+	defaultMobilityHouseImage = "ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:347b228ffa4b88f6bad36c8c170e3f13b95489f29455a2c28ca8c1e760b26b97"
+	defaultChargeTimeImage    = "ghcr.io/otfabric/ocpp-interop-chargetime@sha256:a455edea1b1f6b7cabcbe60dce7caead9d44aef63ef4f1c7c1b73077cf3d10e9"
+	defaultLorenzodoniniImage = "ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:902cea48e055575420eb3537f4ad823adb067664896158f8d5d6f71a23b62afc"
+	defaultEverestImage       = "ghcr.io/otfabric/ocpp-interop-everest@sha256:e56ec2d4033e7ede137c8801861ec7f3c84eb7f83f8ccb5e3cc29324005b9f7c"
+	defaultCitrineOSImage     = "ghcr.io/otfabric/ocpp-interop-citrineos@sha256:c0da2ffe666b0f1926d44ff35fc06036503e4f76d6b817d319a0c97dd7dd32e5"
+	defaultCBSigmaImage       = "ghcr.io/otfabric/ocpp-interop-cbsigma@sha256:57b20270aec341de671cfda609b22e46b71914870b22b12357aada321fc45297"
+	defaultOcppKitImage       = "ghcr.io/otfabric/ocpp-interop-ocppkit@sha256:1c51e474386fdfc7a47c00edbc91243f4cc6ef0a9d0c4d9ebb3b0f8dc99f5ef7"
+	defaultSeanleeImage       = "ghcr.io/otfabric/ocpp-interop-seanlee@sha256:bab883c4f4f43592c0d78f2b7ab1a2195c8d16a23aacb9afa4fe3b4f388d7e3a"
 )
 
 // adapter is one reference implementation: a container image that follows
@@ -55,7 +60,8 @@ type adapter struct {
 //
 //	OCPP_INTEROP_MOBILITYHOUSE_IMAGE, OCPP_INTEROP_CHARGETIME_IMAGE,
 //	OCPP_INTEROP_LORENZODONINI_IMAGE, OCPP_INTEROP_EVEREST_IMAGE,
-//	OCPP_INTEROP_CITRINEOS_IMAGE
+//	OCPP_INTEROP_CITRINEOS_IMAGE, OCPP_INTEROP_CBSIGMA_IMAGE,
+//	OCPP_INTEROP_OCPPKIT_IMAGE, OCPP_INTEROP_SEANLEE_IMAGE
 //
 // OCPP_INTEROP_OTFABRIC_IMAGE adds a released go-ocpp, the adapter otfabric:
 // ghcr.io/otfabric/ocpp-interop-otfabric, which otfabric/ocpp-interop
@@ -83,6 +89,8 @@ func adapters(t testing.TB) []adapter {
 		image("everest", "OCPP_INTEROP_EVEREST_IMAGE", defaultEverestImage),
 		image("citrineos", "OCPP_INTEROP_CITRINEOS_IMAGE", defaultCitrineOSImage),
 		image("cbsigma", "OCPP_INTEROP_CBSIGMA_IMAGE", defaultCBSigmaImage),
+		image("ocppkit", "OCPP_INTEROP_OCPPKIT_IMAGE", defaultOcppKitImage),
+		image("seanlee", "OCPP_INTEROP_SEANLEE_IMAGE", defaultSeanleeImage),
 		image("otfabric", "OCPP_INTEROP_OTFABRIC_IMAGE", ""),
 	} {
 		if a.image != "" {
@@ -143,6 +151,9 @@ type roleCaps struct {
 	Supported bool     `json:"supported"`
 	Sends     []string `json:"sends"`
 	Handles   []string `json:"handles"`
+	// SecurityProfiles of the role, when it has fewer than
+	// features.securityProfiles (contract 0.7).
+	SecurityProfiles []int `json:"securityProfiles"`
 }
 
 var capsCache sync.Map // image -> *capabilities
@@ -180,11 +191,48 @@ func (a adapter) role(t testing.TB, v ocpp.Version, role string) roleCaps {
 	return r
 }
 
-func (a adapter) securityProfile(t testing.TB, v ocpp.Version, profile int) {
+// roleProfile reports whether the role ("client" or "server") of a has the
+// security profile in version v: the role's own securityProfiles where it
+// lists them (contract 0.7), else features.securityProfiles.
+func (a adapter) roleProfile(t testing.TB, v ocpp.Version, role string, profile int) bool {
 	t.Helper()
-	if !slices.Contains(a.caps(t).Versions[v.String()].Features.SecurityProfiles, profile) {
-		t.Skipf("%s does not declare security profile %d for OCPP %s", a.name, profile, v)
+	vc := a.caps(t).Versions[v.String()]
+	r := vc.Client
+	if role == "server" {
+		r = vc.Server
 	}
+	if r.SecurityProfiles != nil {
+		return slices.Contains(r.SecurityProfiles, profile)
+	}
+	return slices.Contains(vc.Features.SecurityProfiles, profile)
+}
+
+// requireProfile skips unless the role of a has the security profile in
+// version v (roleProfile).
+func (a adapter) requireProfile(t testing.TB, v ocpp.Version, role string, profile int) {
+	t.Helper()
+	if !a.roleProfile(t, v, role, profile) {
+		t.Skipf("the %s %s does not declare security profile %d for OCPP %s", a.name, role, profile, v)
+	}
+}
+
+// stationAuth is how a go-ocpp CSMS admits the reference station of a over
+// ws://: without authentication when the station has security profile 0;
+// otherwise (a station that always authenticates, contract 0.7) with HTTP
+// Basic authentication and the fixture's password, security profile 1, which
+// the station is then started with (the flags returned).
+func stationAuth(t testing.TB, a adapter, v ocpp.Version, f *fixture) (server.Option, []string) {
+	t.Helper()
+	if a.roleProfile(t, v, "client", 0) {
+		return server.WithoutAuthentication(), nil
+	}
+	if !a.roleProfile(t, v, "client", 1) {
+		t.Skipf("the %s station has neither security profile 0 nor 1 for OCPP %s", a.name, v)
+	}
+	id, password := f.station()
+	return server.WithAuthenticator(server.BasicAuth(func(ctx context.Context, station string) (string, bool) {
+		return password, station == id
+	})), []string{"--security-profile", "1"}
 }
 
 // fixtureAnswers reports whether the reference answers CALLs of version v

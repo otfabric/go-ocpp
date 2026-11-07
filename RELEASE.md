@@ -5,6 +5,48 @@ tag, GitHub release); the section of the version below is the release's
 notes. Before v1.0.0 a minor release may change the API: every change is
 listed here, and COMPATIBILITY.md has the stability rules.
 
+## v0.3.3
+
+**Date:** 2026-11-07
+**Previous release:** v0.3.2
+
+## Summary
+
+Interop qualified against otfabric/ocpp-interop v0.10.0, which adds two
+references: hupe1980/ocpp-kit 0.3.0 (Rust) and seanlee0923/ocpp v0.3.0
+(Go). SEND and CALLRESULTERROR now pass against a second independent
+implementation in both directions, and compression with go-ocpp as the CSMS
+against a second independent station. No library code changes.
+
+## Changes
+
+### Changed
+
+- Interop pinned to the ocpp-interop v0.10.0 reference images by digest,
+  `ocppkit` and `seanlee` added (`interop/harness.go`, the Makefile,
+  `.github/workflows/interop.yml`, with the `ocppkit_image` and
+  `seanlee_image` workflow inputs).
+- The interop suite reads the security profiles of each role (contract
+  0.7): a reference station that always authenticates (ocppkit) is
+  admitted by go-ocpp's CSMS with HTTP Basic authentication and the
+  fixture's password, and the Basic authentication and TLS tests check the
+  profiles of the role they test.
+- INTEROPERABILITY.md, FEATURES.md, LIMITATIONS.md, README and
+  `docs/compatibility` describe the new run. The two "not covered" items
+  above are closed; a reference Local Controller now exists (ocpp-kit's,
+  contract 0.8).
+
+## Verification
+
+- `make test-interop` against the v0.10.0 images (linux/arm64): 2872
+  scenarios pass, 0 fail, 217 skipped with their reasons (v0.7.0: 1918 /
+  179). Against ocpp-kit: 534 pass, 2 skipped (NotifyWebPaymentStarted,
+  hupe1980/ocpp-kit#1); against seanlee0923/ocpp: 420 pass, 36 skipped
+  (the 1.6 Security Whitepaper messages it does not have, SEND,
+  CALLRESULTERROR, compression).
+
+---
+
 ## v0.3.2
 
 **Date:** 2026-11-06

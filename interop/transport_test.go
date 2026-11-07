@@ -145,7 +145,7 @@ func TestStationTLS(t *testing.T) {
 					}
 					t.Run(name, func(t *testing.T) {
 						a.role(t, v, "server")
-						a.securityProfile(t, v, profile)
+						a.requireProfile(t, v, "server", profile)
 						if host == "127.0.0.1" {
 							a.skipKnownIssue(t, v, fmt.Sprintf("tls-profile%d-csms", profile))
 						}
@@ -224,7 +224,7 @@ func TestReferenceStationTLS(t *testing.T) {
 			for _, profile := range []int{2, 3} {
 				t.Run(fmt.Sprintf("%s/%s/profile%d", a.name, v, profile), func(t *testing.T) {
 					a.role(t, v, "client")
-					a.securityProfile(t, v, profile)
+					a.requireProfile(t, v, "client", profile)
 					a.skipKnownIssue(t, v, fmt.Sprintf("tls-profile%d-station", profile))
 					f := a.fixture(t, v)
 					id, password := f.station()
@@ -359,7 +359,8 @@ func TestReferenceStationCompression(t *testing.T) {
 				f := a.fixture(t, v)
 				id, _ := f.station()
 				d := newDispatcher(f, f.Answers.CSMS, v)
-				srv, err := server.New(server.WithHandler(v, d), server.WithoutAuthentication())
+				auth, flags := stationAuth(t, a, v, f)
+				srv, err := server.New(server.WithHandler(v, d), auth)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -382,7 +383,7 @@ func TestReferenceStationCompression(t *testing.T) {
 					_ = srv.Shutdown(ctx)
 					_ = hs.Close()
 				})
-				startStation(t, a, v, ln.Addr().(*net.TCPAddr).Port, "--compression")
+				startStation(t, a, v, ln.Addr().(*net.TCPAddr).Port, append([]string{"--compression"}, flags...)...)
 				sess := waitSession(t, srv, id)
 				mu.Lock()
 				got := offered

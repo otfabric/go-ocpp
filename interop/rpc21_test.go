@@ -142,9 +142,9 @@ func TestReferenceStationCallResultError(t *testing.T) {
 			callResultErrorCaps(t, a, "client")
 			f := a.fixture(t, ocpp.V21)
 			id, _ := f.station()
-			srv, port := newCSMS(t, server.WithHandler(ocpp.V21, newDispatcher(f, f.Answers.CSMS, ocpp.V21)),
-				server.WithoutAuthentication())
-			ref := startStation(t, a, ocpp.V21, port, "--fixture", callResultErrorFixture)
+			auth, flags := stationAuth(t, a, ocpp.V21, f)
+			srv, port := newCSMS(t, server.WithHandler(ocpp.V21, newDispatcher(f, f.Answers.CSMS, ocpp.V21)), auth)
+			ref := startStation(t, a, ocpp.V21, port, append([]string{"--fixture", callResultErrorFixture}, flags...)...)
 			sess := waitSession(t, srv, id)
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
@@ -162,8 +162,9 @@ func TestReferenceStationCallResultError(t *testing.T) {
 			id, _ := f.station()
 			m := &resultErrors{}
 			d := invalidAnswers{newDispatcher(f, f.Answers.CSMS, ocpp.V21), "Heartbeat", json.RawMessage(`{"currentTime":1}`)}
-			srv, port := newCSMS(t, server.WithHandler(ocpp.V21, d), server.WithoutAuthentication(), server.WithMetrics(m))
-			ref := startStation(t, a, ocpp.V21, port)
+			auth, flags := stationAuth(t, a, ocpp.V21, f)
+			srv, port := newCSMS(t, server.WithHandler(ocpp.V21, d), auth, server.WithMetrics(m))
+			ref := startStation(t, a, ocpp.V21, port, flags...)
 			waitSession(t, srv, id)
 			checkRefCallResultError(t, ref.call(t, "", "Heartbeat", json.RawMessage(`{}`)), m)
 		})

@@ -126,7 +126,7 @@ func TestStationBasicAuth(t *testing.T) {
 		for _, v := range versions {
 			t.Run(a.name+"/"+v.String(), func(t *testing.T) {
 				a.role(t, v, "server")
-				a.securityProfile(t, v, 1)
+				a.requireProfile(t, v, "server", 1)
 				f := a.fixture(t, v)
 				id, password := f.station()
 				ref := startServer(t, a, v, "--security-profile", "1")

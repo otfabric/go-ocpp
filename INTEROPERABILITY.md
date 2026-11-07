@@ -27,20 +27,26 @@ Both are required. In each, CALLs are sent from both ends of the connection.
 
 ## Status
 
-Qualified against **otfabric/ocpp-interop v0.7.0** (contract 0.6), pinned
+Qualified against **otfabric/ocpp-interop v0.10.0** (contract 0.8), pinned
 by digest in `interop/harness.go`, the Makefile and
 `.github/workflows/interop.yml`:
 
 | Reference | Upstream | OCPP | Roles | TLS (profiles 2, 3) | Compression | Image |
 |---|---|---|---|---|---|---|
-| `mobilityhouse` | The Mobility House ocpp 2.1.0 (Python) | 1.6J, 2.0.1, 2.1 | station, CSMS | yes | yes | `ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:45730468…` |
-| `chargetime` | ChargeTimeEU Java-OCA-OCPP v2.0 (Java) | 1.6J, 2.0.1 | station, CSMS | yes | 2.0.1, with upstream defects | `ghcr.io/otfabric/ocpp-interop-chargetime@sha256:67ec87d3…` |
-| `lorenzodonini` | lorenzodonini/ocpp-go v0.19.0 (Go) | 1.6J, 2.0.1 | station, CSMS | yes | no (its CSMS cannot accept it) | `ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:f377b291…` |
-| `everest` | EVerest libocpp, everest-core 2026.02.2 (C++) | 1.6J, 2.0.1, 2.1 | station only (libocpp has no CSMS) | yes | no (libocpp cannot offer it) | `ghcr.io/otfabric/ocpp-interop-everest@sha256:63c2e8f8…` |
-| `citrineos` | CitrineOS core v2.1.0 (TypeScript) | 1.6J, 2.0.1, 2.1 | CSMS only (CitrineOS has no station) | yes | yes | `ghcr.io/otfabric/ocpp-interop-citrineos@sha256:b3cb5e7b…` |
-| `cbsigma` | cB-Sigma/ocpp v0.2.0 (Go), with OCPP 2.1 SEND and CALLRESULTERROR | 1.6J, 2.0.1, 2.1 | station, CSMS | yes | no (its station cannot offer it) | `ghcr.io/otfabric/ocpp-interop-cbsigma@sha256:9e6cc810…` |
+| `mobilityhouse` | The Mobility House ocpp 2.1.0 (Python) | 1.6J, 2.0.1, 2.1 | station, CSMS | yes | yes | `ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:347b228f…` |
+| `chargetime` | ChargeTimeEU Java-OCA-OCPP v2.0 (Java) | 1.6J, 2.0.1 | station, CSMS | yes | 2.0.1, with upstream defects | `ghcr.io/otfabric/ocpp-interop-chargetime@sha256:a455edea…` |
+| `lorenzodonini` | lorenzodonini/ocpp-go v0.19.0 (Go) | 1.6J, 2.0.1 | station, CSMS | yes | no (its CSMS cannot accept it) | `ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:902cea48…` |
+| `everest` | EVerest libocpp, everest-core 2026.02.2 (C++) | 1.6J, 2.0.1, 2.1 | station only (libocpp has no CSMS) | yes | no (libocpp cannot offer it) | `ghcr.io/otfabric/ocpp-interop-everest@sha256:e56ec2d4…` |
+| `citrineos` | CitrineOS core v2.1.0 (TypeScript) | 1.6J, 2.0.1, 2.1 | CSMS only (CitrineOS has no station) | yes | yes | `ghcr.io/otfabric/ocpp-interop-citrineos@sha256:c0da2ffe…` |
+| `cbsigma` | cB-Sigma/ocpp v0.2.0 (Go), with OCPP 2.1 SEND and CALLRESULTERROR | 1.6J, 2.0.1, 2.1 | station, CSMS | yes | no (its station cannot offer it) | `ghcr.io/otfabric/ocpp-interop-cbsigma@sha256:57b20270…` |
+| `ocppkit` | hupe1980/ocpp-kit 0.3.0 (Rust), with OCPP 2.1 SEND and CALLRESULTERROR | 1.6J, 2.0.1, 2.1 | station (always authenticates: profiles 1 to 3), CSMS | yes | yes | `ghcr.io/otfabric/ocpp-interop-ocppkit@sha256:1c51e474` |
+| `seanlee` | seanlee0923/ocpp v0.3.0 (Go) | 1.6J (without the Security Whitepaper messages), 2.0.1, 2.1 | station, CSMS | yes | no (neither role) | `ghcr.io/otfabric/ocpp-interop-seanlee@sha256:bab883c4` |
 
-`TestReferences` checks that each pinned image reports this release. The
+`TestReferences` checks that each pinned image reports this release. A
+reference station that always authenticates (ocppkit, contract 0.7:
+`client.securityProfiles`) is admitted by go-ocpp's CSMS with HTTP Basic
+authentication and the fixture's password, security profile 1, where
+another station connects without authentication. The
 per-version action matrices against these references are in
 [docs/compatibility](docs/compatibility) (`make compat`).
 
@@ -93,17 +99,18 @@ the `-sni` scenarios); compression, with the
 negotiation checked on the wire (`TestStationCompression`,
 `TestReferenceStationCompression`).
 
-### Results (v0.7.0 images, 2026-11-06, linux/arm64; CI runs amd64 and arm64)
+### Results (v0.10.0 images, 2026-11-07, linux/arm64; CI runs amd64 and arm64)
 
-All versions, all six references, both roles: **1918 scenarios pass, 0
-fail**; 179 are skipped, each with its reason. Counted as the leaf tests of
+All versions, all eight references, both roles: **2872 scenarios pass, 0
+fail**; 217 are skipped, each with its reason. Counted as the leaf tests of
 `go test -json` (a role or version a reference does not declare is one
-skipped test). By version: 1.6J 495 pass / 36 skipped, 2.0.1 782 / 34, 2.1
-636 / 88; the CALLRESULTERROR tests (26: 5 pass, 21 skipped) have no
-version in their names. Against v0.6.2 (1468 / 153) the new reference
-`cbsigma` adds 450 passes, among them the first SEND and CALLRESULTERROR
-exchanges with an independent implementation, and the CALLRESULTERROR
-tests add four skips for each reference without the feature. By reference:
+skipped test). By version: 1.6J 680 pass / 62 skipped, 2.0.1 1107 / 36, 2.1
+1076 / 94; the CALLRESULTERROR tests (34: 9 pass, 25 skipped) have no
+version in their names. Against v0.7.0 (1918 / 179) the new references add
+954 passes: `ocppkit` 534, with SEND and CALLRESULTERROR against a second
+independent implementation in both directions and compression with go-ocpp
+as the CSMS against a second independent station; `seanlee` 420. By
+reference:
 
 | Reference | Pass | Skip | Skipped because |
 |---|---|---|---|
@@ -113,6 +120,8 @@ tests add four skips for each reference without the feature. By reference:
 | everest | 216 | 32 | no CSMS (21), CALLRESULTERROR not declared (4), compression not supported (3), GetCertificateChainStatus not sent (libocpp has no such message type, 1), SEND (1), ReportDERControl known upstream defect (1), NotifyWebPaymentStarted not declared and answered `NotImplemented` (1) |
 | citrineos | 247 | 81 | below (and CALLRESULTERROR not declared, 4) |
 | cbsigma | 450 | 6 | compression: its station cannot offer it, so neither role declares it (6). Everything else passes, in both roles and all three versions: every action of each version, TLS, Basic authentication, SEND and CALLRESULTERROR |
+| ocppkit | 534 | 2 | NotifyWebPaymentStarted not declared in either role (2): ocpp-kit 0.3.0 has it in the wrong direction ([hupe1980/ocpp-kit#1](https://github.com/hupe1980/ocpp-kit/issues/1)). Everything else passes, in both roles and all three versions: every other action, TLS, Basic authentication (its station always authenticates), compression in both roles, SEND and CALLRESULTERROR in both directions |
+| seanlee | 420 | 36 | the 1.6 Security Whitepaper messages, which its `v16` package does not have (in both roles), SEND (its roles cannot send one) and CALLRESULTERROR not declared, compression not supported |
 
 **citrineos** (CitrineOS core v2.1.0, the second independent OCPP 2.1
 CSMS), with go-ocpp as the station; station-initiated passes (compared with
@@ -144,18 +153,19 @@ supported (1).
   station: The Mobility House 1.6J, 2.0.1, 2.1; ChargeTimeEU and ocpp-go
   1.6J, 2.0.1, and CitrineOS 1.6J, 2.0.1, 2.1, by address and by host
   name) and with every reference station (go-ocpp as the CSMS: The
-  Mobility House, ChargeTimeEU, ocpp-go and EVerest libocpp).
-- **Compression**: passes with The Mobility House in both roles and with
-  CitrineOS as the CSMS, 1.6J, 2.0.1 and 2.1. ChargeTimeEU 2.0.1 is a known
+  Mobility House, ChargeTimeEU, ocpp-go and EVerest libocpp), and in both
+  roles with cB-Sigma, ocpp-kit and seanlee0923/ocpp.
+- **Compression**: passes with The Mobility House and ocpp-kit in both
+  roles and with CitrineOS as the CSMS, 1.6J, 2.0.1 and 2.1. ChargeTimeEU 2.0.1 is a known
   upstream defect in both roles; ocpp-go and EVerest do not support it.
-- **OCPP 2.1** against four independent implementations: three CSMSs (The
-  Mobility House, CitrineOS, cB-Sigma) with go-ocpp as the station, and
-  three stations (The Mobility House, EVerest libocpp, cB-Sigma) with
-  go-ocpp as the CSMS. Every one of the 91 actions is exchanged with an
+- **OCPP 2.1** against six independent implementations: five CSMSs (The
+  Mobility House, CitrineOS, cB-Sigma, ocpp-kit, seanlee0923/ocpp) with
+  go-ocpp as the station, and five stations (The Mobility House, EVerest
+  libocpp, cB-Sigma, ocpp-kit, seanlee0923/ocpp) with go-ocpp as the CSMS. Every one of the 91 actions is exchanged with an
   independent stack: NotifyPeriodicEventStream (a SEND) and BatterySwap
   (sent by cB-Sigma's station) with cB-Sigma.
-- **SEND and CALLRESULTERROR** (2.1) against cB-Sigma, the one released
-  reference that has them (contract 0.6): go-ocpp's station sends
+- **SEND and CALLRESULTERROR** (2.1) against cB-Sigma and ocpp-kit, the
+  two references that have them (contract 0.6): go-ocpp's station sends
   NotifyPeriodicEventStream as a SEND to its CSMS, and its station to
   go-ocpp's CSMS (`notifyPeriodicEventStream`, the reference reports
   `send-received`); `TestStationCallResultError` and
@@ -199,15 +209,11 @@ passed.
 
 ### Not covered yet
 
-- SEND and CALLRESULTERROR against a second independent implementation:
-  cB-Sigma is the only reference with them. hupe1980/ocpp-kit v0.3.0
-  (Rust) has both; it is not a reference of ocpp-interop yet.
-- Compression with go-ocpp as the CSMS against a second independent
-  station (ChargeTimeEU's is defective in 2.0.1, ocpp-go and EVerest
-  cannot; CitrineOS has no station).
 - Station-initiated 2.1 messages that CitrineOS refuses (above) against a
   second CSMS; their answers by CitrineOS are checked only against the
   schema, not against an expected value.
 - The Local Controller role (2.x Part 4 chapter 6): go-ocpp does not
-  implement it yet (FEATURES.md 11), and no reference of ocpp-interop is
-  one; hupe1980/ocpp-kit v0.3.0 has a Local Controller relay.
+  implement it yet (FEATURES.md 11). ocpp-interop v0.10.0 has one, ocpp-kit's
+  (contract 0.8), and its Own stack workflow runs the released go-ocpp
+  (`ocpp-interop-otfabric`) through it, as station and as CSMS; this suite
+  does not.
