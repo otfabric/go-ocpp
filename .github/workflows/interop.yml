@@ -33,22 +33,31 @@ on:
       cbsigma_image:
         description: "cB-Sigma/ocpp reference image (default: the pinned release)"
         required: false
+      ocppkit_image:
+        description: "hupe1980/ocpp-kit reference image (default: the pinned release)"
+        required: false
+      seanlee_image:
+        description: "seanlee0923/ocpp reference image (default: the pinned release)"
+        required: false
 
 permissions:
   contents: read
   packages: read
 
 env:
-  # otfabric/ocpp-interop v0.7.0: The Mobility House ocpp 2.1.0,
+  # otfabric/ocpp-interop v0.10.0: The Mobility House ocpp 2.1.0,
   # ChargeTimeEU Java-OCA-OCPP v2.0, lorenzodonini/ocpp-go v0.19.0, EVerest
-  # libocpp of everest-core 2026.02.2, CitrineOS core v2.1.0, cB-Sigma/ocpp v0.2.0.
-  # Keep in step with the Makefile and interop/harness.go.
-  OCPP_INTEROP_MOBILITYHOUSE_IMAGE: ${{ inputs.mobilityhouse_image || 'ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:457304683072646b04345e7d21e262cbeed3bccf17b73d5737e460189a8a802a' }}
-  OCPP_INTEROP_CHARGETIME_IMAGE: ${{ inputs.chargetime_image || 'ghcr.io/otfabric/ocpp-interop-chargetime@sha256:67ec87d3b4915055b5777d66cd8fb9e967be1ea6918cf77da5ba3b296d92d6ba' }}
-  OCPP_INTEROP_LORENZODONINI_IMAGE: ${{ inputs.lorenzodonini_image || 'ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:f377b291ac6a83788afd8593d50dd575a99bc98392a6833ca63e21e7c59f734d' }}
-  OCPP_INTEROP_EVEREST_IMAGE: ${{ inputs.everest_image || 'ghcr.io/otfabric/ocpp-interop-everest@sha256:63c2e8f859a6e18146f093b81a3a933f924206d7b184d132d299b46be9c6dd1a' }}
-  OCPP_INTEROP_CITRINEOS_IMAGE: ${{ inputs.citrineos_image || 'ghcr.io/otfabric/ocpp-interop-citrineos@sha256:b3cb5e7b9b4545be07995a648071b3b0ae9c716df36291f19fe2b745d71f1434' }}
-  OCPP_INTEROP_CBSIGMA_IMAGE: ${{ inputs.cbsigma_image || 'ghcr.io/otfabric/ocpp-interop-cbsigma@sha256:9e6cc8101fb4e367d1cbf50d7f0cf9026c4d26ff39fa5e0933c8dc293b5b3a04' }}
+  # libocpp of everest-core 2026.02.2, CitrineOS core v2.1.0, cB-Sigma/ocpp v0.2.0,
+  # hupe1980/ocpp-kit 0.3.0, seanlee0923/ocpp v0.3.0.
+  # Pinned by multi-arch index digest; keep in step with interop/harness.go and the Makefile.
+  OCPP_INTEROP_MOBILITYHOUSE_IMAGE: ${{ inputs.mobilityhouse_image || 'ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:347b228ffa4b88f6bad36c8c170e3f13b95489f29455a2c28ca8c1e760b26b97' }}
+  OCPP_INTEROP_CHARGETIME_IMAGE: ${{ inputs.chargetime_image || 'ghcr.io/otfabric/ocpp-interop-chargetime@sha256:a455edea1b1f6b7cabcbe60dce7caead9d44aef63ef4f1c7c1b73077cf3d10e9' }}
+  OCPP_INTEROP_LORENZODONINI_IMAGE: ${{ inputs.lorenzodonini_image || 'ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:902cea48e055575420eb3537f4ad823adb067664896158f8d5d6f71a23b62afc' }}
+  OCPP_INTEROP_EVEREST_IMAGE: ${{ inputs.everest_image || 'ghcr.io/otfabric/ocpp-interop-everest@sha256:e56ec2d4033e7ede137c8801861ec7f3c84eb7f83f8ccb5e3cc29324005b9f7c' }}
+  OCPP_INTEROP_CITRINEOS_IMAGE: ${{ inputs.citrineos_image || 'ghcr.io/otfabric/ocpp-interop-citrineos@sha256:c0da2ffe666b0f1926d44ff35fc06036503e4f76d6b817d319a0c97dd7dd32e5' }}
+  OCPP_INTEROP_CBSIGMA_IMAGE: ${{ inputs.cbsigma_image || 'ghcr.io/otfabric/ocpp-interop-cbsigma@sha256:57b20270aec341de671cfda609b22e46b71914870b22b12357aada321fc45297' }}
+  OCPP_INTEROP_OCPPKIT_IMAGE: ${{ inputs.ocppkit_image || 'ghcr.io/otfabric/ocpp-interop-ocppkit@sha256:1c51e474386fdfc7a47c00edbc91243f4cc6ef0a9d0c4d9ebb3b0f8dc99f5ef7' }}
+  OCPP_INTEROP_SEANLEE_IMAGE: ${{ inputs.seanlee_image || 'ghcr.io/otfabric/ocpp-interop-seanlee@sha256:bab883c4f4f43592c0d78f2b7ab1a2195c8d16a23aacb9afa4fe3b4f388d7e3a' }}
 
 jobs:
   interop:
@@ -74,7 +83,7 @@ jobs:
 
       - name: Pull reference images
         run: |
-          images=("${OCPP_INTEROP_MOBILITYHOUSE_IMAGE}" "${OCPP_INTEROP_CHARGETIME_IMAGE}" "${OCPP_INTEROP_LORENZODONINI_IMAGE}" "${OCPP_INTEROP_EVEREST_IMAGE}" "${OCPP_INTEROP_CITRINEOS_IMAGE}" "${OCPP_INTEROP_CBSIGMA_IMAGE}")
+          images=("${OCPP_INTEROP_MOBILITYHOUSE_IMAGE}" "${OCPP_INTEROP_CHARGETIME_IMAGE}" "${OCPP_INTEROP_LORENZODONINI_IMAGE}" "${OCPP_INTEROP_EVEREST_IMAGE}" "${OCPP_INTEROP_CITRINEOS_IMAGE}" "${OCPP_INTEROP_CBSIGMA_IMAGE}" "${OCPP_INTEROP_OCPPKIT_IMAGE}" "${OCPP_INTEROP_SEANLEE_IMAGE}")
           # GHCR is occasionally slow or rate limiting: try each pull a few times.
           for image in "${images[@]}"; do
             for attempt in 1 2 3 4 5; do

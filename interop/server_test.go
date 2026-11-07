@@ -64,8 +64,9 @@ func TestReferenceStationAgainstCSMS(t *testing.T) {
 				f := a.fixture(t, v)
 				id, _ := f.station()
 				d := newDispatcher(f, f.Answers.CSMS, v)
-				srv, port := newCSMS(t, server.WithHandler(v, d), server.WithoutAuthentication())
-				ref := startStation(t, a, v, port)
+				auth, flags := stationAuth(t, a, v, f)
+				srv, port := newCSMS(t, server.WithHandler(v, d), auth)
+				ref := startStation(t, a, v, port, flags...)
 				sess := waitSession(t, srv, id)
 				if sess.Version() != v {
 					t.Fatalf("negotiated %v", sess.Version())
@@ -151,7 +152,7 @@ func TestReferenceStationBasicAuth(t *testing.T) {
 		for _, v := range versions {
 			t.Run(a.name+"/"+v.String(), func(t *testing.T) {
 				a.role(t, v, "client")
-				a.securityProfile(t, v, 1)
+				a.requireProfile(t, v, "client", 1)
 				f := a.fixture(t, v)
 				id, password := f.station()
 				d := newDispatcher(f, f.Answers.CSMS, v)

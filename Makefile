@@ -159,32 +159,37 @@ soak: ## Chaos for SOAKTIME (default 10m), then the parallel and exhaustion test
 		-run '^(TestParallel.*|TestCloseUnderLoad|TestReplacementStorm|TestShutdownUnderLoad|TestSlowHandshake|TestStationFlood|TestOversizedMessage|TestCompressionBomb|TestIncomingFlood|TestQueueSaturation|TestSlowReader|TestKeepalive|TestMatrix)$$' ./e2e
 	@go test -race -count=20 -timeout=0 -run '^(TestCallRacingClose|TestPing|TestMaxBadMessages)$$' ./internal/engine
 
-# Reference implementations for 'make interop': otfabric/ocpp-interop v0.7.0
+# Reference implementations for 'make interop': otfabric/ocpp-interop v0.10.0
 # (The Mobility House ocpp 2.1.0, ChargeTimeEU Java-OCA-OCPP v2.0,
 # lorenzodonini/ocpp-go v0.19.0: OCPP 1.6J and 2.0.1 in all three, 2.1 in
 # The Mobility House; EVerest libocpp 2026.02.2, a station for 1.6J, 2.0.1
 # and 2.1; CitrineOS core v2.1.0, a CSMS for 1.6J, 2.0.1 and 2.1; cB-Sigma/ocpp
-# v0.2.0, both roles in 1.6J, 2.0.1 and 2.1 with SEND and CALLRESULTERROR), pinned by multi-arch index digest. Keep in step with interop/harness.go and
+# v0.2.0 and hupe1980/ocpp-kit 0.3.0, both roles in 1.6J, 2.0.1 and 2.1 with
+# SEND and CALLRESULTERROR; seanlee0923/ocpp v0.3.0, both roles in the three), pinned by multi-arch index digest. Keep in step with interop/harness.go and
 # .github/workflows/interop.yml.
 # A reference image that cannot be had fails the run: asked to test against
 # it, passing by skipping would say nothing.
 # Override to test other builds, e.g. the local ones of an ocpp-interop checkout:
 #   make interop OCPP_INTEROP_MOBILITYHOUSE_IMAGE=ghcr.io/otfabric/ocpp-interop-mobilityhouse:dev
-OCPP_INTEROP_MOBILITYHOUSE_IMAGE ?= ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:457304683072646b04345e7d21e262cbeed3bccf17b73d5737e460189a8a802a
-OCPP_INTEROP_CHARGETIME_IMAGE    ?= ghcr.io/otfabric/ocpp-interop-chargetime@sha256:67ec87d3b4915055b5777d66cd8fb9e967be1ea6918cf77da5ba3b296d92d6ba
-OCPP_INTEROP_LORENZODONINI_IMAGE ?= ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:f377b291ac6a83788afd8593d50dd575a99bc98392a6833ca63e21e7c59f734d
-OCPP_INTEROP_EVEREST_IMAGE       ?= ghcr.io/otfabric/ocpp-interop-everest@sha256:63c2e8f859a6e18146f093b81a3a933f924206d7b184d132d299b46be9c6dd1a
-OCPP_INTEROP_CBSIGMA_IMAGE       ?= ghcr.io/otfabric/ocpp-interop-cbsigma@sha256:9e6cc8101fb4e367d1cbf50d7f0cf9026c4d26ff39fa5e0933c8dc293b5b3a04
-OCPP_INTEROP_CITRINEOS_IMAGE     ?= ghcr.io/otfabric/ocpp-interop-citrineos@sha256:b3cb5e7b9b4545be07995a648071b3b0ae9c716df36291f19fe2b745d71f1434
+OCPP_INTEROP_MOBILITYHOUSE_IMAGE ?= ghcr.io/otfabric/ocpp-interop-mobilityhouse@sha256:347b228ffa4b88f6bad36c8c170e3f13b95489f29455a2c28ca8c1e760b26b97
+OCPP_INTEROP_CHARGETIME_IMAGE    ?= ghcr.io/otfabric/ocpp-interop-chargetime@sha256:a455edea1b1f6b7cabcbe60dce7caead9d44aef63ef4f1c7c1b73077cf3d10e9
+OCPP_INTEROP_LORENZODONINI_IMAGE ?= ghcr.io/otfabric/ocpp-interop-lorenzodonini@sha256:902cea48e055575420eb3537f4ad823adb067664896158f8d5d6f71a23b62afc
+OCPP_INTEROP_EVEREST_IMAGE       ?= ghcr.io/otfabric/ocpp-interop-everest@sha256:e56ec2d4033e7ede137c8801861ec7f3c84eb7f83f8ccb5e3cc29324005b9f7c
+OCPP_INTEROP_CBSIGMA_IMAGE       ?= ghcr.io/otfabric/ocpp-interop-cbsigma@sha256:57b20270aec341de671cfda609b22e46b71914870b22b12357aada321fc45297
+OCPP_INTEROP_OCPPKIT_IMAGE       ?= ghcr.io/otfabric/ocpp-interop-ocppkit@sha256:1c51e474386fdfc7a47c00edbc91243f4cc6ef0a9d0c4d9ebb3b0f8dc99f5ef7
+OCPP_INTEROP_SEANLEE_IMAGE       ?= ghcr.io/otfabric/ocpp-interop-seanlee@sha256:bab883c4f4f43592c0d78f2b7ab1a2195c8d16a23aacb9afa4fe3b4f388d7e3a
+OCPP_INTEROP_CITRINEOS_IMAGE     ?= ghcr.io/otfabric/ocpp-interop-citrineos@sha256:c0da2ffe666b0f1926d44ff35fc06036503e4f76d6b817d319a0c97dd7dd32e5
 
 test-interop: ## Run the interop suite against the ocpp-interop reference images (needs Docker)
-	@echo "Running interop tests against $(OCPP_INTEROP_MOBILITYHOUSE_IMAGE), $(OCPP_INTEROP_CHARGETIME_IMAGE), $(OCPP_INTEROP_LORENZODONINI_IMAGE), $(OCPP_INTEROP_EVEREST_IMAGE), $(OCPP_INTEROP_CITRINEOS_IMAGE) and $(OCPP_INTEROP_CBSIGMA_IMAGE)"
+	@echo "Running interop tests against $(OCPP_INTEROP_MOBILITYHOUSE_IMAGE), $(OCPP_INTEROP_CHARGETIME_IMAGE), $(OCPP_INTEROP_LORENZODONINI_IMAGE), $(OCPP_INTEROP_EVEREST_IMAGE), $(OCPP_INTEROP_CITRINEOS_IMAGE), $(OCPP_INTEROP_CBSIGMA_IMAGE), $(OCPP_INTEROP_OCPPKIT_IMAGE) and $(OCPP_INTEROP_SEANLEE_IMAGE)"
 	@OCPP_INTEROP_MOBILITYHOUSE_IMAGE="$(OCPP_INTEROP_MOBILITYHOUSE_IMAGE)" \
 		OCPP_INTEROP_CHARGETIME_IMAGE="$(OCPP_INTEROP_CHARGETIME_IMAGE)" \
 		OCPP_INTEROP_LORENZODONINI_IMAGE="$(OCPP_INTEROP_LORENZODONINI_IMAGE)" \
 		OCPP_INTEROP_EVEREST_IMAGE="$(OCPP_INTEROP_EVEREST_IMAGE)" \
 		OCPP_INTEROP_CITRINEOS_IMAGE="$(OCPP_INTEROP_CITRINEOS_IMAGE)" \
 		OCPP_INTEROP_CBSIGMA_IMAGE="$(OCPP_INTEROP_CBSIGMA_IMAGE)" \
+		OCPP_INTEROP_OCPPKIT_IMAGE="$(OCPP_INTEROP_OCPPKIT_IMAGE)" \
+		OCPP_INTEROP_SEANLEE_IMAGE="$(OCPP_INTEROP_SEANLEE_IMAGE)" \
 		OCPP_INTEROP_REQUIRE=1 \
 		go test -tags=interop -count=1 -timeout=40m ./interop/...
 
@@ -198,6 +203,8 @@ compat: ## Rewrite docs/compatibility (one action matrix per OCPP version) from 
 		OCPP_INTEROP_EVEREST_IMAGE=$(OCPP_INTEROP_EVEREST_IMAGE) \
 		OCPP_INTEROP_CITRINEOS_IMAGE=$(OCPP_INTEROP_CITRINEOS_IMAGE) \
 		OCPP_INTEROP_CBSIGMA_IMAGE=$(OCPP_INTEROP_CBSIGMA_IMAGE) \
+		OCPP_INTEROP_OCPPKIT_IMAGE=$(OCPP_INTEROP_OCPPKIT_IMAGE) \
+		OCPP_INTEROP_SEANLEE_IMAGE=$(OCPP_INTEROP_SEANLEE_IMAGE) \
 		go test -tags=interop -count=1 -run '^TestWriteCompatibility$$' ./interop/
 
 gen: ## Generate the version packages from the OCA schemas (internal/gen)

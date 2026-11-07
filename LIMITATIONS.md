@@ -21,8 +21,8 @@ status is in [COMPATIBILITY.md](COMPATIBILITY.md) and
 - After SetNetworkProfile, the client does not switch URL or security profile
   or fall back along NetworkConfigurationPriority: the application creates a
   new `Client` (planned, FEATURES.md, item 5).
-- No Local Controller role (planned, FEATURES.md, item 11); no reference stack
-  implements it to test against.
+- No Local Controller role (planned, FEATURES.md, item 11). ocpp-interop
+  v0.10.0 has one reference Local Controller (ocpp-kit's) to test against.
 - Validation cannot be exempted per peer: an application that must accept a
   station that does not conform handles that action with a raw dispatcher.
 - Operating a certificate store is left to the application: OCPP-level
@@ -75,10 +75,6 @@ application can bound it itself.
   Interoperability does not establish conformance: implementations can share a
   misreading.
 - Not covered by any independent implementation:
-  - SEND and CALLRESULTERROR are tested against one independent
-    implementation only (cB-Sigma/ocpp; hupe1980/ocpp-kit has them too and is
-    not a reference yet).
-  - Compression with go-ocpp as the CSMS against a second independent station.
   - The station-initiated 2.1 messages that CitrineOS refuses have no second
     CSMS, and CitrineOS's answers to the others are checked only against the
     schema.
