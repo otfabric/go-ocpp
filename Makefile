@@ -4,7 +4,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: compat help all build examples fmt fmt-check lint lint-ci vet vuln test test-min coverage coverage-pkg-check cover fuzz fuzz-long chaos soak check cross clean interop test-interop e2e deps gen gen-check schemas-check schemas-sync coverage-check bench
+.PHONY: compat help all build examples fmt fmt-check lint lint-ci vet vuln test test-min coverage coverage-pkg-check cover fuzz fuzz-long chaos soak check cross clean interop test-interop e2e deps gen gen-check schemas-check schemas-sync coverage-check bench docs-check
 help: ## This help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_-]+:.*?## / {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
@@ -23,6 +23,9 @@ BIN_DIR := bin
 TEST_PKGS := $(shell go list ./... | grep -v '/examples' | grep -v '/interop$$' | grep -v '/interop/')
 # Coverage is measured over the library packages, whichever package's tests exercise them.
 COVER_PKGS := $(shell go list ./... | grep -v '/examples' | grep -v '/e2e$$' | grep -v '/internal/gen' | grep -v '/internal/specsync' | grep -v '/internal/schematest' | grep -v '/interop$$' | grep -v '/interop/' | paste -sd, -)
+
+# docsync release of docs-check (DOC-008).
+DOCSYNC_VERSION := v0.2.0
 
 # Platforms the library must build on, pure Go (CGO_ENABLED=0).
 CROSS_PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64
@@ -233,7 +236,11 @@ coverage-check: coverage ## Fail when total coverage is below COVER_MIN
 bench: ## Benchmarks
 	@go test -count=1 -run='^$$' -bench=. -benchmem $(TEST_PKGS)
 
-check: fmt fmt-check deps gen-check schemas-check lint lint-ci vet vuln test test-min coverage coverage-pkg-check cross examples ## Run format + generate + lint + vet + vuln + test + cross-build
+check: fmt fmt-check deps gen-check schemas-check lint lint-ci vet vuln test test-min coverage coverage-pkg-check cross examples docs-check ## Run format + generate + lint + vet + vuln + test + cross-build
+
+# The documents against the code (DOC-008): docsync, as docs-check.yml runs it.
+docs-check: ## Check that the documents agree with the code (docsync)
+	@go run github.com/otfabric/docsync@$(DOCSYNC_VERSION) check .
 
 clean: ## Remove generated binaries and coverage artifacts
 	@echo "Cleaning up"
