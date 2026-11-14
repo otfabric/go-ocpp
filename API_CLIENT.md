@@ -99,7 +99,7 @@ const (
 | `WithBasicAuth(user, pass)` | none | HTTP Basic credentials (security profiles 1 and 2); the user name must be the identity in the URL (2.x Part 2 A00) and contain no colon (RFC 7617 §2), or `New` refuses it |
 | `WithTLS(cfg)` | system roots | Trust roots and client certificate (profile 3); MinVersion raised to TLS 1.2; rotation via `GetClientCertificate` |
 | `WithHTTPClient(c)` | `http.DefaultClient` | Handshake HTTP client (proxies); not with `WithTLS`. Used through a copy that also refuses redirects from `wss://` to `ws://`; its own `CheckRedirect` applies to the rest. A handshake stalled after its response is bounded by the timeout and ctx only with an `*http.Transport` |
-| `WithHeader(name, value)` | none | Extra handshake header (an API key for a proxy, a tenant); Authorization, Host, Connection, Upgrade and Sec-WebSocket-* are refused |
+| `WithHeader(name, value)` | none | Extra handshake header (an API key for a proxy, a tenant); Authorization, Host, Connection, Upgrade and Sec-WebSocket-* are refused; not sent after a redirect to another host that is not a subdomain, as for Authorization |
 | `WithInsecureTransport()` | off | Allow `ws://` |
 | `WithCompression()` | off | Offer RFC 7692 compression (2.x CSMSs must support it); `ConnInfo.Compression` says whether the CSMS accepted it |
 | `WithReconnect(Reconnect{…})` | off | Redial after a lost connection with the back-off of 2.x Part 4 §5.4; see `DefaultReconnect()` |

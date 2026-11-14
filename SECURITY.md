@@ -37,7 +37,8 @@ Implemented in the client and server (Phase 2); see
   handshake, so that a CSMS (or what answers in its name) cannot move the
   station, and its Basic credentials, onto clear text. Redirects that keep
   TLS are followed; Go's HTTP client drops the Authorization header when
-  one leads to another host.
+  one leads to another host, and the client drops the `WithHeader` headers
+  in the same case.
 - A server needs an authenticator, or an explicitly named option that turns
   authentication off. Authentication runs before the WebSocket upgrade.
 - Credentials and authorization tokens are never logged, and never appear in
@@ -47,7 +48,8 @@ Implemented in the client and server (Phase 2); see
   a small compressed message cannot inflate past it.
 - Every incoming payload is validated against its OCA schema before a
   handler sees it; unknown properties are refused where the schema closes
-  the object.
+  the object, and so are `null` array elements and property names that
+  appear twice in one object.
 - On 2.x connections the server refuses station identities that are not
   identifierStrings of at most 48 characters without ":" (HTTP 400).
 - The server refuses WebSocket upgrades whose browser Origin names another
@@ -92,5 +94,8 @@ Implemented in the client and server (Phase 2); see
   authentication succeeds, so an unauthenticated client cannot evict a
   station.
 - Origin checks: browsers send an `Origin` header; a WebSocket upgrade whose
-  origin differs from the host is refused (coder/websocket's default).
-  Stations do not send one.
+  origin differs from the host is refused with 403, before the
+  authenticator runs (the rules of coder/websocket). Stations do not send
+  one.
+- Every WebSocket closing handshake is bounded (10 s): a peer that does not
+  complete it has its connection closed.

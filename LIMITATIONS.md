@@ -50,7 +50,7 @@ application can bound it itself.
   a new connection of its identity (`ReplaceExisting`), until its close
   handshake ends, and a connection refused after the WebSocket upgrade
   because it offered no supported subprotocol. A peer that does not answer
-  the close frame holds each for the WebSocket close timeouts (seconds),
+  the close frame holds each for at most the closing-handshake bound (10 s),
   so the number of open connections can exceed `WithMaxStations` by what
   arrives in that time. The refused-subprotocol connections are also not
   waited for by `Shutdown`. Rate-limit connection attempts in front of the
@@ -66,6 +66,14 @@ application can bound it itself.
   that refuses identities it does not know (`ErrUnknownStation`, 404)
   keeps such a connection from being registered, but not from being logged
   once.
+
+- **The client's closing handshake is bounded only with an `*http.Transport`.**
+  The client closes a connection whose closing handshake does not end within
+  10 s through the connection its HTTP client dialed. With `WithHTTPClient`
+  and a transport that is not an `*http.Transport` (or one that dials with
+  the deprecated `Dial` or `DialTLS` functions), the library has no handle on
+  that connection, and a CSMS that stops in the middle of the closing
+  handshake can hold `Close`.
 
 ## Verification
 

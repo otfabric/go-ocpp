@@ -6,12 +6,15 @@ package e2e
 // abuse the handshake, the frames and the connection's lifetime.
 
 import (
+	"bufio"
 	"context"
 	"crypto/sha1"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -25,6 +28,7 @@ import (
 
 	"github.com/otfabric/go-ocpp"
 	"github.com/otfabric/go-ocpp/client"
+	ocpptransport "github.com/otfabric/go-ocpp/internal/transport"
 )
 
 // hostile starts a plain HTTP server with h and returns its ws:// base URL.
@@ -812,5 +816,71 @@ func TestHostileSetReconnectNilWhileRedialling(t *testing.T) {
 	// Not redialled: Connecting would come between Disconnected and Closed.
 	if got, want := log.String(), "[Connecting Connected Disconnected Connecting Connected Disconnected Closed]"; got != want {
 		t.Errorf("states %s, want %s", got, want)
+	}
+}
+
+// A CSMS that answers the client's close frame with a frame it never
+// finishes holds Close only for the close bound: then the connection is closed.
+func TestClientStalledClosingHandshake(t *testing.T) {
+	noLeak(t)
+	t.Cleanup(ocpptransport.SetCloseTimeout(300 * time.Millisecond))
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+	result := make(chan error, 1)
+	go func() {
+		result <- func() error {
+			conn, err := ln.Accept()
+			if err != nil {
+				return err
+			}
+			defer func() { _ = conn.Close() }()
+			_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
+			br := bufio.NewReader(conn)
+			r, err := http.ReadRequest(br)
+			if err != nil {
+				return err
+			}
+			sum := sha1.Sum([]byte(r.Header.Get("Sec-WebSocket-Key") + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
+			_, _ = fmt.Fprintf(conn, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"+
+				"Sec-WebSocket-Accept: %s\r\nSec-WebSocket-Protocol: ocpp1.6\r\n\r\n", base64.StdEncoding.EncodeToString(sum[:]))
+			for { // the client's frames are masked and short
+				var hdr [2]byte
+				if _, err := io.ReadFull(br, hdr[:]); err != nil {
+					return err
+				}
+				if hdr[1]&0x7f > 125 {
+					return fmt.Errorf("unexpected frame header %x", hdr)
+				}
+				if _, err := io.ReadFull(br, make([]byte, 4+int(hdr[1]&0x7f))); err != nil {
+					return err
+				}
+				if hdr[0]&0x0f == 0x8 {
+					break
+				}
+			}
+			stalled := binary.BigEndian.AppendUint64([]byte{0x81, 127}, 1<<40)
+			if _, err := conn.Write(stalled); err != nil {
+				return err
+			}
+			if _, err := io.Copy(io.Discard, br); err != nil {
+				return fmt.Errorf("connection kept open: %w", err)
+			}
+			return nil
+		}()
+	}()
+	c := station(t, "ws://"+ln.Addr().String()+"/ocpp/CS1", client.WithInsecureTransport(), client.WithVersions(ocpp.V16))
+	connect(t, c)
+	closed := make(chan struct{})
+	go func() { _ = c.Close(); close(closed) }()
+	select {
+	case <-closed:
+	case <-time.After(10 * time.Second):
+		t.Fatal("Close held by the closing handshake")
+	}
+	if err := <-result; err != nil {
+		t.Fatal(err)
 	}
 }

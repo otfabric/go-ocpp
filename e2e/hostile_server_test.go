@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/otfabric/go-ocpp"
+	ocpptransport "github.com/otfabric/go-ocpp/internal/transport"
 	"github.com/otfabric/go-ocpp/server"
 )
 
@@ -194,6 +195,10 @@ func TestRefusedConnectionNotKeptIdle(t *testing.T) {
 		{"/ocpp/CS1", upgrade, http.StatusUnauthorized},
 		{"/ocpp/a:b", upgrade, http.StatusBadRequest},
 		{"/ocpp/CS1", auth, http.StatusUpgradeRequired}, // authenticated, but not a WebSocket upgrade
+		// Refused before the authenticator runs: no credentials needed for 403.
+		{"/ocpp/CS1", upgrade + "Origin: https://other.example.com\r\n", http.StatusForbidden},
+		// Refused by the upgrade itself, after authentication.
+		{"/ocpp/CS1", auth + strings.Replace(upgrade, "Version: 13", "Version: 8", 1), http.StatusBadRequest},
 	} {
 		conn, err := net.Dial("tcp", addr)
 		if err != nil {
@@ -340,4 +345,77 @@ func TestSessionHandlerPanic(t *testing.T) {
 	eventually(t, "the session gone", func() bool { _, ok := srv.Station("PANIC"); return !ok })
 	eventually(t, "onDisconnect ran", func() bool { return disconnected.Load() == 1 })
 	healthy(t, "ws://"+addr+"/ocpp/", "PANIC")
+}
+
+// stalledFrame is the header of a text frame that is never finished.
+func stalledFrame(masked bool) []byte {
+	b := []byte{0x81, 127}
+	if masked {
+		b[1] |= 0x80
+	}
+	b = binary.BigEndian.AppendUint64(b, 1<<40)
+	if masked {
+		b = append(b, 0, 0, 0, 0)
+	}
+	return b
+}
+
+// expectEOF fails unless the server closes the connection.
+func (h *handPeer) expectEOF() {
+	h.t.Helper()
+	_ = h.conn.SetReadDeadline(time.Now().Add(10 * time.Second))
+	if _, err := io.Copy(io.Discard, h.br); err != nil {
+		h.t.Fatalf("connection kept open: %v", err)
+	}
+}
+
+// A station that answers the server's close frame with a frame it never
+// finishes cannot hold the closing handshake: after the close bound the connection is closed, the
+// session ends and is unregistered, and Shutdown completes. This holds
+// for the close of a binary message (1003), of a connection refused for
+// its subprotocol (1008) and of Shutdown (1001).
+func TestStalledClosingHandshake(t *testing.T) {
+	t.Cleanup(ocpptransport.SetCloseTimeout(300 * time.Millisecond))
+	for _, name := range []string{"binary message", "refused subprotocol", "Shutdown"} {
+		t.Run(name, func(t *testing.T) {
+			noLeak(t)
+			srv, err := server.New(server.WithHandler(ocpp.V16, ocpp.DispatcherFunc(echo)), server.WithoutAuthentication())
+			if err != nil {
+				t.Fatal(err)
+			}
+			addr := listening(t, srv)
+			sub, want := "ocpp1.6", ocpptransport.StatusUnsupported
+			if name == "refused subprotocol" {
+				sub, want = "bogus", ocpptransport.StatusPolicy
+			}
+			h := dialHand(t, addr, "/ocpp/CS1", sub)
+			shut := make(chan error, 1)
+			switch name {
+			case "binary message":
+				waitStation(t, srv, "CS1")
+				h.write(true, 0x2, []byte{1, 2, 3})
+			case "Shutdown":
+				waitStation(t, srv, "CS1")
+				want = ocpptransport.StatusGoingAway
+				go func() {
+					ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+					defer cancel()
+					shut <- srv.Shutdown(ctx)
+				}()
+			}
+			if code := h.expectClose(); code != want {
+				t.Fatalf("close code %d, want %d", code, want)
+			}
+			if _, err := h.conn.Write(stalledFrame(true)); err != nil {
+				t.Fatal(err)
+			}
+			h.expectEOF()
+			eventually(t, "the session ends", func() bool { return len(srv.Stations()) == 0 })
+			if name == "Shutdown" {
+				if err := <-shut; err != nil {
+					t.Fatalf("Shutdown: %v", err)
+				}
+			}
+		})
+	}
 }

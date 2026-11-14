@@ -205,3 +205,66 @@ func TestSessionShutdownTimeout(t *testing.T) {
 		t.Fatal("a SEND on a closed session")
 	}
 }
+
+// slowSends is a CSMS dispatcher whose SEND handler takes a little while (an
+// application that stores each meter value).
+type slowSends struct{ counter }
+
+func (s *slowSends) DispatchSend(ctx context.Context, p ocpp.Peer, action string, payload json.RawMessage) error {
+	time.Sleep(2 * time.Millisecond)
+	return s.counter.DispatchSend(ctx, p, action, payload)
+}
+
+// A station that keeps sending SENDs to a slow SEND handler does not keep
+// Server.Shutdown or Session.Shutdown from ending: SENDs dispatched while
+// draining are delivered but are not work in flight.
+func TestShutdownWhileStationKeepsSending(t *testing.T) {
+	noLeak(t)
+	for _, whole := range []bool{true, false} {
+		recv := &slowSends{}
+		srv, base := csms(t, nil, server.WithHandler(ocpp.V21, recv), server.WithoutAuthentication())
+		busy := station(t, base+"BUSY", client.WithInsecureTransport(), client.WithVersions(ocpp.V21))
+		other := station(t, base+"OTHER", client.WithInsecureTransport(), client.WithVersions(ocpp.V21))
+		connect(t, busy)
+		connect(t, other)
+		sess := waitStation(t, srv, "BUSY")
+		waitStation(t, srv, "OTHER")
+		stop, stopped := make(chan struct{}), make(chan struct{})
+		go func() {
+			defer close(stopped)
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				if err := busy.Send(context.Background(), "NotifyPeriodicEventStream", json.RawMessage(sendPayload)); err != nil {
+					return
+				}
+			}
+		}()
+		eventually(t, "SENDs to arrive", func() bool { return recv.sends.Load() > 5 })
+		// Without a bound on the drain this would run to the deadline.
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		var err error
+		if whole {
+			err = srv.Shutdown(ctx)
+		} else {
+			err = sess.Shutdown(ctx)
+		}
+		cancel()
+		close(stop)
+		<-stopped
+		if err != nil {
+			t.Fatalf("Shutdown (server %v) while a station keeps sending: %v", whole, err)
+		}
+		if whole {
+			eventually(t, "every session to end", func() bool { return len(srv.Stations()) == 0 })
+		} else {
+			eventually(t, "the session to end", func() bool { _, ok := srv.Station("BUSY"); return !ok })
+			if _, ok := srv.Station("OTHER"); !ok {
+				t.Fatal("Session.Shutdown ended another session")
+			}
+		}
+	}
+}

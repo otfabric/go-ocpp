@@ -18,7 +18,9 @@ import (
 // It waits for the outgoing slot first: OCPP-J allows one outstanding CALL
 // per direction. When ctx ends, Call returns ctx.Err() at once, but a CALL
 // already sent keeps the slot until its response arrives or the response
-// timeout expires, as T6 requires.
+// timeout expires, as T6 requires. A CALL whose Call has returned (ctx ended,
+// or no response within the timeout) before the writer took it off its queue
+// is not sent at all.
 func (e *Endpoint) Call(ctx context.Context, action string, req, resp any) error {
 	if e.draining.Load() {
 		return ocpp.ErrClosed
@@ -55,10 +57,20 @@ func (e *Endpoint) refuseResult(messageID string, err error) {
 	if e.cfg.Info.Version != ocpp.V21 {
 		return
 	}
-	code, desc := ocppj.FormatErrorCode(e.cfg.Info.Version), err.Error()
+	var code ocpp.ErrorCode
+	var desc string
 	if ve, ok := errors.AsType[*ocpp.ValidationError](err); ok {
 		ce := ve.CallError()
 		code, desc = ce.Code, ce.Description
+	} else {
+		// Any other decoding error is classified as those of incoming CALL
+		// payloads are (internal/wire Classify): a syntax error is a format
+		// violation, anything else a value that does not fit its field. Its
+		// text names Go types and stays in the local log.
+		code, desc = ocpp.TypeConstraintViolation, "the response payload does not match its schema"
+		if _, ok := errors.AsType[*json.SyntaxError](err); ok {
+			code = ocppj.FormatErrorCode(e.cfg.Info.Version)
+		}
 	}
 	e.log.Warn("response refused with CALLRESULTERROR", "message_id", messageID, "error_code", string(code), "error", err)
 	e.sendResult(ocppj.Frame{Type: ocppj.CallResultError, ID: messageID, ErrorCode: code, Description: e.limit(desc)})
@@ -146,7 +158,7 @@ func (e *Endpoint) roundTrip(ctx context.Context, info ocpp.CallInfo, payload js
 
 	e.unwritten.Add(1)
 	select {
-	case e.calls <- frame:
+	case e.calls <- outCall{data: frame, p: p}:
 	case <-ctx.Done():
 		e.unwritten.Add(-1)
 		e.finish(p, callResult{err: ctx.Err()})
@@ -169,6 +181,9 @@ func (e *Endpoint) roundTrip(ctx context.Context, info ocpp.CallInfo, payload js
 	case r := <-p.ch:
 		return r.payload, r.err
 	case <-ctx.Done():
+		// A CALL the writer has not taken yet is not sent, and frees the
+		// slot; one already taken keeps it until its response or timeout.
+		e.finishUntaken(p, callResult{err: ctx.Err()})
 		return nil, ctx.Err()
 	case <-e.ctx.Done():
 		// shutdown finishes the call that is pending when it runs; a call
@@ -181,11 +196,28 @@ func (e *Endpoint) roundTrip(ctx context.Context, info ocpp.CallInfo, payload js
 	}
 }
 
+// take marks p's CALL as taken by the writer, unless p has already finished.
+func (e *Endpoint) take(p *pendingCall) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.pending != p {
+		return false
+	}
+	p.taken = true
+	return true
+}
+
 // finish completes p once: it frees the slot and delivers the result. Later
 // calls for the same p do nothing.
-func (e *Endpoint) finish(p *pendingCall, r callResult) {
+func (e *Endpoint) finish(p *pendingCall, r callResult) { e.complete(p, r, false) }
+
+// finishUntaken finishes p like finish, but only while the writer has not
+// taken its CALL.
+func (e *Endpoint) finishUntaken(p *pendingCall, r callResult) { e.complete(p, r, true) }
+
+func (e *Endpoint) complete(p *pendingCall, r callResult, untakenOnly bool) {
 	e.mu.Lock()
-	if e.pending != p {
+	if e.pending != p || (untakenOnly && p.taken) {
 		e.mu.Unlock()
 		return
 	}

@@ -5389,7 +5389,7 @@ type DataTransferRequest struct {
 
 // UnmarshalJSON decodes x strictly: required properties must be present, and no other property.
 func (x *DataTransferRequest) UnmarshalJSON(b []byte) error {
-	if err := wire.Object(b, "", codes, []string{"vendorId", "customData", "data", "messageId"}, []string{"vendorId"}, true); err != nil {
+	if err := wire.Object(b, "", codes, []string{"vendorId", "customData", "data", "messageId"}, []string{"vendorId"}, true, "data"); err != nil {
 		return err
 	}
 	type plain DataTransferRequest
@@ -5435,7 +5435,7 @@ type DataTransferResponse struct {
 
 // UnmarshalJSON decodes x strictly: required properties must be present, and no other property.
 func (x *DataTransferResponse) UnmarshalJSON(b []byte) error {
-	if err := wire.Object(b, "", codes, []string{"status", "customData", "data", "statusInfo"}, []string{"status"}, true); err != nil {
+	if err := wire.Object(b, "", codes, []string{"status", "customData", "data", "statusInfo"}, []string{"status"}, true, "data"); err != nil {
 		return err
 	}
 	type plain DataTransferResponse

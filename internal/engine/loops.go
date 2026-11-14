@@ -137,7 +137,15 @@ func (e *Endpoint) writeLoop() {
 		default:
 			select {
 			case data = <-e.results:
-			case data = <-e.calls:
+			case c := <-e.calls:
+				if !e.take(c.p) {
+					// The call ended (timed out, or its context ended) before
+					// its frame was taken: its caller has been told it failed,
+					// so the CALL is not sent.
+					e.unwritten.Add(-1)
+					continue
+				}
+				data = c.data
 			case data = <-e.sends:
 			case <-e.ctx.Done():
 				return
@@ -189,17 +197,25 @@ func (e *Endpoint) dispatchLoop() {
 				return
 			}
 			e.active.Add(1)
-			if f.Type != ocppj.Send && (e.draining.Load() || e.ctx.Err() != nil) {
+			if e.draining.Load() || e.ctx.Err() != nil {
 				// A CALL that has not started is not answered any more, while
-				// draining or once the endpoint has ended; a SEND needs no
-				// answer and is delivered.
+				// draining or once the endpoint has ended. A SEND needs no
+				// answer and is delivered, but does not count as in flight: a
+				// peer that keeps sending must not keep a drain from ending.
+				// Its handler gets a context that the Close ending the drain
+				// does not cancel, as for the SENDs delivered after the end.
 				e.active.Add(-1)
+				if f.Type == ocppj.Send {
+					e.inHandler.Store(true)
+					e.handleSend(context.WithoutCancel(e.ctx), f)
+					e.inHandler.Store(false)
+				}
 				e.handling.Add(-1)
 				continue
 			}
 			e.inHandler.Store(true)
 			if f.Type == ocppj.Send {
-				e.handleSend(e.sendContext(), f)
+				e.handleSend(e.ctx, f)
 			} else {
 				e.handle(f)
 			}
@@ -211,16 +227,6 @@ func (e *Endpoint) dispatchLoop() {
 			return
 		}
 	}
-}
-
-// sendContext is the context of a SEND's handler: the endpoint's, or, once the
-// endpoint has ended, one that is not cancelled. A SEND received before the
-// end was delivered: its handler is not told that the connection has gone.
-func (e *Endpoint) sendContext() context.Context {
-	if e.ctx.Err() != nil {
-		return context.WithoutCancel(e.ctx)
-	}
-	return e.ctx
 }
 
 // deliverReceivedSends handles the SENDs that were received in full before the

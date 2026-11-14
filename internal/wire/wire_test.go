@@ -131,3 +131,64 @@ func TestIntegral(t *testing.T) {
 		}
 	}
 }
+
+// Object refuses null as a property value and as an array element, except
+// for an untyped property, which allows any JSON value; and, when strict,
+// a property name that appears twice.
+func TestObject(t *testing.T) {
+	c := CodesFor(ocpp.V201)
+	known, required := []string{"id", "s", "o", "data"}, []string{"id"}
+	for _, tt := range []struct {
+		in     string
+		strict bool
+		code   ocpp.ErrorCode // "" for none
+		field  string
+	}{
+		{`{"id":[1,2]}`, true, "", ""},
+		{`{"id":[]}`, true, "", ""},
+		{`{"id":[null]}`, true, c.Type, "id[0]"},
+		{`{"id":[7, null]}`, true, c.Type, "id[1]"},
+		{"{\"id\":[7,\n\tnull ]}", false, c.Type, "id[1]"},
+		{`{"id":[1],"s":["a,null","b\"",null]}`, true, c.Type, "s[2]"},
+		{`{"id":[1],"o":[{"x":null},[null]]}`, true, "", ""}, // nested: the element's own type decides
+		{`{"id":[1],"o":[nullx]}`, true, c.Format, ""},
+		{`{"id":null}`, true, c.Type, "id"},
+		{`{"id":[1],"data":null}`, true, "", ""},
+		{`{"id":[1],"data":[null]}`, true, "", ""},
+		{`{"id":[1],"extra":[null]}`, false, "", ""}, // unknown keys are free when not strict
+		{`{"id":[1],"o":{"a":1},"o":{"b":2}}`, true, c.Format, ""},
+		{`{"id":[1],"id":[2]}`, true, c.Format, ""},
+		{`{"id":[1],"o":{"a":1,"a":2}}`, true, "", ""}, // nested objects check their own keys
+		{`{"id":[1],"s":["x:y"],"o":{"a":"b:c"}}`, true, "", ""},
+		{`{"id":[1],"o":{"a":1},"o":{"b":2}}`, false, "", ""},
+	} {
+		err := Object([]byte(tt.in), "", c, known, required, tt.strict, "data")
+		if tt.code == "" {
+			if err != nil {
+				t.Errorf("%s: %v", tt.in, err)
+			}
+			continue
+		}
+		var ve *ocpp.ValidationError
+		if !errors.As(err, &ve) || ve.Code != tt.code || (tt.field != "" && ve.Field != tt.field) {
+			t.Errorf("%s: %v, want %s at %q", tt.in, err, tt.code, tt.field)
+		}
+	}
+}
+
+func TestMembersAndNullElement(t *testing.T) {
+	for in, want := range map[string]int{
+		`{}`: 0, `{"a":1}`: 1, `{"a":{"b":1,"c":2},"d":[{"e":3}]}`: 2, `{"a:b":"c:d","a\"":1}`: 2,
+	} {
+		if got := members([]byte(in)); got != want {
+			t.Errorf("members(%s) = %d, want %d", in, got, want)
+		}
+	}
+	for in, want := range map[string]int{
+		`[]`: -1, `[null]`: 0, ` [ 1 , null ]`: 1, `[[null],{"n":null},"null",null]`: 3, `["\\",null]`: 1, `[1,2]`: -1,
+	} {
+		if got := nullElement([]byte(in)); got != want {
+			t.Errorf("nullElement(%s) = %d, want %d", in, got, want)
+		}
+	}
+}

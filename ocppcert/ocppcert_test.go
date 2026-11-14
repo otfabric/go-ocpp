@@ -13,6 +13,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"math/big"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -78,6 +80,13 @@ func TestHashBadIssuerKey(t *testing.T) {
 	broken.RawSubjectPublicKeyInfo = []byte{0x30, 0x03, 0x01}
 	if _, err := Hash(leaf, &broken, crypto.SHA256); err == nil {
 		t.Fatal("a malformed issuer key was hashed")
+	}
+	// A valid key followed by more bytes: the error says so, rather than
+	// printing a nil error.
+	broken.RawSubjectPublicKeyInfo = append(slices.Clip(ca.RawSubjectPublicKeyInfo), 0x05, 0x00)
+	_, err := Hash(leaf, &broken, crypto.SHA256)
+	if err == nil || !strings.Contains(err.Error(), "2 bytes of trailing data") {
+		t.Fatalf("trailing data after the issuer key: %v", err)
 	}
 }
 
