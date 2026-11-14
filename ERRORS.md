@@ -98,12 +98,12 @@ as `InternalError`.
 | `InternalError` | yes | yes | A handler error that is not a `*ocpp.CallError`, a panic, a nil or non-object response, a code the version does not define |
 | `ProtocolError` | yes | yes | Only when a handler returns it |
 | `SecurityError` | yes | yes | Only when a handler returns it |
-| `FormationViolation` | yes | — | 1.6: a payload that is not valid JSON or has an unknown property where the schema closes the object; a malformed CALL |
+| `FormationViolation` | yes | — | 1.6: a payload that is not valid JSON, has an unknown property where the schema closes the object, or names a property twice in one object; a malformed CALL |
 | `FormatViolation` | — | yes | 2.x: the same as `FormationViolation` in 1.6 |
 | `PropertyConstraintViolation` | yes | yes | A value out of its enumeration, too long, out of range, not a multiple, not a URI |
 | `OccurenceConstraintViolation` (1.6 spelling) | yes | — | A required property missing; an array too short or too long |
 | `OccurrenceConstraintViolation` | — | yes | The same in 2.x |
-| `TypeConstraintViolation` | yes | yes | A value of the wrong JSON type, `null` where the schema has none, a bad date-time |
+| `TypeConstraintViolation` | yes | yes | A value of the wrong JSON type, `null` where the schema has none (also as an array element; DataTransfer `data`, which the schema leaves untyped, may be `null`), a bad date-time |
 | `GenericError` | yes | yes | Only when a handler returns it |
 | `MessageTypeNotSupported` | — | yes (deprecated by errata) | Never: frames of unknown types are dropped (SPECIFICATIONS.md T9) |
 | `RpcFrameworkError` | — | yes | 2.x: a malformed CALL, or a frame whose message type cannot be read |
@@ -160,6 +160,9 @@ n-th malformed frame; its error wraps `ocpp.ErrConnectionLost` and
   fails validation: `[5, id, code, description, {}]`, with the code of the
   violation (`FormatViolation`, `OccurrenceConstraintViolation`, …). The
   call returns the `*ocpp.ValidationError`, wrapped in `ocpp.ErrProtocol`.
+  A response that does not decode for another reason gets
+  `TypeConstraintViolation` (`FormatViolation` when it is not valid JSON)
+  and a fixed description; the decoder's text is only logged.
 - Received: logged at Warn and reported to `Metrics.OnProtocolError`
   (wrapping `ocpp.ErrProtocol` and the `*ocpp.CallError`); the CALL it
   refers to has already completed, so no call returns it.

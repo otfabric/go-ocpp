@@ -30,6 +30,9 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Later steps only read git; gh uses GH_TOKEN.
+          persist-credentials: false
 
       - uses: actions/setup-go@v7
         with:

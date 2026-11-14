@@ -161,6 +161,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			fmt.Errorf("station identity %q is not an OCPP 2.x identity", id))
 		return
 	}
+	// The Origin check of the upgrade, done before the authenticator runs,
+	// so that a cross-origin browser request never reaches it.
+	if err := transport.CheckOrigin(r, s.o.originPatterns); err != nil {
+		s.refuse(w, log, info, http.StatusForbidden, http.StatusText(http.StatusForbidden), err)
+		return
+	}
 	if s.o.auth != nil {
 		user, pass, hasBasic := r.BasicAuth()
 		err := s.o.auth.Authenticate(r.Context(), ConnectRequest{

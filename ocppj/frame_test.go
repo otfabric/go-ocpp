@@ -97,6 +97,11 @@ func TestDecodeInvalid(t *testing.T) {
 		{"callerror numeric description", ocpp.V16, `[4,"1","GenericError",3,{}]`, true, "1", false},
 		{"callerror empty code", ocpp.V16, `[4,"1","","",{}]`, true, "1", false},
 		{"invalid nested json", ocpp.V16, `[2,"1","Heartbeat",{"a":}]`, false, "", false},
+		{"type as string, id too long", ocpp.V201, `["2","` + strings.Repeat("x", 37) + `","Heartbeat",{}]`, false, "", false},
+		{"unknown type, id too long", ocpp.V201, `[7,"` + strings.Repeat("x", 37) + `","Heartbeat",{}]`, false, "", true},
+		{"many elements", ocpp.V201, `[2,"a,]","x",{"k":"],[,\"{"},[1,[2]],"\"",3]`, true, "a,]", false},
+		{"many elements, type as string", ocpp.V201, `["2","1",1,1,1,1,1]`, true, "1", false},
+		{"many elements, invalid json", ocpp.V201, `[2,"1",1,1,1,1,]`, false, "", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -232,5 +237,42 @@ func TestMessageTypeString(t *testing.T) {
 		if got := typ.String(); got != want {
 			t.Errorf("%d.String() = %q, want %q", typ, got, want)
 		}
+	}
+}
+
+// The element count of a frame with more elements than any frame type has is
+// reported like any other count, with the message type and ID.
+func TestDecodeElementCount(t *testing.T) {
+	for in, want := range map[string]string{
+		`[2,"1","Heartbeat",{},{}]`:                   "CALL has 5 elements, want 4",
+		`[2,"1","Heartbeat",{},{},{}]`:                "CALL has 6 elements, want 4",
+		` [ 4 , "1" , "a" , "b" , { } , [ ] , "]" ] `: "CALLERROR has 7 elements, want 5",
+		`[3,"1",{"a":[1,2,{"b":","}]},"\\",",",[]]`:   "CALLRESULT has 6 elements, want 3",
+	} {
+		_, err := Decode([]byte(in), ocpp.V201, Limits{})
+		var derr *DecodeError
+		if !errors.As(err, &derr) || derr.Reason != want || !derr.IDKnown || derr.ID != "1" {
+			t.Errorf("%s: %v, want %q", in, err, want)
+		}
+	}
+	for in, want := range map[string]int{`[]`: 0, ` [ ] `: 0, `[1]`: 1, `[[]]`: 1, `[{},[],""]`: 3, `{}`: -1, `[1,]`: -1, `"[1,2]"`: -1} {
+		if n := countElements([]byte(in)); n != want {
+			t.Errorf("countElements(%s) = %d, want %d", in, n, want)
+		}
+	}
+}
+
+// A frame of many small elements is refused without decoding each of them.
+func TestDecodeManyElementsAllocations(t *testing.T) {
+	var b strings.Builder
+	b.WriteString(`[2,"1"`)
+	for b.Len() < DefaultMaxFrameSize-4 {
+		b.WriteString(",1")
+	}
+	b.WriteString("]")
+	frame := []byte(b.String())
+	allocs := testing.AllocsPerRun(10, func() { _, _ = Decode(frame, ocpp.V201, Limits{}) })
+	if allocs > 50 {
+		t.Fatalf("%v allocations for a frame of %d elements", allocs, countElements(frame))
 	}
 }

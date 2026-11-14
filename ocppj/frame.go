@@ -137,24 +137,19 @@ func Decode(data []byte, v ocpp.Version, l Limits) (Frame, error) {
 	if len(data) > l.maxFrameSize() {
 		return Frame{}, &DecodeError{Reason: fmt.Sprintf("frame of %d bytes exceeds the limit of %d", len(data), l.maxFrameSize())}
 	}
-	var elems []json.RawMessage
-	dec := json.NewDecoder(bytes.NewReader(data))
-	if err := dec.Decode(&elems); err != nil {
-		return Frame{}, &DecodeError{Reason: "not a JSON array: " + err.Error()}
+	elems, n, derr := decodeElements(data)
+	if derr != nil {
+		return Frame{}, derr
 	}
-	if _, err := dec.Token(); err != io.EOF {
-		return Frame{}, &DecodeError{Reason: "data after the JSON array"}
-	}
-	if elems == nil {
-		return Frame{}, &DecodeError{Reason: "not a JSON array"}
-	}
-	if len(elems) < 2 {
-		return Frame{}, &DecodeError{Reason: fmt.Sprintf("%d elements; a frame has at least 2", len(elems))}
+	if n < 2 {
+		return Frame{}, &DecodeError{Reason: fmt.Sprintf("%d elements; a frame has at least 2", n)}
 	}
 
 	t, ok := parseType(elems[0])
-	derr := &DecodeError{Type: t}
-	if id, ok := parseString(elems[1]); ok {
+	derr = &DecodeError{Type: t}
+	id, idOK := parseString(elems[1])
+	idLen := utf8.RuneCountInString(id)
+	if idOK && idLen <= MaxMessageIDLength {
 		derr.ID, derr.IDKnown = id, true
 	}
 	if !ok {
@@ -167,21 +162,19 @@ func Decode(data []byte, v ocpp.Version, l Limits) (Frame, error) {
 		derr.Reason = fmt.Sprintf("message type %d is not defined in OCPP %s", int(t), v)
 		return Frame{}, derr
 	}
-	if !derr.IDKnown {
+	if !idOK {
 		derr.Reason = "message ID is not a string"
 		return Frame{}, derr
 	}
-	if n := utf8.RuneCountInString(derr.ID); n > MaxMessageIDLength {
-		derr.IDKnown = false
-		derr.ID = ""
-		derr.Reason = fmt.Sprintf("message ID of %d characters exceeds %d", n, MaxMessageIDLength)
+	if idLen > MaxMessageIDLength {
+		derr.Reason = fmt.Sprintf("message ID of %d characters exceeds %d", idLen, MaxMessageIDLength)
 		return Frame{}, derr
 	}
 
 	f := Frame{Type: t, ID: derr.ID}
 	want := map[MessageType]int{Call: 4, CallResult: 3, CallError: 5, CallResultError: 5, Send: 4}[t]
-	if len(elems) != want {
-		derr.Reason = fmt.Sprintf("%s has %d elements, want %d", t, len(elems), want)
+	if n != want {
+		derr.Reason = fmt.Sprintf("%s has %d elements, want %d", t, n, want)
 		return Frame{}, derr
 	}
 	switch t {
@@ -220,6 +213,79 @@ func Decode(data []byte, v ocpp.Version, l Limits) (Frame, error) {
 		f.ErrorCode, f.Description, f.Details = ocpp.ErrorCode(code), desc, elems[4]
 	}
 	return f, nil
+}
+
+// maxElements is the largest number of elements a frame has (CALLERROR,
+// CALLRESULTERROR).
+const maxElements = 5
+
+// decodeElements splits data, a JSON array, into its elements, and returns
+// how many it has. Of an array with more than maxElements elements, only
+// the first two are returned, so that an array of many small elements is
+// not decoded in full: the frame is refused for its element count, and
+// only its message type and ID are needed for that.
+func decodeElements(data []byte) ([]json.RawMessage, int, *DecodeError) {
+	if n := countElements(data); n > maxElements {
+		dec := json.NewDecoder(bytes.NewReader(data))
+		elems := make([]json.RawMessage, 2)
+		// data is a valid JSON array (countElements checked it), so
+		// these cannot fail.
+		_, _ = dec.Token()
+		_ = dec.Decode(&elems[0])
+		_ = dec.Decode(&elems[1])
+		return elems, n, nil
+	}
+	var elems []json.RawMessage
+	dec := json.NewDecoder(bytes.NewReader(data))
+	if err := dec.Decode(&elems); err != nil {
+		return nil, 0, &DecodeError{Reason: "not a JSON array: " + err.Error()}
+	}
+	if _, err := dec.Token(); err != io.EOF {
+		return nil, 0, &DecodeError{Reason: "data after the JSON array"}
+	}
+	if elems == nil {
+		return nil, 0, &DecodeError{Reason: "not a JSON array"}
+	}
+	return elems, len(elems), nil
+}
+
+// countElements returns the number of elements of data when it is a valid
+// JSON array, and -1 otherwise. It does not allocate.
+func countElements(data []byte) int {
+	if !json.Valid(data) {
+		return -1
+	}
+	data = bytes.TrimSpace(data)
+	if len(data) == 0 || data[0] != '[' {
+		return -1
+	}
+	if len(bytes.TrimSpace(data[1:len(data)-1])) == 0 {
+		return 0
+	}
+	n, depth, inString, escaped := 0, 0, false, false
+	for _, c := range data {
+		switch {
+		case inString:
+			switch {
+			case escaped:
+				escaped = false
+			case c == '\\':
+				escaped = true
+			case c == '"':
+				inString = false
+			}
+			continue
+		case c == '"':
+			inString = true
+		case c == '[' || c == '{':
+			depth++
+		case c == ']' || c == '}':
+			depth--
+		case c == ',' && depth == 1:
+			n++
+		}
+	}
+	return n + 1
 }
 
 // Encode writes f as a frame. Nil payloads and details are written as {}.

@@ -210,7 +210,9 @@ validation belong to the version packages.
   slot is free again. A response that arrives later is dropped with a log
   entry and a metric (R4.5). When the caller's context ends first, `Call`
   returns `ctx.Err()` at once, but the CALL already on the wire keeps the
-  slot until its response or its response timeout, as T6 requires.
+  slot until its response or its response timeout, as T6 requires. A CALL
+  whose `Call` returned (timeout or context) before the writer took it is
+  not sent at all, and its slot is free at once.
 - **Incoming CALLs.** Incoming CALLs are dispatched one at a time, in arrival
   order, on a goroutine separate from the reader. The reader therefore keeps
   delivering responses while a handler runs. This prevents deadlock when a
@@ -231,8 +233,8 @@ validation belong to the version packages.
   already completed.
 - **Lifecycle.** An endpoint is created, then started once its owner has
   made it reachable, so that a handler calling back during the first frame
-  finds it. `Close` is idempotent. It runs the WebSocket closing handshake
-  and returns after the reader and writer have exited, and after the
+  finds it. `Close` is idempotent. It runs the WebSocket closing handshake,
+  bounded to 10 s after which the connection is closed, and returns after the reader and writer have exited, and after the
   dispatcher too unless a handler is running (a `Close` from inside a
   handler must not wait for itself); `Done` reports when everything has
   returned. Pending and queued calls fail with `ErrClosed` after `Close`, and
@@ -589,7 +591,9 @@ Each choice can be revisited if an edition or erratum settles it.
 | Station identities are matched exactly, case included | identifierString is case-insensitive as a data type, but the identity is also a URL path segment and the Basic authentication user name, both case-sensitive; exact matching never merges two stations |
 | A number with a zero fractional part (`20000.0`, `2e4`) is an integer in the messages of draft-06 schemas (1.6 Security Whitepaper, 2.0.1, 2.1) and is refused for an integer in those of draft-04 schemas (1.6 core) | It is what each schema's own `$schema` says: draft-06 defines an integer as a number with a zero fractional part, draft-04 as a number without fraction or exponent. EVerest libocpp writes integers so. The generated `UnmarshalJSON` of a draft-06 type retries a failed decode once with the integral numbers written as integers (`wire.Unmarshal`), so a payload that decodes as it is is never rewritten |
 | While a session drains (`Shutdown`), a malformed CALL is dropped instead of answered with a CALLERROR | A valid CALL that has not started gets no answer while draining either; answering malformed ones would let a peer that does not read keep the drain from ever ending |
+| While a session drains, SENDs are still delivered, but those dispatched after the drain began do not count as in flight | A peer that keeps sending must not keep `Shutdown` from ending; no SEND that arrived is lost |
 | Whether a number is integral is decided on its decimal text, and only integers up to ±2^53 are rewritten | `0.99999999999999999999` and `1e-400` round to an integer in a float64 but are not integers, which the schema validator (`santhosh-tekuri/jsonschema`, arbitrary precision) agrees with; beyond 2^53 a float64 would change the value |
-| A refused handshake is answered with `Connection: close`; `Serve`'s own `http.Server` closes idle keep-alive connections after the handshake timeout | Otherwise one refused request could hold a connection open indefinitely, past `WithMaxStations`, which counts sessions |
+| A refused handshake is answered with `Connection: close`, also when the WebSocket upgrade itself refuses it (403, 426, 400, 405); `Serve`'s own `http.Server` closes idle keep-alive connections after the handshake timeout | Otherwise one refused request could hold a connection open indefinitely, past `WithMaxStations`, which counts sessions |
+| The WebSocket closing handshake is bounded to 10 s, then the connection is closed | A peer that never completes the closing handshake must not hold a goroutine or a connection; the bound does not depend on the WebSocket library's own timers |
 | `WithIncomingRateLimit` delays messages over the rate, never refuses them | OCPP has no CALLERROR for "too many"; delaying keeps backpressure on the connection without inventing protocol behaviour |
-| Without `WithOriginPatterns`, a request whose Origin names another host is refused (403) | Cross-site WebSocket hijacking by a browser; stations send no Origin |
+| Without `WithOriginPatterns`, a request whose Origin names another host is refused (403), before the authenticator runs | Cross-site WebSocket hijacking by a browser; stations send no Origin |

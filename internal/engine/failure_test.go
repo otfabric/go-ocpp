@@ -360,7 +360,7 @@ func TestCallResultErrorSent(t *testing.T) {
 		code   ocpp.ErrorCode
 	}{
 		{ocpp.V21, `{"n":-1}`, ocpp.PropertyConstraintViolation},
-		{ocpp.V21, `{"n":"x"}`, ocpp.FormatViolation},
+		{ocpp.V21, `{"n":"x"}`, ocpp.TypeConstraintViolation},
 		{ocpp.V201, `{"n":-1}`, ""},
 	} {
 		e, raw := rawPeer(t, tt.v, nil, nil)
@@ -378,6 +378,10 @@ func TestCallResultErrorSent(t *testing.T) {
 		r := readFrame(t, raw, tt.v)
 		if r.Type != ocppj.CallResultError || r.ID != f.ID || r.ErrorCode != tt.code {
 			t.Fatalf("%s %s: got %+v", tt.v, tt.answer, r)
+		}
+		// The text of a decoding error names Go types: it is not sent.
+		if strings.Contains(r.Description, "int") || strings.Contains(r.Description, "validated") {
+			t.Fatalf("%s %s: description %q", tt.v, tt.answer, r.Description)
 		}
 	}
 }

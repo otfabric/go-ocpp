@@ -183,8 +183,10 @@ const maxRedirects = 10
 // (wss) to http (ws): following it would put the station on a clear-text
 // connection, its Basic credentials included, without WithInsecureTransport.
 // The handshake then fails with a *HandshakeError carrying the redirect's
-// status. hc's own redirect policy applies to the redirects it lets through;
-// hc itself is not changed.
+// status. On a redirect that leaves the host of the URL (to a host that is
+// neither it nor a subdomain of it), the WithHeader headers are removed, as
+// net/http removes Authorization. hc's own redirect policy applies to the
+// redirects it lets through; hc itself is not changed.
 func (c *Client) noDowngrade(hc *http.Client) *http.Client {
 	cp := *hc
 	prev := hc.CheckRedirect
@@ -192,6 +194,19 @@ func (c *Client) noDowngrade(hc *http.Client) *http.Client {
 		if via[0].URL.Scheme == "https" && req.URL.Scheme != "https" {
 			c.log.Warn("refused a redirect from wss to ws", "location", req.URL.Redacted())
 			return http.ErrUseLastResponse
+		}
+		// net/http copies the headers of the first request to each
+		// redirect, so the check covers every hop so far: once the chain
+		// has left the host, the headers stay removed.
+		origin := via[0].URL.Hostname()
+		left := !isDomainOrSubdomain(req.URL.Hostname(), origin)
+		for _, r := range via[1:] {
+			left = left || !isDomainOrSubdomain(r.URL.Hostname(), origin)
+		}
+		if left {
+			for _, h := range c.o.headers {
+				req.Header.Del(h[0])
+			}
 		}
 		if prev != nil {
 			return prev(req, via)
@@ -202,6 +217,20 @@ func (c *Client) noDowngrade(hc *http.Client) *http.Client {
 		return nil
 	}
 	return &cp
+}
+
+// isDomainOrSubdomain reports whether sub is parent or a subdomain of it,
+// ignoring case, as net/http decides whether to keep Authorization on a
+// redirect. An IPv6 address is only equal to itself.
+func isDomainOrSubdomain(sub, parent string) bool {
+	sub, parent = strings.ToLower(sub), strings.ToLower(parent)
+	if sub == parent {
+		return true
+	}
+	if strings.ContainsAny(sub, ":%") {
+		return false
+	}
+	return strings.HasSuffix(sub, "."+parent)
 }
 
 func identity(u *url.URL) (string, error) {

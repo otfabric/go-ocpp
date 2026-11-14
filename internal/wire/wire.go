@@ -63,11 +63,17 @@ func Field(path, name string) string {
 func Index(path string, i int) string { return path + "[" + strconv.Itoa(i) + "]" }
 
 // Object checks the keys of the JSON object b at path: every required key
-// is present, no value is null (no OCPP schema allows null: an absent
-// optional property is left out, not null), and, when strict
-// (additionalProperties false), no key is unknown. It does not decode the
-// values.
-func Object(b []byte, path string, c Codes, known, required []string, strict bool) error {
+// is present, no value of a known key is null and no element of an array
+// value is null (no typed OCPP schema allows null: an absent optional
+// property is left out, not null), and, when strict (additionalProperties
+// false), no key is unknown and no key appears twice. The keys in untyped
+// are those whose schema has no type and so allows any JSON value, null
+// included (DataTransfer's data). It does not decode the values.
+//
+// A key that appears twice is refused rather than decoded: encoding/json
+// would merge the two values of an object property into one, and RFC 8259
+// and I-JSON (RFC 7493) require unique names.
+func Object(b []byte, path string, c Codes, known, required []string, strict bool, untyped ...string) error {
 	trimmed := bytes.TrimSpace(b)
 	if len(trimmed) == 0 || trimmed[0] != '{' {
 		return Invalid(c.Type, path, "not a JSON object")
@@ -82,6 +88,9 @@ func Object(b []byte, path string, c Codes, known, required []string, strict boo
 				return Invalid(c.Format, Field(path, k), "not a property of this object")
 			}
 		}
+		if members(trimmed) != len(keys) {
+			return Invalid(c.Format, path, "a property name appears more than once")
+		}
 	}
 	for _, k := range required {
 		if _, ok := keys[k]; !ok {
@@ -89,11 +98,99 @@ func Object(b []byte, path string, c Codes, known, required []string, strict boo
 		}
 	}
 	for k, v := range keys {
-		if string(bytes.TrimSpace(v)) == "null" && contains(known, k) {
+		if !contains(known, k) || contains(untyped, k) {
+			continue
+		}
+		v = bytes.TrimSpace(v)
+		if string(v) == "null" {
 			return Invalid(c.Type, Field(path, k), "null, which the schema does not allow")
+		}
+		if len(v) > 0 && v[0] == '[' {
+			if i := nullElement(v); i >= 0 {
+				return Invalid(c.Type, Index(Field(path, k), i), "null, which the schema does not allow")
+			}
 		}
 	}
 	return nil
+}
+
+// members returns the number of members of the JSON object b, which must
+// be valid JSON, counting a repeated name each time: it counts the colons
+// outside strings at the top level.
+func members(b []byte) int {
+	n, depth := 0, 0
+	inString, escaped := false, false
+	for _, ch := range b {
+		if inString {
+			switch {
+			case escaped:
+				escaped = false
+			case ch == '\\':
+				escaped = true
+			case ch == '"':
+				inString = false
+			}
+			continue
+		}
+		switch ch {
+		case '"':
+			inString = true
+		case '{', '[':
+			depth++
+		case '}', ']':
+			depth--
+		case ':':
+			if depth == 1 {
+				n++
+			}
+		}
+	}
+	return n
+}
+
+// nullElement returns the index of the first null element of the JSON
+// array b, which must be valid JSON, or -1. In valid JSON only null starts
+// with 'n' outside a string.
+func nullElement(b []byte) int {
+	i, depth := 0, 0
+	inString, escaped, start := false, false, false
+	for _, ch := range b {
+		if inString {
+			switch {
+			case escaped:
+				escaped = false
+			case ch == '\\':
+				escaped = true
+			case ch == '"':
+				inString = false
+			}
+			continue
+		}
+		if start {
+			switch ch {
+			case ' ', '\t', '\n', '\r':
+				continue
+			case 'n':
+				return i
+			}
+			start = false
+		}
+		switch ch {
+		case '"':
+			inString = true
+		case '{', '[':
+			depth++
+			start = depth == 1
+		case '}', ']':
+			depth--
+		case ',':
+			if depth == 1 {
+				i++
+				start = true
+			}
+		}
+	}
+	return -1
 }
 
 func contains(list []string, s string) bool {

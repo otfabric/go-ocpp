@@ -210,8 +210,9 @@ var ErrUnauthorized error   // BasicAuth's error for refused credentials: HTTP 4
 - `Shutdown(ctx)` stops accepting connections (new upgrades get 503) and
   drains every session: new CALLs and SENDs to stations fail with
   `ocpp.ErrClosed`, CALLs from stations that have not started are no longer
-  dispatched (nor are malformed ones answered), and what is in flight (a CALL awaiting its answer, a handler
-  that has started, a frame queued or being written) is finished or ctx
+  dispatched (nor are malformed ones answered), SENDs from stations are
+  still delivered but do not hold the drain, and what is in flight (a CALL awaiting its answer, a handler
+  that started before the drain, a frame queued or being written) is finished or ctx
   ends. It then closes every session with status 1001 (going away) and
   waits until they have ended or ctx ends. `ListenAndServe` and `Serve` then return
   `ocpp.ErrClosed`.

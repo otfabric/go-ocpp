@@ -255,23 +255,27 @@ func emitStruct(b *strings.Builder, t *goType) {
 	}
 	b.WriteString("}\n\n")
 
-	known, required := []string{}, []string{}
+	known, required, untyped := []string{}, []string{}, ""
 	for _, f := range t.Fields {
 		known = append(known, strconv.Quote(f.JSON))
 		if f.Required {
 			required = append(required, strconv.Quote(f.JSON))
 		}
+		if f.Elem.Base == "raw" {
+			// No type in the schema: any JSON value, null included.
+			untyped += ", " + strconv.Quote(f.JSON)
+		}
 	}
 	fmt.Fprintf(b, `// UnmarshalJSON decodes x strictly: required properties must be present%s.
 func (x *%s) UnmarshalJSON(b []byte) error {
-	if err := wire.Object(b, "", codes, []string{%s}, []string{%s}, %v); err != nil {
+	if err := wire.Object(b, "", codes, []string{%s}, []string{%s}, %v%s); err != nil {
 		return err
 	}
 	type plain %s
 	return %s(b, (*plain)(x))
 }
 
-`, map[bool]string{true: ", and no other property", false: ""}[t.Strict], t.Name, strings.Join(known, ", "), strings.Join(required, ", "), t.Strict, t.Name,
+`, map[bool]string{true: ", and no other property", false: ""}[t.Strict], t.Name, strings.Join(known, ", "), strings.Join(required, ", "), t.Strict, untyped, t.Name,
 		map[bool]string{true: "json.Unmarshal", false: "wire.Unmarshal"}[t.Draft04])
 
 	fmt.Fprintf(b, "// Validate checks x against its schema.\nfunc (x *%s) Validate() error { return x.validate(\"\") }\n\n", t.Name)

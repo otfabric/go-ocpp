@@ -97,14 +97,15 @@ type Endpoint struct {
 	// queued, or in their handler. A CALL's answer is queued (unwritten) before
 	// the CALL stops counting here.
 	handling atomic.Int64
-	// active counts the handlers that have started, so that a drain can tell
-	// whether one is running; draining refuses new outgoing CALLs and SENDs
-	// and stops dispatching incoming CALLs that have not started.
+	// active counts the handlers that started before a drain, so that the
+	// drain can tell whether one is running; draining refuses new outgoing
+	// CALLs and SENDs and stops dispatching incoming CALLs that have not
+	// started. Incoming SENDs dispatched while draining are not counted.
 	active   atomic.Int64
 	draining atomic.Bool
 
 	results  chan []byte      // CALLRESULT and CALLERROR frames to write
-	calls    chan []byte      // CALL frames to write
+	calls    chan outCall     // CALL frames to write
 	sends    chan []byte      // SEND frames to write (2.1); they do not wait for the CALL slot
 	incoming chan ocppj.Frame // CALLs to dispatch
 
@@ -124,6 +125,15 @@ type pendingCall struct {
 	info       ocpp.CallInfo
 	ch         chan callResult // buffered: receives exactly one result
 	timer      *time.Timer
+	// taken is set, under mu, when the writer takes the CALL's frame off its
+	// queue. A call that finishes before that is not written at all.
+	taken bool
+}
+
+// outCall is a CALL frame queued for the writer, with the call it belongs to.
+type outCall struct {
+	data []byte
+	p    *pendingCall
 }
 
 type callResult struct {
@@ -172,7 +182,7 @@ func New(conn transport.Conn, cfg Config) *Endpoint {
 		cancel:   cancel,
 		slot:     make(chan struct{}, 1),
 		results:  make(chan []byte, 8),
-		calls:    make(chan []byte, 1),
+		calls:    make(chan outCall, 1),
 		sends:    make(chan []byte, 16),
 		incoming: make(chan ocppj.Frame, 16),
 		ioDone:   make(chan struct{}),
@@ -240,7 +250,9 @@ func (e *Endpoint) Close() error {
 // or waiting for the slot, no frame (CALL, SEND, CALLRESULT, CALLERROR) is
 // queued or being written, and no incoming CALL is queued or being handled.
 // While draining, incoming CALLs that have not started do not count: they are
-// not dispatched any more. It is what a graceful shutdown waits for.
+// not dispatched any more; nor do incoming SENDs dispatched after Drain, so
+// that a peer that keeps sending cannot keep the drain from ending (they are
+// still delivered, see Drain). It is what a graceful shutdown waits for.
 func (e *Endpoint) Idle() bool {
 	e.mu.Lock()
 	pending := e.pending != nil
@@ -256,7 +268,10 @@ func (e *Endpoint) Idle() bool {
 // ocpp.ErrClosed, and incoming CALLs that have not started are no longer
 // dispatched (they get no answer, as after Close). What is in flight goes on:
 // wait for Idle, then Close. A connection busy in both directions reaches
-// Idle once the CALLs in flight are answered.
+// Idle once the CALLs in flight are answered. Incoming SENDs are still
+// delivered, with a context that Close does not cancel, but those dispatched
+// after Drain do not keep the endpoint from being Idle: the SENDs received
+// before Close are delivered after it, and Done reports when they have been.
 func (e *Endpoint) Drain() { e.draining.Store(true) }
 
 // HandlerRunning reports whether a handler is running. Owners use it to

@@ -5,6 +5,75 @@ tag, GitHub release); the section of the version below is the release's
 notes. Before v1.0.0 a minor release may change the API: every change is
 listed here, and COMPATIBILITY.md has the stability rules.
 
+## v0.4.0
+
+**Date:** 2026-11-14
+**Previous release:** v0.3.3
+
+## Summary
+
+Tighter bounds on connections and payloads: every WebSocket closing
+handshake ends within 10 s, a station that keeps sending SENDs no longer
+holds a drain, null array elements and repeated property names are refused
+as the schemas require, and a CALL that was never written is no longer
+sent late. No API changes; a minor release because some behaviour changes.
+
+## Changes
+
+### Fixed
+
+- WebSocket closing handshakes (`Close`, `Shutdown`, the close after a
+  binary message or after a refused subprotocol, on the server and the
+  client) end within 10 s, after which the connection is closed, whatever
+  the peer sends meanwhile. Sessions are unregistered and `Shutdown`
+  completes in that time. On the client this needs an `*http.Transport`
+  (the default; LIMITATIONS.md).
+- A 2.1 station that keeps sending SENDs no longer keeps
+  `Server.Shutdown` or `Session.Shutdown` from ending: SENDs received
+  while draining are still delivered, but do not count as in flight.
+- A `null` element in an array of integers or strings is refused with
+  `TypeConstraintViolation` at `field[i]`, as the schema requires, instead
+  of reaching the handler (or the caller, in a response) as `0` or `""`.
+- A CALL whose `Call` timed out or whose context ended before it was
+  written is no longer sent; its slot is free at once.
+- A frame whose message type is not an integer and whose message ID is
+  longer than 36 characters is answered with `RpcFrameworkError` and ID
+  `"-1"` on 2.x (ERRORS.md), instead of no answer.
+- `ocppcert.Hash` reports trailing data after the issuer's public key with
+  its own message.
+
+### Changed
+
+- An object that names a property twice is refused with `FormatViolation`
+  (`FormationViolation` in 1.6) instead of being merged.
+- DataTransfer `data`, which the 2.x schemas leave untyped, accepts `null`.
+- A CALLRESULTERROR (2.1) for a response that does not decode carries
+  `TypeConstraintViolation` (`FormatViolation` for invalid JSON) and a fixed
+  description; the decoder's text is only logged.
+- Refusals made by the WebSocket upgrade itself (a foreign Origin, a
+  malformed upgrade request) are answered with `Connection: close`, and
+  the Origin check runs before the authenticator.
+- `client.WithHeader` headers are not sent after a handshake redirect to
+  another host that is not a subdomain, as for Authorization.
+- Decoding a frame with more elements than any message type has no longer
+  allocates for each element.
+- CI: the soak duration input of the Hardening workflow is passed through
+  the environment; Spec check does not persist the checkout credentials.
+
+## Verification
+
+- `make check` (Go 1.27.4): lint, vet, race tests, coverage.
+- Regression tests: `internal/transport/close_test.go`,
+  `e2e` (`TestStalledClosingHandshake`, `TestClientStalledClosingHandshake`,
+  `TestShutdownWhileStationKeepsSending`, `TestRefusedConnectionNotKeptIdle`),
+  `internal/engine` (`TestDrainNotHeldBySends`, `TestUnsentCallNotWritten`,
+  `TestCallResultErrorSyntax`, `TestLongIDWithBadTypeAnswered`), `ocppj`
+  (`TestDecodeManyElementsAllocations`), the version packages
+  (`TestNullArrayElement`, `TestDuplicateKey`, `TestDataTransferNull`),
+  `client/redirect_test.go`.
+
+---
+
 ## v0.3.3
 
 **Date:** 2026-11-07

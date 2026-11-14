@@ -69,4 +69,6 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Soak
-        run: make soak SOAKTIME="${{ inputs.soaktime || '10m' }}"
+        env:
+          SOAKTIME: ${{ inputs.soaktime || '10m' }}
+        run: make soak SOAKTIME="$SOAKTIME"

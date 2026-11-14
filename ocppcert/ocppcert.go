@@ -70,8 +70,12 @@ func Hash(cert, issuer *x509.Certificate, alg crypto.Hash) (HashData, error) {
 		Algorithm pkix.AlgorithmIdentifier
 		PublicKey asn1.BitString
 	}
-	if rest, err := asn1.Unmarshal(issuer.RawSubjectPublicKeyInfo, &spki); err != nil || len(rest) > 0 {
-		return HashData{}, fmt.Errorf("ocppcert: issuer public key: %v", err)
+	rest, err := asn1.Unmarshal(issuer.RawSubjectPublicKeyInfo, &spki)
+	if err != nil {
+		return HashData{}, fmt.Errorf("ocppcert: issuer public key: %w", err)
+	}
+	if len(rest) > 0 {
+		return HashData{}, fmt.Errorf("ocppcert: issuer public key: %d bytes of trailing data", len(rest))
 	}
 	sum := func(b []byte) string {
 		h := alg.New()

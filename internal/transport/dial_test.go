@@ -100,8 +100,8 @@ func TestDialUnboundTransports(t *testing.T) {
 		"deprecated Dial":    {Transport: deprecatedDial},
 		"deprecated DialTLS": {Transport: deprecatedDialTLS},
 	} {
-		got, release := bound(context.Background(), hc)
-		if got != hc || !release() {
+		got, d := bound(context.Background(), hc)
+		if got != hc || d != nil || !d.release() || d.closer() != nil {
 			t.Errorf("%s: copied", name)
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
