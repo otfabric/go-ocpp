@@ -11,7 +11,7 @@ How to run each tier. Conventions for tests are in [CONTRIBUTING.md](CONTRIBUTIN
 | End-to-end | `make e2e` | none | yes |
 | Chaos | `make chaos` (`CHAOS_DURATION`, default 30s; `CHAOS_SEED`) | none | Hardening workflow, nightly |
 | Soak | `make soak` (`SOAKTIME`, default 10m) | none | Hardening workflow, nightly |
-| Fuzz | `make fuzz` (`FUZZTIME`, default 30s), `make fuzz-long` (10 min) | none | 10s per target on each push; long runs nightly |
+| Fuzz | `make fuzz` (`FUZZTIME`, default 30s), `make fuzz-long` (10 min) | none | 10s per target on each pull request; long runs nightly |
 | Benchmarks | `make bench` | none | no |
 | Interop | `make interop` | Docker | Interop workflow |
 | Compatibility matrices | `make compat` rewrites `docs/compatibility/` | Docker | no |
@@ -35,3 +35,15 @@ How to run each tier. Conventions for tests are in [CONTRIBUTING.md](CONTRIBUTIN
 ## Fuzz regressions
 
 `make fuzz` runs the targets in `FUZZ_TARGETS`. A failing input is written to `testdata/fuzz/<target>/` of the package. Keep it with the fix ([CONTRIBUTING.md](CONTRIBUTING.md)): `go test` replays it from then on.
+
+## When CI runs
+
+| Event | Workflow | What runs |
+|---|---|---|
+| Pull request | `pr.yml` | `docs.yml` (docsync, otfabric-policy) always; `ci.yml`, `interop.yml` unless every changed file is documentation; then `OT Fabric Required Checks` |
+| Push to a branch | none | nothing; dispatch `ci.yml`, `interop.yml` to test a branch without a pull request |
+| Push to `main` | `docs.yml` | the light checks; the merged commit was tested as the pull request's merge commit |
+| Schedule | `hardening.yml`, `spec-check.yml` | the scheduled runs, on `main` |
+| Release | `release.yml` | the release workflow tests the release commit again |
+
+Documentation means an added or modified `*.md` file outside `.github/`, `testdata/` and `vendor/`, other than `AGENTS.md` and `CLAUDE.md`, and other than `API.md`, `API_CLIENT.md`, `API_SERVER.md`, `ERRORS.md`, which code reads. A deleted or renamed document, or any other file, runs everything. `OT Fabric Required Checks` fails unless every job that applies succeeded; its summary lists them.
