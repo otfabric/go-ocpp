@@ -1,3 +1,5 @@
+# Called by pr.yml on every pull request that is not documentation only;
+# dispatch it to run it on a branch without a pull request.
 name: Interop
 run-name: "Interop (${{ github.event_name }}) on ${{ github.ref_name }} by @${{ github.actor }}"
 
@@ -7,12 +9,40 @@ run-name: "Interop (${{ github.event_name }}) on ${{ github.ref_name }} by @${{ 
 # published: nothing of ocpp-interop is cloned or built here.
 
 on:
-  push:
-    branches: ["**"]
-    paths-ignore: ["**/*.md"]
-  pull_request:
-    branches: ["**"]
-    paths-ignore: ["**/*.md"]
+  workflow_call:
+    inputs:
+      mobilityhouse_image:
+        description: "Mobility House reference image (default: the pinned release)"
+        type: string
+        default: ""
+      chargetime_image:
+        description: "ChargeTimeEU reference image (default: the pinned release)"
+        type: string
+        default: ""
+      lorenzodonini_image:
+        description: "lorenzodonini/ocpp-go reference image (default: the pinned release)"
+        type: string
+        default: ""
+      everest_image:
+        description: "EVerest libocpp reference image (default: the pinned release)"
+        type: string
+        default: ""
+      citrineos_image:
+        description: "CitrineOS reference image (default: the pinned release)"
+        type: string
+        default: ""
+      cbsigma_image:
+        description: "cB-Sigma/ocpp reference image (default: the pinned release)"
+        type: string
+        default: ""
+      ocppkit_image:
+        description: "hupe1980/ocpp-kit reference image (default: the pinned release)"
+        type: string
+        default: ""
+      seanlee_image:
+        description: "seanlee0923/ocpp reference image (default: the pinned release)"
+        type: string
+        default: ""
   workflow_dispatch:
     inputs:
       mobilityhouse_image:
