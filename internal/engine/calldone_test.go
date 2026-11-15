@@ -70,7 +70,9 @@ func TestOnCallDoneAfterDecoding(t *testing.T) {
 			if len(calls) != i+1 {
 				t.Fatalf("%s %s: OnCallDone was given %d calls, want %d", v, a.payload, len(calls), i+1)
 			}
-			if got := calls[i]; got.action != "GetThing" || got.err != err || got.d <= 0 {
+			// The duration is not negative; it can be zero where the
+			// monotonic clock advances in coarse steps (Windows).
+			if got := calls[i]; got.action != "GetThing" || got.err != err || got.d < 0 {
 				t.Fatalf("%s %s: OnCallDone got %q %v after %v, want the error of Call: %v", v, a.payload, got.action, got.err, got.d, err)
 			}
 			if v == ocpp.V21 && err != nil {
