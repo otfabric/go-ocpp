@@ -5,6 +5,132 @@ tag, GitHub release); the section of the version below is the release's
 notes. Before v1.0.0 a minor release may change the API: every change is
 listed here, and COMPATIBILITY.md has the stability rules.
 
+## v0.4.1
+
+**Date:** 2026-11-15
+**Previous release:** v0.4.0
+
+## Summary
+
+A patch release without API changes. Text is checked before it is decoded,
+so that the strings a handler receives are the text that was sent.
+Application code that runs on a connection's goroutines is recovered where
+the engine calls it. A ping is not counted while the connection's own
+reader waits, `OnCallDone` reports what `Call` returns, and the rate of
+`WithIncomingRateLimit` is checked. The tests gain the lifecycle contract
+matrix, ownership tests, one goroutine check that compares stacks, and a
+nightly run on a 32-bit architecture.
+
+## Changes
+
+### Changed
+
+- A WebSocket text message that is not valid UTF-8 closes the connection
+  with status 1007 (RFC 6455 §8.1). A frame that holds the `\u` escape of
+  a surrogate without its pair (or, for a caller of `ocppj.Decode`, bytes
+  that are not UTF-8) is a malformed frame: a CALL is answered with
+  `RpcFrameworkError` (`FormationViolation` in 1.6) under its message ID
+  when that is readable, other frames are dropped as ERRORS.md lists, and
+  each counts for `WithMaxBadMessages`. `ValidateRequest`,
+  `ValidateResponse` and the dispatchers of the version packages refuse
+  such a payload with `FormatViolation` (`FormationViolation` in 1.6).
+  `encoding/json` decodes that text to U+FFFD; go-ocpp does not hand it on.
+  The literal character U+FFFD and its own escape are text like any other.
+- A handler interceptor (`WithHandlerInterceptor`) that does not return
+  normally is recovered like a handler: it is logged with its stack,
+  reported to `Metrics.OnCallHandled` as `ErrHandlerPanic`, the CALL is
+  answered with `InternalError`, and the connection goes on. A function
+  registered with `ocpp.AfterResponse` that does not return normally is
+  recovered and logged with its stack, and the functions registered after
+  it run.
+- With `WithPingInterval`, a ping is not counted as lost while the
+  connection's reader waits for room in its incoming queue (16 CALLs and
+  SENDs behind a slow handler or `WithIncomingRateLimit`), when no pong can
+  be read; the next ping goes out an interval later.
+- `Metrics.OnCallDone` is called once for every CALL handed to a connection,
+  with the error `Call` returns: after the response has been decoded and
+  validated, as OBSERVABILITY.md describes it, and also for a CALL that
+  ends before it has the outgoing slot (`ErrBusy`, the caller's context, a
+  connection that has ended). A `Call` whose context ends after its CALL
+  was written is reported when it returns, with the context's error.
+- The error of a response timeout matches `context.DeadlineExceeded` as
+  well as `ocpp.ErrTimeout`; its text ends with ": context deadline
+  exceeded". The error of a `Call` that ends with its caller's own deadline
+  is unchanged.
+- `client.New` and `server.New` return `ErrInvalidOption` for a
+  `WithIncomingRateLimit` rate that is not a finite number. The wait for
+  the next message is bounded for every rate: it is taken in steps of at
+  most an hour.
+
+### Documentation
+
+- What `Close` and `Done` wait for is stated for `Client`, `Server` and
+  `Session`: the connection's reader, writer, pinger and dispatcher (and
+  the client's supervisor), not the functions registered with
+  `ocpp.AfterResponse`. `Close` is safe to call more than once and from
+  multiple goroutines.
+- Every callback type says on which goroutine it runs and what happens
+  when it does not return normally (handlers, interceptors,
+  `AfterResponse`, the frame observer, metrics, the client's state handler,
+  the session handler, the authenticator).
+- Who owns a slice that crosses the API: a request is borrowed until `Call`
+  returns, a dispatcher owns its payload, a `Frame` of `ocppj.Decode` owns
+  its memory, a message belongs to whoever holds it.
+- Corrected: TLS verification is what the application's `tls.Config` says
+  (SECURITY.md, API_CLIENT.md); OCPP 2.1 is tested against six independent
+  implementations (README.md); a station that offers no supported
+  subprotocol gets a completed handshake and a close with 1008
+  (ARCHITECTURE.md).
+- Recorded: `server.CertificateAuth` comparing the certificate's
+  CommonName with the station identity is an implementation choice
+  (ARCHITECTURE.md, the function's comment); responses that match no CALL
+  are not counted by `WithMaxBadMessages`, functions registered with
+  `AfterResponse` are not waited for, and pings say nothing while the
+  incoming queue is full (LIMITATIONS.md).
+
+### Tests and CI
+
+- TESTING.md has the lifecycle contract matrix (L1 to L16) for `Client`,
+  `Server`, `Session`, the engine and the transport, with the tests of
+  each row and the reason where a row does not apply.
+- New contract tests: `Close` twice and from several goroutines on every
+  type, `Close` from a handler of a client and of a session, a response on
+  another connection with the same message ID.
+- One goroutine check for all tests, `internal/leakcheck`, which compares
+  stacks and names the goroutine; `internal/transport` uses it too. The
+  fixed sleeps of the engine tests and of one transport test are waits for
+  events.
+- `make fuzz-check` compares the fuzz target lists of the Makefile and of
+  `hardening.yml` with `go test -list '^Fuzz'`; `make coverpkg-check`
+  compares `coverpkg` in `ci.yml` with `COVER_PKGS`, which now are the
+  same 14 packages (98.2 %). Both run in `make check` and in CI. A tenth
+  fuzz target, `FuzzWellFormed`.
+- The Hardening workflow runs every test as `GOARCH=386` each night.
+- The Release workflow builds, vets and tests ocppctl against the release
+  candidate (`consumers`).
+
+## Verification
+
+- `make check` (Go 1.27.4): lint, vet, govulncheck, race tests, coverage,
+  docsync.
+- Every test as linux/386.
+- Regression tests: `ocppj` (`TestDecodeTextNotWellFormed`,
+  `TestDecodeTextWellFormed`), `internal/jsontext`, `internal/wire`
+  (`TestDecodeTextNotWellFormed`), the version packages
+  (`TestTextNotWellFormed`), `internal/transport` (`TestTextNotUTF8`),
+  `internal/engine` (`TestTextNotWellFormedIsMalformed`,
+  `TestAfterResponseFunctionThatDoesNotReturnNormally`,
+  `TestHandlerInterceptorThatDoesNotReturnNormally`,
+  `TestPingWhileReaderWaitsForRoom`, `TestOnCallDoneAfterDecoding`,
+  `TestOnCallDoneWithoutTheSlot`, `TestOnCallDoneOncePerCall`,
+  `TestTimeoutAndLateResponse`, `TestLimiterDelay`, `TestLimiterLowRates`),
+  `client` and `server` (`TestIncomingRateOption`), `e2e`
+  (`TestTextNotUTF8ClosesSession`, `TestTextNotUTF8ClosesClient`,
+  `TestSurrogateEscapeWithoutPair`, `TestPingWhileIncomingQueueIsFull`).
+- ocppctl builds and passes its tests against this release.
+
+---
+
 ## v0.4.0
 
 **Date:** 2026-11-14

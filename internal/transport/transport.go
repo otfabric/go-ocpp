@@ -17,6 +17,7 @@ const (
 	StatusNormal        = 1000
 	StatusGoingAway     = 1001
 	StatusUnsupported   = 1003 // a binary message: OCPP-J uses text only
+	StatusInvalidData   = 1007 // a text message that is not valid UTF-8 (RFC 6455 §8.1)
 	StatusPolicy        = 1008
 	StatusTooBig        = 1009
 	StatusInternalError = 1011
@@ -29,8 +30,9 @@ const (
 // Close may be called concurrently with both and more than once.
 type Conn interface {
 	// ReadMessage returns the next text message. A binary message is an
-	// error, and the connection is closed with StatusUnsupported. When ctx
-	// ends the connection is closed.
+	// error, and the connection is closed with StatusUnsupported; so is a
+	// text message that is not valid UTF-8, with StatusInvalidData. When
+	// ctx ends the connection is closed.
 	ReadMessage(ctx context.Context) ([]byte, error)
 	// WriteMessage writes one text message.
 	WriteMessage(ctx context.Context, p []byte) error

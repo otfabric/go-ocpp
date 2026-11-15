@@ -107,8 +107,15 @@ func (s *Session) Compression() bool         // permessage-deflate negotiated (t
   new one.
 - `Call` behaves as the client's: one outstanding CALL per station, up to
   `WithMaxQueuedCalls` waiting, `ErrBusy` beyond.
-- `Done` is closed when the connection has ended and every goroutine of the
-  session has returned; `Err` then says why.
+- `Done` is closed when the connection has ended and the session's reader,
+  writer, pinger and dispatcher have returned, the dispatcher with the
+  handler it was running; `Err` then says why. Functions registered with
+  `ocpp.AfterResponse` are not waited for: they may still run, and what
+  they call on the session then fails.
+- `Close` is safe to call more than once and from multiple goroutines:
+  every call returns nil, once the connection is closed and the reader,
+  writer and pinger have returned, and the dispatcher too unless a handler
+  is running (from a handler, `Close` does not wait for that handler).
 
 ## The connection handshake
 
@@ -172,8 +179,15 @@ var ErrUnauthorized error   // BasicAuth's error for refused credentials: HTTP 4
   gets 404 (OCPP-J §3.2), wrong credentials 401.
 - For profile 3, `CertificateAuth` admits a station whose verified client
   certificate's CommonName is its identity (the TLS handshake only proves
-  the certificate is trusted). For another mapping, check
+  the certificate is trusted). That comparison is an implementation choice
+  of go-ocpp, not a rule traced to the OCA text
+  ([ARCHITECTURE.md](ARCHITECTURE.md#implementation-choices)). For another
+  mapping, a serial number in the CommonName for one, check
   `r.TLS.PeerCertificates[0]` in an `AuthenticatorFunc`.
+- An `Authenticator` runs on the goroutine of the station's HTTP request,
+  for several stations at once. The server does not recover it: when it
+  does not return normally, the HTTP server that runs the request does, and
+  the station is not admitted.
 - `AnyOf` combines them for a CSMS with stations on several profiles. It
   answers 404 only when every authenticator says the station is unknown.
 - Handlers see how a station connected with `p.(*server.Session).TLS()`.
@@ -188,22 +202,22 @@ var ErrUnauthorized error   // BasicAuth's error for refused credentials: HTTP 4
 | `WithAuthenticator(a)` | required, or `WithoutAuthentication()` | Decides before the upgrade |
 | `WithoutAuthentication()` | — | Accepts every identity: closed networks and tests only |
 | `WithTLS(cfg)` | none | TLS for `ListenAndServe` and `Serve` (profiles 2 and 3; `ClientAuth`, `ClientCAs` for 3) |
-| `WithSessionHandler(onConnect, onDisconnect)` | none | Session start; session end with nil (local Close or Shutdown), `ErrReplaced`, or the cause. A panic in onConnect is logged (Error) and the session goes on |
+| `WithSessionHandler(onConnect, onDisconnect)` | none | Session start; session end with nil (local Close or Shutdown), `ErrReplaced`, or the cause. Both run on the goroutine of the station's HTTP request. An onConnect that does not return normally is recovered and logged (Error), and the session goes on; onDisconnect is not recovered by the server (the HTTP server that runs the request does that), and the session is already removed then |
 | `WithReplacePolicy(p)` | `ReplaceExisting` | Or `RejectNew` (HTTP 409) |
 | `WithMaxStations(n)` | 10 000 | Simultaneous sessions; then HTTP 503 |
 | `WithOriginPatterns(p...)` | none | Hosts besides the server's own that a browser's Origin may name |
 | `WithHandshakeTimeout(d)` | 10 s | Reading the request headers, and an idle connection that was not upgraded (own listener only) |
 | `WithResponseTimeout(d)` | 30 s | Wait for a station's response |
 | `WithWriteTimeout(d)` | 10 s | Writing one message to a station; then its connection is lost |
-| `WithPingInterval(d)` | off | WebSocket ping to every station every `d`; no pong within `d` loses the connection |
+| `WithPingInterval(d)` | off | WebSocket ping to every station every `d`; no pong within `d` loses the connection. A ping is not counted while reading waits for room in the station's incoming queue (16 messages behind a slow handler or the rate limit) |
 | `WithMaxQueuedCalls(n)` | 64 | Calls per session waiting for the outgoing slot before `ErrBusy` |
 | `WithMaxMessageSize(n)` | 64 KiB | Largest message accepted, after decompression; larger closes with 1009 |
 | `WithMaxBadMessages(n)` | off | Close a station's connection with 1008 after `n` malformed frames |
-| `WithIncomingRateLimit(perSecond, burst)` | off | Dispatch at most this many of a station's CALLs a second; the rest wait (none is refused) |
+| `WithIncomingRateLimit(perSecond, burst)` | off | Dispatch at most this many of a station's CALLs and SENDs a second; the rest wait (none is refused), and once 16 are queued reading waits too. `perSecond` must be finite and not negative, or `New` returns `ErrInvalidOption` |
 | `WithLogger(l)` | silent | `*slog.Logger`; entries carry `component=ocpp.server` |
 | `WithMetrics(m)` | none | `ocpp.Metrics` |
-| `WithCallInterceptor(i)`, `WithHandlerInterceptor(i)` | none | Wrap outgoing and incoming calls (tracing) |
-| `WithFrameObserver(f)` | none | Sees every frame of every station, raw |
+| `WithCallInterceptor(i)`, `WithHandlerInterceptor(i)` | none | Wrap outgoing and incoming calls (tracing). A handler interceptor runs on the session's dispatcher goroutine and is recovered like a handler when it does not return normally (`InternalError`, `ErrHandlerPanic`) |
+| `WithFrameObserver(f)` | none | Sees every frame of every station, raw and borrowed; must not block or keep the slice, and must return normally (it is not recovered) |
 
 ## Shutdown
 
@@ -217,7 +231,9 @@ var ErrUnauthorized error   // BasicAuth's error for refused credentials: HTTP 4
   waits until they have ended or ctx ends. `ListenAndServe` and `Serve` then return
   `ocpp.ErrClosed`.
 - `Close` closes at once, without waiting: frames still queued or being
-  written are dropped.
+  written are dropped, and it returns before the sessions have ended (each
+  session's `Done` says when; `Shutdown` waits for all). It is safe to call
+  more than once and from multiple goroutines, and returns nil.
 - `Session.Shutdown(ctx)` is the same for one session: it drains it, then
   closes it like `Session.Close`.
 - Calls in flight on a closed session fail with `ocpp.ErrClosed`.
@@ -250,7 +266,7 @@ The library itself needs no shared state, so instances are independent.
 | `New` | `ocpp.ErrInvalidOption` |
 | `ListenAndServe`, `Serve` | `ocpp.ErrClosed` after `Shutdown` or `Close`; listener errors |
 | `Shutdown` | `ctx.Err()` |
-| `Session.Call` | `*ocpp.CallError`, `ocpp.ErrTimeout`, `ocpp.ErrConnectionLost`, `ocpp.ErrClosed` (also `server.ErrReplaced`), `ocpp.ErrBusy`, `ctx.Err()`, `ocpp.ErrProtocol` |
+| `Session.Call` | `*ocpp.CallError`, `ocpp.ErrTimeout` (it also matches `context.DeadlineExceeded`), `ocpp.ErrConnectionLost`, `ocpp.ErrClosed` (also `server.ErrReplaced`), `ocpp.ErrBusy`, `ctx.Err()` (the caller's own deadline does not match `ocpp.ErrTimeout`), `ocpp.ErrProtocol` |
 | typed call functions on a session | as `Session.Call`, and `*ocpp.ValidationError`, `ocpp.ErrWrongDirection`, `ocpp.ErrUnsupportedVersion` |
 | `Session.Send` | `ocpp.ErrUnsupportedVersion`, `ocpp.ErrClosed`, `ocpp.ErrConnectionLost`, `ctx.Err()` |
 | `Session.Err` | nil while connected; `ocpp.ErrClosed`, `server.ErrReplaced`, or an error wrapping `ocpp.ErrConnectionLost` (and an `*ocpp.CloseError` when the station sent a close frame: `Normal()` when it closed on purpose) |

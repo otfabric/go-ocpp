@@ -18,6 +18,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/otfabric/go-ocpp/internal/leakcheck"
 )
 
 // stalledHeader is the header of a text frame that is never finished.
@@ -170,9 +172,61 @@ func (u unwrapWriter) Write(p []byte) (int, error) { return u.w.Write(p) }
 func (u unwrapWriter) WriteHeader(code int)        { u.w.WriteHeader(code) }
 func (u unwrapWriter) Unwrap() http.ResponseWriter { return u.w }
 
+// readWatch counts what the server reads from the connection it hijacks, so
+// that a test can wait until the server is reading again after a number of
+// bytes reached it.
+type readWatch struct {
+	delivered atomic.Int64 // bytes that Read has returned
+	reading   atomic.Int64 // Read calls in progress
+}
+
+// wrap returns a writer whose Hijack hands out the watched connection.
+func (r *readWatch) wrap(w http.ResponseWriter) http.ResponseWriter { return watchWriter{w, r} }
+
+// await waits until n bytes have been read and another Read is in progress.
+func (r *readWatch) await(t *testing.T, n int64) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for r.delivered.Load() < n || r.reading.Load() == 0 {
+		if time.Now().After(deadline) {
+			t.Fatalf("the server read %d of %d bytes, %d reads in progress", r.delivered.Load(), n, r.reading.Load())
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+type watchWriter struct {
+	http.ResponseWriter
+	r *readWatch
+}
+
+func (w watchWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	c, brw, err := w.ResponseWriter.(http.Hijacker).Hijack()
+	if err != nil {
+		return nil, nil, err
+	}
+	// coder/websocket reads from the connection it is given, after what
+	// brw has buffered.
+	return &watchedConn{Conn: c, r: w.r}, brw, nil
+}
+
+type watchedConn struct {
+	net.Conn
+	r *readWatch
+}
+
+func (c *watchedConn) Read(p []byte) (int, error) {
+	c.r.reading.Add(1)
+	n, err := c.Conn.Read(p)
+	c.r.reading.Add(-1) // before delivered: a read in progress after n bytes is a later one
+	c.r.delivered.Add(int64(n))
+	return n, err
+}
+
 // A peer that answers the server's close frame with a frame it never
 // finishes holds no closing handshake past the bound: Close returns and the connection is closed.
 func TestAcceptCloseBounded(t *testing.T) {
+	leakcheck.Check(t)
 	shortClose(t)
 	for name, wrap := range map[string]func(http.ResponseWriter) http.ResponseWriter{
 		"hijacker":        nil,
@@ -188,6 +242,11 @@ func TestAcceptCloseBounded(t *testing.T) {
 			offer := "ocpp1.6"
 			if name == "subprotocol not" {
 				offer = "ocpp2.0.1"
+			}
+			var reads *readWatch
+			if name == "Abort in Close" {
+				reads = &readWatch{}
+				wrap = reads.wrap
 			}
 			addr, conns, errs := acceptOne(t, o, wrap)
 			conn, br, resp := upgrade(t, addr, offer, nil)
@@ -234,12 +293,14 @@ func TestAcceptCloseBounded(t *testing.T) {
 				}
 				closed = func() { <-ret }
 			}
-			_, _ = conn.Write(stalledHeader(true))
+			header := stalledHeader(true)
+			_, _ = conn.Write(header)
 			switch name {
 			case "Close twice":
 				within(t, 5*time.Second, "a second Close", func() { _ = c.Close(StatusGoingAway, "") })
 			case "Abort in Close":
-				time.Sleep(50 * time.Millisecond) // let the close reach the payload
+				// The close has read the header and waits for the payload.
+				reads.await(t, int64(len(header)))
 				within(t, 5*time.Second, "Abort", c.Abort)
 			}
 			within(t, 5*time.Second, "the closing handshake", closed)
@@ -259,6 +320,7 @@ func (n *nowWriter) WriteHeaderNow() { n.now.Store(true) }
 
 // WriteHeaderNow of the application's writer still follows the 101.
 func TestAcceptWriteHeaderNow(t *testing.T) {
+	leakcheck.Check(t)
 	var nw *nowWriter
 	addr, conns, _ := acceptOne(t, AcceptOptions{Subprotocol: "ocpp1.6"}, func(w http.ResponseWriter) http.ResponseWriter {
 		nw = &nowWriter{unwrapWriter: unwrapWriter{w}}
@@ -278,6 +340,7 @@ func TestAcceptWriteHeaderNow(t *testing.T) {
 // A handshake refused inside Accept closes the connection: a foreign
 // Origin (403) and malformed upgrade requests (426, 400).
 func TestAcceptRefusalClosesConnection(t *testing.T) {
+	leakcheck.Check(t)
 	addr, _, errs := acceptOne(t, AcceptOptions{Subprotocol: "ocpp1.6", OriginPatterns: []string{"dashboard.example.com"}}, nil)
 	for name, c := range map[string]struct {
 		extra  map[string]string
@@ -315,6 +378,7 @@ func TestAcceptRefusalClosesConnection(t *testing.T) {
 }
 
 func TestCheckOrigin(t *testing.T) {
+	leakcheck.Check(t)
 	for _, c := range []struct {
 		origin, host string
 		patterns     []string
@@ -379,6 +443,7 @@ type bufConn struct {
 // The client side: a CSMS that stalls the closing handshake holds neither
 // Close nor the close of a binary message past the bound.
 func TestDialCloseBounded(t *testing.T) {
+	leakcheck.Check(t)
 	shortClose(t)
 	for _, name := range []string{"Close", "binary message"} {
 		t.Run(name, func(t *testing.T) {
@@ -417,6 +482,7 @@ func TestDialCloseBounded(t *testing.T) {
 // A redirect's connection is among those the bound closes; closing it
 // again is harmless.
 func TestDialedCloser(t *testing.T) {
+	leakcheck.Check(t)
 	a, b := net.Pipe()
 	defer func() { _ = b.Close() }()
 	d := &dialed{conns: []net.Conn{a}}
@@ -428,6 +494,7 @@ func TestDialedCloser(t *testing.T) {
 }
 
 func TestCloseTimeout(t *testing.T) {
+	leakcheck.Check(t)
 	if closeTimeout() != defaultCloseTimeout {
 		t.Fatal(closeTimeout())
 	}

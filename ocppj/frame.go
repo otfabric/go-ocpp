@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/otfabric/go-ocpp"
+	"github.com/otfabric/go-ocpp/internal/jsontext"
 )
 
 // MessageType is the first element of a frame.
@@ -62,6 +63,10 @@ func (t MessageType) Allowed(v ocpp.Version) bool {
 const MaxMessageIDLength = 36
 
 // Frame is one decoded OCPP-J frame. Which fields are set depends on Type.
+//
+// A Frame that Decode returns owns its memory: Payload and Details are
+// copies, which the caller may keep and change. A Frame given to Encode is
+// borrowed: Encode copies what it writes.
 type Frame struct {
 	Type MessageType
 	ID   string
@@ -133,6 +138,16 @@ func (e *DecodeError) Unwrap() error { return ErrMalformed }
 // its type defines, the message type a JSON integer the version allows, the
 // message ID a string of at most MaxMessageIDLength characters, payloads and
 // error details JSON objects, and nothing may follow the array.
+//
+// The text of the whole frame, payload and details included, must be
+// well-formed: valid UTF-8, and no \u escape of a surrogate without its
+// pair. encoding/json would decode either to U+FFFD, and the strings of the
+// Frame would then not be the text that was received. The literal character
+// U+FFFD and its own escape are accepted. A message ID with such text is
+// reported as not known (IDKnown is false).
+//
+// The Frame shares no memory with data: the caller may reuse data once
+// Decode has returned.
 func Decode(data []byte, v ocpp.Version, l Limits) (Frame, error) {
 	if len(data) > l.maxFrameSize() {
 		return Frame{}, &DecodeError{Reason: fmt.Sprintf("frame of %d bytes exceeds the limit of %d", len(data), l.maxFrameSize())}
@@ -149,7 +164,7 @@ func Decode(data []byte, v ocpp.Version, l Limits) (Frame, error) {
 	derr = &DecodeError{Type: t}
 	id, idOK := parseString(elems[1])
 	idLen := utf8.RuneCountInString(id)
-	if idOK && idLen <= MaxMessageIDLength {
+	if idOK && idLen <= MaxMessageIDLength && jsontext.WellFormed(elems[1]) {
 		derr.ID, derr.IDKnown = id, true
 	}
 	if !ok {
@@ -160,6 +175,10 @@ func Decode(data []byte, v ocpp.Version, l Limits) (Frame, error) {
 	if !t.Allowed(v) {
 		derr.UnknownType = true
 		derr.Reason = fmt.Sprintf("message type %d is not defined in OCPP %s", int(t), v)
+		return Frame{}, derr
+	}
+	if !jsontext.WellFormed(data) {
+		derr.Reason = jsontext.Reason
 		return Frame{}, derr
 	}
 	if !idOK {
@@ -291,7 +310,10 @@ func countElements(data []byte) int {
 // Encode writes f as a frame. Nil payloads and details are written as {}.
 // It checks what Decode would reject for any version, except that the
 // version-dependent checks (message type, error code) are left to the
-// caller.
+// caller, and so is the text: a payload or details are written as they are
+// given, and in the strings of f every byte that is not UTF-8 is written
+// as U+FFFD (encoding/json). The result is a new slice, which shares no
+// memory with f.
 func Encode(f Frame) ([]byte, error) {
 	if utf8.RuneCountInString(f.ID) > MaxMessageIDLength {
 		return nil, fmt.Errorf("ocppj: message ID %q exceeds %d characters", f.ID, MaxMessageIDLength)

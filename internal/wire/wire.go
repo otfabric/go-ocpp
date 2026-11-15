@@ -22,6 +22,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/otfabric/go-ocpp"
+	"github.com/otfabric/go-ocpp/internal/jsontext"
 	"github.com/otfabric/go-ocpp/ocppj"
 )
 
@@ -199,10 +200,21 @@ func contains(list []string, s string) bool {
 
 // Decode unmarshals payload into m strictly and validates it. Errors are
 // *ocpp.ValidationError.
+//
+// A payload whose text is not well-formed (jsontext.WellFormed: bytes that
+// are not UTF-8, the escape of a surrogate without its pair) is refused with
+// the format code: encoding/json decodes such text to U+FFFD, so m would
+// hold strings the payload does not. Payloads that arrive in a frame have
+// passed the same check in ocppj.Decode; this one covers a payload that is
+// validated on its own (ValidateRequest, ValidateResponse, a dispatcher
+// called directly).
 func Decode(payload json.RawMessage, m Message, c Codes) error {
 	// The generated UnmarshalJSON methods apply the integer rule of their schema.
 	if err := json.Unmarshal(payload, m); err != nil {
 		return Classify(err, c)
+	}
+	if !jsontext.WellFormed(payload) {
+		return Invalid(c.Format, "", jsontext.Reason)
 	}
 	return m.Validate()
 }

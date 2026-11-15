@@ -32,7 +32,11 @@ Implemented in the client and server (Phase 2); see
 | 2 | `wss://` | HTTP Basic, and the server certificate |
 | 3 | `wss://` | Client certificate (mutual TLS) |
 
-- TLS verification cannot be disabled through any go-ocpp option.
+- go-ocpp has no option of its own that turns TLS verification off, and
+  never sets `InsecureSkipVerify`. The `tls.Config` an application passes
+  with `client.WithTLS`, or on the transport of `client.WithHTTPClient`, is
+  used as given, with TLS 1.2 as its minimum: verification is what that
+  configuration says.
 - The client refuses an HTTP redirect from `wss://` to `ws://` during the
   handshake, so that a CSMS (or what answers in its name) cannot move the
   station, and its Basic credentials, onto clear text. Redirects that keep
@@ -50,6 +54,17 @@ Implemented in the client and server (Phase 2); see
   handler sees it; unknown properties are refused where the schema closes
   the object, and so are `null` array elements and property names that
   appear twice in one object.
+- Text is checked before it is decoded. A WebSocket text message that is
+  not valid UTF-8 closes the connection with status 1007 (RFC 6455 §8.1),
+  and a frame or payload that holds the `\u` escape of a surrogate without
+  its pair is refused as malformed: a CALLERROR for a CALL, with its message
+  ID when that is readable, and the format code for a payload that is
+  validated on its own (`ValidateRequest`, `ValidateResponse`, a dispatcher
+  called directly). `encoding/json` decodes both to U+FFFD; go-ocpp does
+  not, so the strings a handler or a caller receives are the text that was
+  sent. Strings of outgoing typed messages are written by `encoding/json`,
+  which writes U+FFFD for bytes of a Go string that are not UTF-8
+  ([API.md](API.md#packages-ocpp16-ocpp201-and-ocpp21)).
 - On 2.x connections the server refuses station identities that are not
   identifierStrings of at most 48 characters without ":" (HTTP 400).
 - The server refuses WebSocket upgrades whose browser Origin names another
@@ -63,7 +78,15 @@ Implemented in the client and server (Phase 2); see
   handlers.
 - `WithWriteTimeout` (default 10 s) bounds a peer that stops reading;
   `WithPingInterval` detects half-open connections; `WithMaxBadMessages`
-  closes a peer that keeps sending malformed frames.
+  closes a peer that keeps sending malformed frames. A ping is not counted
+  while the connection's own reader waits for room in its incoming queue,
+  and responses that match no CALL are not counted by `WithMaxBadMessages`
+  ([LIMITATIONS.md](LIMITATIONS.md#bounds-left-to-the-application)).
+- Application code that the library calls on a connection's goroutines
+  (handlers, handler interceptors, functions registered with
+  `ocpp.AfterResponse`) is recovered when it does not return normally and
+  logged with its stack; the connection goes on, and so do the other
+  sessions.
 - Hardening tests cover slow handshakes, station floods, oversized
   messages, compression bombs, call floods, slow readers, half-open links
   and TLS refusals (expired, foreign-CA and missing client certificates,

@@ -151,9 +151,11 @@ func (r Reconnect) check() error {
 }
 
 // WithStateHandler sets a function called on every state change, with the
-// error that caused it, if any. It is called synchronously and in order; it
-// may read State, Version and ID, but must not block and must not call
-// Close, Connect or Call.
+// error that caused it, if any. It is called synchronously and in order,
+// with the client's lock held, on the goroutine that changes the state: the
+// one that calls Connect or Close, or the client's supervisor. It may read
+// State, Version and ID, but must not block, must not call Close, Connect
+// or Call, and must return normally: it is not recovered.
 func WithStateHandler(f func(state ocpp.State, err error)) Option {
 	return func(o *options) { o.stateHandler = f }
 }
@@ -194,6 +196,13 @@ func WithWriteTimeout(d time.Duration) Option { return func(o *options) { o.writ
 // OCPPCommCtrlr, OCPP 1.6 with the WebSocketPingInterval configuration
 // key; the application passes the value in. Zero (the default) sends no
 // pings.
+//
+// A pong is read only while the connection is read. Reading waits while
+// the queue of incoming CALLs and SENDs is full (16 messages, behind a
+// handler that is slower than the CSMS sends, or behind
+// WithIncomingRateLimit): a ping sent in that time is not counted, and the
+// next one goes out d later. A connection that is half open is then noticed
+// once reading goes on.
 func WithPingInterval(d time.Duration) Option { return func(o *options) { o.pingInterval = d } }
 
 // WithMaxBadMessages closes the connection with status 1008 once n
@@ -214,7 +223,10 @@ func WithHeader(name, value string) Option {
 // CALLs and SENDs a second, in bursts of up to burst. Messages over the
 // rate wait: none is refused, since OCPP has no error for "too many";
 // once the bounded incoming queue is full, reading from the connection
-// waits too. Zero (the default) sets no limit.
+// waits too, and with it the answers to this end's own CALLs and the pongs
+// (see WithPingInterval). Zero (the default) sets no limit. perSecond must
+// be a finite number and not negative, or New returns ErrInvalidOption; a
+// rate may be as low as one message in many hours.
 func WithIncomingRateLimit(perSecond float64, burst int) Option {
 	return func(o *options) { o.incomingRate, o.incomingBurst = perSecond, burst }
 }

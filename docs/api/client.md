@@ -69,7 +69,9 @@ Call sends a CALL to the CSMS and waits for its result (see ocpp.Caller). While 
 func (c *Client) Close() error
 ```
 
-Close closes the connection and stops reconnecting. Pending calls fail with ocpp.ErrClosed. Close is idempotent. Called from a handler, it returns without waiting for that handler.
+Close closes the connection and stops reconnecting. Pending calls fail with ocpp.ErrClosed, and so does every Connect, Call and Send after it.
+
+Close is safe to call more than once and from multiple goroutines. The call that closes returns once the connection is closed and its reader, writer, pinger and dispatcher have returned, and the supervisor that redials. Called while a handler runs, and so from a handler, it returns without waiting for that handler, for the dispatcher that runs it, and for the supervisor, which ends after them. It does not wait for functions registered with ocpp.AfterResponse, which may call it. Every other call, during or after that one, returns nil at once and does nothing.
 
 #### func (Client) Connect
 
@@ -242,7 +244,7 @@ WithHeader adds a header to the WebSocket handshake request, for a CSMS or a pro
 func WithIncomingRateLimit(perSecond float64, burst int) Option
 ```
 
-WithIncomingRateLimit dispatches at most perSecond of the CSMS's incoming CALLs and SENDs a second, in bursts of up to burst. Messages over the rate wait: none is refused, since OCPP has no error for "too many"; once the bounded incoming queue is full, reading from the connection waits too. Zero (the default) sets no limit.
+WithIncomingRateLimit dispatches at most perSecond of the CSMS's incoming CALLs and SENDs a second, in bursts of up to burst. Messages over the rate wait: none is refused, since OCPP has no error for "too many"; once the bounded incoming queue is full, reading from the connection waits too, and with it the answers to this end's own CALLs and the pongs (see WithPingInterval). Zero (the default) sets no limit. perSecond must be a finite number and not negative, or New returns ErrInvalidOption; a rate may be as low as one message in many hours.
 
 #### func WithInsecureTransport
 
@@ -300,6 +302,8 @@ func WithPingInterval(d time.Duration) Option
 
 WithPingInterval makes the client send a WebSocket ping every d, and treat the connection as lost when the pong does not arrive within d: a half-open connection is then noticed without waiting for a CALL to time out. OCPP 2.x configures it with the WebSocketPingInterval variable of OCPPCommCtrlr, OCPP 1.6 with the WebSocketPingInterval configuration key; the application passes the value in. Zero (the default) sends no pings.
 
+A pong is read only while the connection is read. Reading waits while the queue of incoming CALLs and SENDs is full (16 messages, behind a handler that is slower than the CSMS sends, or behind WithIncomingRateLimit): a ping sent in that time is not counted, and the next one goes out d later. A connection that is half open is then noticed once reading goes on.
+
 #### func WithReconnect
 
 ```go
@@ -322,7 +326,7 @@ WithResponseTimeout sets how long a CALL waits for its response.
 func WithStateHandler(f func(state ocpp.State, err error)) Option
 ```
 
-WithStateHandler sets a function called on every state change, with the error that caused it, if any. It is called synchronously and in order; it may read State, Version and ID, but must not block and must not call Close, Connect or Call.
+WithStateHandler sets a function called on every state change, with the error that caused it, if any. It is called synchronously and in order, with the client's lock held, on the goroutine that changes the state: the one that calls Connect or Close, or the client's supervisor. It may read State, Version and ID, but must not block, must not call Close, Connect or Call, and must return normally: it is not recovered.
 
 #### func WithTLS
 

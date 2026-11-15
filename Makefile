@@ -4,7 +4,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: compat help all build examples fmt fmt-check lint lint-ci vet vuln test test-min coverage coverage-pkg-check cover fuzz fuzz-long chaos soak check cross clean interop test-interop e2e deps gen gen-check schemas-check schemas-sync coverage-check bench docs-check
+.PHONY: compat help all build examples fmt fmt-check lint lint-ci vet vuln test test-min coverage coverage-pkg-check coverpkg-check cover fuzz fuzz-long fuzz-check chaos soak check cross clean interop test-interop e2e deps gen gen-check schemas-check schemas-sync coverage-check bench docs-check
 help: ## This help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_-]+:.*?## / {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
@@ -22,7 +22,12 @@ BIN_DIR := bin
 # Library packages: tests and coverage (exclude examples and the interop suite)
 TEST_PKGS := $(shell go list ./... | grep -v '/examples' | grep -v '/interop$$' | grep -v '/interop/')
 # Coverage is measured over the library packages, whichever package's tests exercise them.
-COVER_PKGS := $(shell go list ./... | grep -v '/examples' | grep -v '/e2e$$' | grep -v '/internal/gen' | grep -v '/internal/specsync' | grep -v '/internal/schematest' | grep -v '/interop$$' | grep -v '/interop/' | paste -sd, -)
+# Left out: the examples, the test suites (e2e, interop), the generator and
+# the schema refresh (internal/gen, internal/specsync) and the packages that
+# only tests import (internal/schematest, internal/leakcheck). The coverpkg
+# input of .github/workflows/ci.yml is this list: 'make coverpkg-check'
+# compares the two.
+COVER_PKGS := $(shell go list ./... | grep -v '/examples' | grep -v '/e2e$$' | grep -v '/internal/gen' | grep -v '/internal/specsync' | grep -v '/internal/schematest' | grep -v '/internal/leakcheck' | grep -v '/interop$$' | grep -v '/interop/' | paste -sd, -)
 
 # docsync release of docs-check (DOC-008).
 DOCSYNC_VERSION := v0.3.1
@@ -131,7 +136,45 @@ COVER_PKG_MIN := 90
 FUZZTIME ?= 30s
 FUZZ_TARGETS := ocppj:FuzzDecode internal/engine:FuzzEndpoint server:FuzzHandshake \
 	ocpp16:FuzzDispatch ocpp201:FuzzDispatch ocpp21:FuzzDispatch internal/wire:FuzzIntegralNumbers \
-	client:FuzzNew ocppcert:FuzzHash
+	client:FuzzNew ocppcert:FuzzHash internal/jsontext:FuzzWellFormed
+
+# FUZZ_TARGETS and the matrix of .github/workflows/hardening.yml are written
+# by hand. fuzz-check compares both with what 'go test -list' finds in the
+# library packages, so that a new target cannot be left out of the nightly
+# runs, nor a removed one stay listed.
+fuzz-check: ## Fail when FUZZ_TARGETS or the fuzz matrix of hardening.yml differs from the fuzz targets found by go test -list
+	@echo "Checking the fuzz target lists"
+	@mod="$$(go list -m)"; \
+	out="$$(go test -list '^Fuzz' $(TEST_PKGS))" || { echo "$$out"; echo "go test -list failed"; exit 1; }; \
+	found="$$(printf '%s\n' "$$out" | awk -v mod="$$mod" '/^Fuzz/ { n[++k] = $$1; next } \
+		$$1 == "ok" { p = $$2; sub("^" mod "/?", "", p); for (i = 1; i <= k; i++) print p ":" n[i]; k = 0 }' | sort)"; \
+	listed="$$(printf '%s\n' $(FUZZ_TARGETS) | sort)"; \
+	matrix="$$(sed -n 's/^ *- \([A-Za-z0-9_\/]*:Fuzz[A-Za-z0-9_]*\) *$$/\1/p' .github/workflows/hardening.yml | sort)"; \
+	[ -n "$$found" ] || { echo "go test -list found no fuzz target"; exit 1; }; \
+	bad=0; \
+	for l in Makefile hardening.yml; do \
+		if [ "$$l" = Makefile ]; then have="$$listed"; what="FUZZ_TARGETS in the Makefile"; \
+		else have="$$matrix"; what="The fuzz matrix of .github/workflows/hardening.yml"; fi; \
+		[ "$$found" = "$$have" ] && continue; \
+		echo "$$what differs from the fuzz targets found."; bad=1; \
+		for t in $$found; do printf '%s\n' "$$have" | grep -qxF "$$t" || echo "  missing: $$t"; done; \
+		for t in $$have; do printf '%s\n' "$$found" | grep -qxF "$$t" || echo "  not a fuzz target: $$t"; done; \
+	done; \
+	[ "$$bad" = 0 ] && echo "fuzz targets: $$(printf '%s\n' "$$found" | wc -l | tr -d ' ') found, all listed in the Makefile and in hardening.yml"; \
+	exit $$bad
+
+# The aggregate coverage gate of CI (go-ci.yml, coverage-min) measures the
+# packages of the coverpkg input of ci.yml: the same packages as COVER_PKGS.
+coverpkg-check: ## Fail when the coverpkg input of ci.yml is not COVER_PKGS
+	@echo "Checking coverpkg in ci.yml"
+	@ci="$$(sed -n 's/^ *coverpkg: *//p' .github/workflows/ci.yml | tr ',' '\n' | sort)"; \
+	mk="$$(printf '%s\n' "$(COVER_PKGS)" | tr ',' '\n' | sort)"; \
+	if [ "$$ci" != "$$mk" ]; then echo "coverpkg in .github/workflows/ci.yml is not COVER_PKGS."; \
+		for t in $$mk; do printf '%s\n' "$$ci" | grep -qxF "$$t" || echo "  missing in ci.yml: $$t"; done; \
+		for t in $$ci; do printf '%s\n' "$$mk" | grep -qxF "$$t" || echo "  not in COVER_PKGS: $$t"; done; \
+		exit 1; fi; \
+	echo "coverpkg: $$(printf '%s\n' "$$mk" | wc -l | tr -d ' ') packages, as COVER_PKGS"
+
 fuzz: ## Run the fuzz targets for FUZZTIME each (default 30s)
 	@echo "Fuzzing (FUZZTIME=$(FUZZTIME))"
 	@for t in $(FUZZ_TARGETS); do \
@@ -243,7 +286,7 @@ coverage-check: coverage ## Fail when total coverage is below COVER_MIN
 bench: ## Benchmarks
 	@go test -count=1 -run='^$$' -bench=. -benchmem $(TEST_PKGS)
 
-check: fmt fmt-check deps gen-check schemas-check lint lint-ci vet vuln test test-min coverage coverage-pkg-check cross examples docs-check ## Run format + generate + lint + vet + vuln + test + cross-build
+check: fmt fmt-check deps gen-check schemas-check fuzz-check coverpkg-check lint lint-ci vet vuln test test-min coverage coverage-pkg-check cross examples docs-check ## Run format + generate + lint + vet + vuln + test + cross-build
 
 # The documents against the code (DOC-008): docsync, as docs-check.yml runs it.
 docs-check: ## Check that the documents agree with the code (docsync)

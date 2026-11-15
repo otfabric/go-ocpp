@@ -67,6 +67,34 @@ application can bound it itself.
   keeps such a connection from being registered, but not from being logged
   once.
 
+- **Responses that match no CALL are not counted.** `WithMaxBadMessages`
+  counts the frames that do not decode. A well-formed CALLRESULT or
+  CALLERROR whose message ID matches no pending CALL (late, repeated or
+  never asked for), and a CALLRESULTERROR (2.1), each produce one Warn log
+  entry and one `Metrics.OnProtocolError` call, and count towards no limit:
+  a connected peer can make the log grow at the rate at which it sends
+  small frames. `WithIncomingRateLimit` does not slow them, since it
+  applies to CALLs and SENDs. An application that needs a bound counts
+  `OnProtocolError` per station (the errors wrap `ErrUnexpectedResponse`,
+  or `ErrProtocol` with a `*CallError` for a CALLRESULTERROR) and closes
+  the session, or limits the rate in its log handler.
+- **Functions registered with `ocpp.AfterResponse` are not bounded or
+  waited for.** Each handled CALL whose handler registers any gets one
+  goroutine, which runs them and ends when they return. `Close`, `Shutdown`
+  and a session's `Done` do not wait for it (such a function may call them),
+  so these functions can still run after the session has ended, when
+  everything they send fails at once. How long they run, and how many run
+  at a time, is the application's: a function that waits should watch the
+  session (`Done`) or a context of its own.
+- **Pings say nothing while a connection's incoming queue is full.** A pong
+  is read only while the connection is read, and reading waits while 16
+  incoming CALLs and SENDs are queued behind a slow handler or
+  `WithIncomingRateLimit`. Pings sent in that time are not counted as
+  lost, so a connection that goes half open then is noticed only when
+  reading goes on, or by `WithWriteTimeout` when something is written. The
+  peer's own pings are not answered in that time either, and a peer that
+  pings may close the connection from its side.
+
 - **The client's closing handshake is bounded only with an `*http.Transport`.**
   The client closes a connection whose closing handshake does not end within
   10 s through the connection its HTTP client dialed. With `WithHTTPClient`

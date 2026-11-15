@@ -28,7 +28,10 @@ var (
 	// when the connection broke.
 	ErrConnectionLost = errors.New("ocpp: connection lost")
 
-	// ErrTimeout is returned when no response to a CALL arrived in time.
+	// ErrTimeout is returned when no response to a CALL arrived within the
+	// response timeout. That error also matches context.DeadlineExceeded.
+	// A Call that ends with its own context's deadline returns that
+	// context's error, which does not match ErrTimeout.
 	ErrTimeout = errors.New("ocpp: timeout")
 
 	// ErrBusy is returned when the queue of calls waiting to be sent is
@@ -50,8 +53,9 @@ var (
 	ErrInvalidOption = errors.New("ocpp: invalid option")
 
 	// ErrHandlerPanic is reported through Metrics.OnCallHandled when a
-	// handler panicked. The panic is recovered, logged with its stack, and
-	// the CALL answered with InternalError.
+	// handler, or the handler interceptor around it, did not return
+	// normally. It is recovered, logged with its stack, and the CALL
+	// answered with InternalError.
 	ErrHandlerPanic = errors.New("ocpp: handler panic")
 )
 

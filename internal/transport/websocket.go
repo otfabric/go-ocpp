@@ -15,6 +15,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/coder/websocket"
 )
@@ -272,6 +273,13 @@ func (w *wsConn) ReadMessage(ctx context.Context) ([]byte, error) {
 	if typ != websocket.MessageText {
 		w.bounded(StatusUnsupported, "OCPP-J uses text messages only")
 		return nil, errors.New("transport: binary message received")
+	}
+	// RFC 6455 §8.1: a text message that is not valid UTF-8 fails the
+	// connection. coder/websocket does not check it. The read limit bounds
+	// p, and the check comes after decompression.
+	if !utf8.Valid(p) {
+		w.bounded(StatusInvalidData, "text messages are UTF-8")
+		return nil, errors.New("transport: text message that is not valid UTF-8 received")
 	}
 	return p, nil
 }

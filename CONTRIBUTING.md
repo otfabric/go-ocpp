@@ -46,12 +46,21 @@ under that gofmt and under the local one: run `make fmt`, then
 - Test vectors come from the specification or from captures, never from
   another implementation's output alone.
 - Run tests with `-race`. Do not depend on timing: use contexts and
-  channels, not sleeps.
+  channels, not sleeps. A test waits for an event (a frame the peer read, a
+  value on a channel, a counter another goroutine moves), with a time limit
+  only so that a failure ends.
+- A test that starts goroutines calls `leakcheck.Check(t)` first
+  (`internal/leakcheck`; `checkNoLeak` in `internal/engine`, `noLeak` in
+  `e2e`): it fails for every goroutine the test leaves running, by stack.
+- A change to `Close`, `Shutdown`, `Done` or a callback keeps the lifecycle
+  contract matrix in [TESTING.md](TESTING.md#lifecycle-contract-matrix) true.
 - A test that fails must not be skipped to make CI pass.
 - Hardening: `make fuzz` (FUZZTIME, default 30 s per target), `make
   fuzz-long` (10 min), `make chaos` (CHAOS_DURATION, CHAOS_SEED to replay a
   logged seed) and `make soak` (SOAKTIME). A fuzz input that fails is
-  written to the package's `testdata/fuzz`: commit it with the fix.
+  written to the package's `testdata/fuzz`: commit it with the fix. A new
+  fuzz target is added to `FUZZ_TARGETS` in the Makefile and to the matrix
+  of `.github/workflows/hardening.yml`; `make fuzz-check` fails otherwise.
 - An intended change of the exported API: `go test -run TestAPI -update`,
   and note it in RELEASE.md.
 - Coverage is held from the start: Codecov requires 97% of the library and
