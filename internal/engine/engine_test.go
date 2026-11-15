@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -15,6 +14,7 @@ import (
 	"time"
 
 	"github.com/otfabric/go-ocpp"
+	"github.com/otfabric/go-ocpp/internal/leakcheck"
 	"github.com/otfabric/go-ocpp/internal/transport"
 	"github.com/otfabric/go-ocpp/ocppj"
 )
@@ -122,19 +122,11 @@ func echo(ctx context.Context, p ocpp.Peer, action string, payload json.RawMessa
 	return json.RawMessage(fmt.Sprintf(`{"action":%q,"echo":%s}`, action, payload)), nil
 }
 
+// checkNoLeak fails the test for every goroutine it started that is still
+// running after its cleanups (internal/leakcheck: stacks, not counts).
 func checkNoLeak(t *testing.T) {
 	t.Helper()
-	before := runtime.NumGoroutine()
-	t.Cleanup(func() {
-		deadline := time.Now().Add(5 * time.Second)
-		for runtime.NumGoroutine() > before && time.Now().Before(deadline) {
-			time.Sleep(10 * time.Millisecond)
-		}
-		if n := runtime.NumGoroutine(); n > before {
-			buf := make([]byte, 1<<16)
-			t.Errorf("%d goroutines leaked:\n%s", n-before, buf[:runtime.Stack(buf, true)])
-		}
-	})
+	leakcheck.Check(t)
 }
 
 func TestBidirectional(t *testing.T) {
@@ -224,6 +216,10 @@ func TestTimeoutAndLateResponse(t *testing.T) {
 	err := e.Call(context.Background(), "Heartbeat", nil, nil)
 	if !errors.Is(err, ocpp.ErrTimeout) {
 		t.Fatalf("err = %v, want ErrTimeout", err)
+	}
+	// A timeout of the library matches the context's sentinel too.
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v, want it to match context.DeadlineExceeded as well", err)
 	}
 	f := readFrame(t, raw, ocpp.V201)
 	// The slot is free again: the next CALL is sent.
@@ -403,14 +399,19 @@ func TestCloseFailsPendingCall(t *testing.T) {
 	checkNoLeak(t)
 	a, b := transport.Pipe("ocpp1.6")
 	s := newEndpoint(a, ocpp.V16, ocpp.ChargingStation, nil, nil)
-	block := make(chan struct{})
+	block, entered := make(chan struct{}), make(chan struct{})
 	c := newEndpoint(b, ocpp.V16, ocpp.CSMS, ocpp.DispatcherFunc(func(ctx context.Context, p ocpp.Peer, action string, payload json.RawMessage) (json.RawMessage, error) {
+		close(entered)
 		<-block
 		return json.RawMessage(`{}`), nil
 	}), nil)
 	done := make(chan error, 1)
 	go func() { done <- s.Call(context.Background(), "Heartbeat", nil, nil) }()
-	time.Sleep(20 * time.Millisecond)
+	select {
+	case <-entered: // the CALL is with the peer's handler: it is pending
+	case <-time.After(5 * time.Second):
+		t.Fatal("the CALL did not reach the peer's handler")
+	}
 	_ = s.Close()
 	if err := <-done; !errors.Is(err, ocpp.ErrClosed) {
 		t.Fatalf("pending call: %v, want ErrClosed", err)

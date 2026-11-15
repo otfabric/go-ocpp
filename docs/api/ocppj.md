@@ -48,7 +48,7 @@ ErrMalformed is wrapped by every Decode error.
 func Encode(f Frame) ([]byte, error)
 ```
 
-Encode writes f as a frame. Nil payloads and details are written as {}. It checks what Decode would reject for any version, except that the version-dependent checks (message type, error code) are left to the caller.
+Encode writes f as a frame. Nil payloads and details are written as {}. It checks what Decode would reject for any version, except that the version-dependent checks (message type, error code) are left to the caller, and so is the text: a payload or details are written as they are given, and in the strings of f every byte that is not UTF-8 is written as U+FFFD (encoding/json). The result is a new slice, which shares no memory with f.
 
 ### func ErrorCodes
 
@@ -150,6 +150,8 @@ type Frame struct {
 
 Frame is one decoded OCPP-J frame. Which fields are set depends on Type.
 
+A Frame that Decode returns owns its memory: Payload and Details are copies, which the caller may keep and change. A Frame given to Encode is borrowed: Encode copies what it writes.
+
 #### func Decode
 
 ```go
@@ -159,6 +161,10 @@ func Decode(data []byte, v ocpp.Version, l Limits) (Frame, error)
 Decode parses one frame received on a connection of version v.
 
 It is strict: the frame must be a JSON array with exactly the elements its type defines, the message type a JSON integer the version allows, the message ID a string of at most MaxMessageIDLength characters, payloads and error details JSON objects, and nothing may follow the array.
+
+The text of the whole frame, payload and details included, must be well-formed: valid UTF-8, and no \\u escape of a surrogate without its pair. encoding/json would decode either to U+FFFD, and the strings of the Frame would then not be the text that was received. The literal character U+FFFD and its own escape are accepted. A message ID with such text is reported as not known (IDKnown is false).
+
+The Frame shares no memory with data: the caller may reuse data once Decode has returned.
 
 ### type Limits
 

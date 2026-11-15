@@ -7,14 +7,17 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/otfabric/go-ocpp"
 	"github.com/otfabric/go-ocpp/internal/schematest"
 )
 
 // FuzzDispatch feeds arbitrary payloads to both dispatchers, for every
-// action: decoding and validation must never panic, and must answer with a
-// CALLERROR or a response.
+// action: decoding and validation must always return, and must answer with a
+// CALLERROR or a response. A payload that validation accepts is valid UTF-8
+// which encoding/json decodes without replacing any of its text
+// (schematest.TextReplaced).
 func FuzzDispatch(f *testing.F) {
 	for i := range Actions {
 		f.Add(uint8(i), []byte(`{}`))
@@ -30,6 +33,11 @@ func FuzzDispatch(f *testing.F) {
 			}
 		}
 	}
+	for i := range Actions {
+		f.Add(uint8(i), []byte(`{"idTag":"A\ud83dB","idToken":{"idToken":"A\ude00B","type":"Central"}}`))
+		f.Add(uint8(i), []byte("{\"idTag\":\"A\xffB\",\"idToken\":{\"idToken\":\"A\xe2\x82\",\"type\":\"Central\"}}"))
+		f.Add(uint8(i), []byte(`{"idTag":"A\ud83d\ude00B","idToken":{"idToken":"A\ufffdB","type":"Central"}}`))
+	}
 	f.Add(uint8(0), []byte(`[1,2,3]`))
 	f.Add(uint8(1), []byte(`null`))
 	dispatchers := []ocpp.Dispatcher{ChargingStation(UnimplementedChargingStationHandler{}), CSMS(UnimplementedCSMSHandler{})}
@@ -42,7 +50,16 @@ func FuzzDispatch(f *testing.F) {
 				t.Fatalf("%s: invalid response %q", action, out)
 			}
 		}
-		_ = ValidateRequest(action, payload)
-		_ = ValidateResponse(action, payload)
+		for what, validate := range map[string]func(string, json.RawMessage) error{"request": ValidateRequest, "response": ValidateResponse} {
+			if validate(action, payload) != nil {
+				continue
+			}
+			if !utf8.Valid(payload) {
+				t.Fatalf("%s %s: accepted %q, which is not valid UTF-8", action, what, payload)
+			}
+			if schematest.TextReplaced(payload) {
+				t.Fatalf("%s %s: accepted %q, of which encoding/json replaces text", action, what, payload)
+			}
+		}
 	})
 }

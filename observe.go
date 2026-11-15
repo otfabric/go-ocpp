@@ -79,15 +79,29 @@ type CallInfo struct {
 // (WithHandlerInterceptor). It must call next exactly once, with ctx or a
 // context derived from it, and return its error or an error of its own.
 // This is where tracing spans start and end.
+//
+// A handler interceptor runs on the connection's dispatcher goroutine,
+// around the handler of an incoming CALL or SEND. When it does not return
+// normally it is recovered like a handler: logged with its stack, reported
+// to Metrics.OnCallHandled as ErrHandlerPanic, a CALL is answered with
+// InternalError, and the connection goes on. A call interceptor runs on
+// the goroutine that calls Call or Send, and is not recovered: what it
+// raises reaches that caller.
 type Interceptor func(ctx context.Context, info CallInfo, next func(context.Context) error) error
 
 // FrameObserver sees every OCPP-J frame sent or received, as raw JSON. It
 // runs synchronously on the connection's reader or writer, so it must not
-// block, and it must not retain or modify frame.
+// block, and it must not retain or modify frame, which is borrowed for the
+// call. It must not call Close, and it must return normally: it is not
+// recovered.
 type FrameObserver func(info ConnInfo, dir Direction, frame []byte)
 
 // Metrics receives events for metrics. Callbacks are synchronous and must
-// be safe for concurrent use and must not block.
+// be safe for concurrent use and must not block. They run on the goroutine
+// where the event happens: the connection's reader or dispatcher, the
+// goroutine of a Call, Send, Connect or Close, the client's supervisor, or
+// the HTTP request of a station's handshake. They must not call Close, and
+// must return normally: they are not recovered.
 //
 // Every callback gets the station identity in ConnInfo. Whether it becomes
 // a metric label is the implementation's choice; labelling by station gives
@@ -106,8 +120,17 @@ type Metrics interface {
 	OnDisconnect(info ConnInfo, err error)
 	// OnReconnectAttempt is called before a client redials.
 	OnReconnectAttempt(info ConnInfo, attempt int)
-	// OnCallDone is called when an outgoing CALL ends, with its round trip
-	// time and nil, a *CallError, ErrTimeout or another error.
+	// OnCallDone is called once for every CALL handed to a connection, when
+	// it ends, with the error its Call returns: nil, a *CallError,
+	// ErrTimeout, ErrBusy, the error of the caller's context, a connection
+	// error, or, for a response that does not decode or fails validation,
+	// an error wrapping ErrProtocol. d is the round trip time, from when
+	// the CALL took the outgoing slot; for a CALL that ended before it had
+	// the slot, the time it waited. A Call that fails before it reaches a
+	// connection is not reported: on a client without a connection or
+	// after its Close, once Shutdown has begun, for a wrong direction or
+	// version, or with a request that cannot be marshalled. An outgoing
+	// SEND (OCPP 2.1) is reported when it is queued.
 	OnCallDone(info ConnInfo, action string, d time.Duration, err error)
 	// OnCallHandled is called when an incoming CALL has been answered, with
 	// the handler's duration and its error.

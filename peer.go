@@ -36,6 +36,12 @@ func (r Role) String() string {
 // The result payload is unmarshalled into resp, which must be a pointer
 // (a *json.RawMessage receives the payload unchanged) or nil to discard it.
 // A CALLERROR is returned as a *CallError.
+//
+// Ownership: req is borrowed. The client and the server sessions read it
+// before Call returns and keep no reference to it, so the caller may change
+// or reuse it afterwards, a json.RawMessage included. resp is the caller's:
+// what it receives is decoded or copied for it (a *json.RawMessage gets a
+// copy of the payload, in its own slice when that has room).
 type Caller interface {
 	Call(ctx context.Context, action string, req, resp any) error
 }
@@ -59,20 +65,37 @@ type Peer interface {
 // Dispatch returns the CALLRESULT payload, or an error: a *CallError is
 // sent as is, any other error as an InternalError whose description does
 // not reveal the error text.
+//
+// Dispatch is called on the connection's dispatcher goroutine, one message
+// at a time and in arrival order. It may block, which delays the later
+// messages of that connection and no other; it may call p and the methods
+// of the client or session: Close then returns without waiting for the
+// handler, and Shutdown waits for it (see there). A Dispatch that does not
+// return normally is recovered: it is logged with its stack, reported to
+// Metrics.OnCallHandled as ErrHandlerPanic, the CALL is answered with
+// InternalError, and the connection goes on.
+//
+// Ownership: payload is the dispatcher's, a copy made for this call that
+// it may keep or change. The payload it returns is borrowed: it is copied
+// into the response before the next message is dispatched, and not kept.
 type Dispatcher interface {
 	Dispatch(ctx context.Context, p Peer, action string, payload json.RawMessage) (json.RawMessage, error)
 }
 
 // Sender sends a SEND (OCPP 2.1): a message that is never answered and may
 // be sent while a CALL is outstanding (2.1 Part 4 §4.1.1, §4.2.4). The
-// client and server sessions implement it.
+// client and server sessions implement it. req is borrowed, as for Caller:
+// it is read before Send returns and not kept.
 type Sender interface {
 	Send(ctx context.Context, action string, req any) error
 }
 
 // SendDispatcher is implemented by a Dispatcher that also handles incoming
 // SEND messages (OCPP 2.1). They are never answered, so DispatchSend
-// returns only an error, which is logged.
+// returns only an error, which is logged. DispatchSend is called like
+// Dispatch, on the same goroutine and in arrival order with the CALLs, and
+// owns its payload; when it does not return normally it is recovered,
+// logged and reported in the same way, and nothing is sent.
 type SendDispatcher interface {
 	DispatchSend(ctx context.Context, p Peer, action string, payload json.RawMessage) error
 }
@@ -94,4 +117,12 @@ func (f DispatcherFunc) Dispatch(ctx context.Context, p Peer, action string, pay
 // (CALLRESULT or CALLERROR) has been queued ahead of any CALL f sends. It
 // reports false, and f does not run, when ctx is not a handler's context
 // (a SEND handler's included: a SEND has no response).
+//
+// The functions of one handler run in the order they were registered, on
+// one goroutine. f may block, and may call every method of the client or
+// session, Close and Shutdown included. The connection does not wait for
+// f: Close returns, and a session's Done is closed, while f still runs, and
+// what f then calls fails with ErrClosed or ErrConnectionLost. An f that
+// does not return normally is recovered and logged with its stack; the
+// functions registered after it still run, and the connection goes on.
 func AfterResponse(ctx context.Context, f func()) bool { return after.Add(ctx, f) }

@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+
+	"github.com/otfabric/go-ocpp/internal/leakcheck"
 )
 
 func serve(t *testing.T, sub string, limit int64, handle func(Conn)) string {
@@ -28,6 +30,7 @@ func serve(t *testing.T, sub string, limit int64, handle func(Conn)) string {
 }
 
 func TestEcho(t *testing.T) {
+	leakcheck.Check(t)
 	url := serve(t, "ocpp1.6", 0, func(c Conn) {
 		for {
 			m, err := c.ReadMessage(context.Background())
@@ -59,6 +62,7 @@ func TestEcho(t *testing.T) {
 }
 
 func TestCloseStatusReported(t *testing.T) {
+	leakcheck.Check(t)
 	url := serve(t, "ocpp1.6", 0, func(c Conn) { _ = c.Close(StatusPolicy, "replaced") })
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -77,6 +81,7 @@ func TestCloseStatusReported(t *testing.T) {
 }
 
 func TestBinaryRefused(t *testing.T) {
+	leakcheck.Check(t)
 	got := make(chan error, 1)
 	url := serve(t, "ocpp1.6", 0, func(c Conn) {
 		_, err := c.ReadMessage(context.Background())
@@ -102,6 +107,7 @@ func TestBinaryRefused(t *testing.T) {
 }
 
 func TestReadLimit(t *testing.T) {
+	leakcheck.Check(t)
 	got := make(chan error, 1)
 	url := serve(t, "ocpp1.6", 16, func(c Conn) {
 		_, err := c.ReadMessage(context.Background())
@@ -124,6 +130,7 @@ func TestReadLimit(t *testing.T) {
 }
 
 func TestPipe(t *testing.T) {
+	leakcheck.Check(t)
 	a, b := Pipe("ocpp2.1")
 	if a.Subprotocol() != "ocpp2.1" {
 		t.Fatal(a.Subprotocol())
@@ -146,6 +153,7 @@ func TestPipe(t *testing.T) {
 // A client that offers no subprotocol gets none from coder/websocket; Accept
 // refuses such a connection.
 func TestAcceptWithoutSubprotocol(t *testing.T) {
+	leakcheck.Check(t)
 	accepted := make(chan error, 1)
 	hs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, err := Accept(w, r, AcceptOptions{Subprotocol: "ocpp1.6"})
@@ -170,6 +178,7 @@ func TestAcceptWithoutSubprotocol(t *testing.T) {
 }
 
 func TestPipeContexts(t *testing.T) {
+	leakcheck.Check(t)
 	a, b := Pipe("")
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -187,6 +196,7 @@ func TestPipeContexts(t *testing.T) {
 }
 
 func TestCloseErrorText(t *testing.T) {
+	leakcheck.Check(t)
 	if got := (&CloseError{Code: 1000}).Error(); got != "transport: closed by peer with status 1000" {
 		t.Errorf("%q", got)
 	}
@@ -196,6 +206,7 @@ func TestCloseErrorText(t *testing.T) {
 // applies to the decompressed message: a small compressed message that
 // inflates past the limit closes the connection.
 func TestCompression(t *testing.T) {
+	leakcheck.Check(t)
 	got := make(chan error, 1)
 	hs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c, err := Accept(w, r, AcceptOptions{Subprotocol: "ocpp2.0.1", ReadLimit: 1024, Compression: true})
@@ -241,6 +252,7 @@ func TestCompression(t *testing.T) {
 }
 
 func TestPipePingAbort(t *testing.T) {
+	leakcheck.Check(t)
 	a, b := Pipe("ocpp2.1")
 	if err := a.Ping(context.Background()); err != nil {
 		t.Fatalf("ping on an open pipe: %v", err)
@@ -258,6 +270,7 @@ func TestPipePingAbort(t *testing.T) {
 // Compression reports what the handshake negotiated, at both ends: only
 // when the client offers permessage-deflate and the server accepts it.
 func TestCompressionReported(t *testing.T) {
+	leakcheck.Check(t)
 	for _, tc := range []struct{ offer, accept, want bool }{
 		{true, true, true}, {true, false, false}, {false, true, false}, {false, false, false},
 	} {
@@ -293,6 +306,7 @@ func TestCompressionReported(t *testing.T) {
 }
 
 func TestDeflate(t *testing.T) {
+	leakcheck.Check(t)
 	for _, tc := range []struct {
 		values []string
 		want   bool

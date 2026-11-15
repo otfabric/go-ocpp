@@ -39,7 +39,10 @@ var (
 	// when the connection broke.
 	ErrConnectionLost = errors.New("ocpp: connection lost")
 
-	// ErrTimeout is returned when no response to a CALL arrived in time.
+	// ErrTimeout is returned when no response to a CALL arrived within the
+	// response timeout. That error also matches context.DeadlineExceeded.
+	// A Call that ends with its own context's deadline returns that
+	// context's error, which does not match ErrTimeout.
 	ErrTimeout = errors.New("ocpp: timeout")
 
 	// ErrBusy is returned when the queue of calls waiting to be sent is
@@ -61,8 +64,9 @@ var (
 	ErrInvalidOption = errors.New("ocpp: invalid option")
 
 	// ErrHandlerPanic is reported through Metrics.OnCallHandled when a
-	// handler panicked. The panic is recovered, logged with its stack, and
-	// the CALL answered with InternalError.
+	// handler, or the handler interceptor around it, did not return
+	// normally. It is recovered, logged with its stack, and the CALL
+	// answered with InternalError.
 	ErrHandlerPanic = errors.New("ocpp: handler panic")
 )
 ```
@@ -90,6 +94,8 @@ func AfterResponse(ctx context.Context, f func()) bool
 ```
 
 AfterResponse registers f to run once the response to the CALL being handled is on its way: for what a handler must do after answering, such as sending the NotifyReport messages after accepting GetBaseReport, the FirmwareStatusNotifications after accepting UpdateFirmware, or the triggered message after TriggerMessage. ctx must be the context the handler received; f runs on a goroutine of its own, after the response (CALLRESULT or CALLERROR) has been queued ahead of any CALL f sends. It reports false, and f does not run, when ctx is not a handler's context (a SEND handler's included: a SEND has no response).
+
+The functions of one handler run in the order they were registered, on one goroutine. f may block, and may call every method of the client or session, Close and Shutdown included. The connection does not wait for f: Close returns, and a session's Done is closed, while f still runs, and what f then calls fails with ErrClosed or ErrConnectionLost. An f that does not return normally is recovered and logged with its stack; the functions registered after it still run, and the connection goes on.
 
 ### func Ptr
 
@@ -162,6 +168,8 @@ type Caller interface {
 Caller sends a CALL and waits for its result.
 
 req is marshalled with encoding/json; a json.RawMessage is sent as is. The result payload is unmarshalled into resp, which must be a pointer (a \*json.RawMessage receives the payload unchanged) or nil to discard it. A CALLERROR is returned as a \*CallError.
+
+Ownership: req is borrowed. The client and the server sessions read it before Call returns and keep no reference to it, so the caller may change or reuse it afterwards, a json.RawMessage included. resp is the caller's: what it receives is decoded or copied for it (a \*json.RawMessage gets a copy of the payload, in its own slice when that has room).
 
 ### type CloseError
 
@@ -246,6 +254,10 @@ Dispatcher handles the CALLs that arrive on a connection of one OCPP version. Th
 
 Dispatch returns the CALLRESULT payload, or an error: a \*CallError is sent as is, any other error as an InternalError whose description does not reveal the error text.
 
+Dispatch is called on the connection's dispatcher goroutine, one message at a time and in arrival order. It may block, which delays the later messages of that connection and no other; it may call p and the methods of the client or session: Close then returns without waiting for the handler, and Shutdown waits for it (see there). A Dispatch that does not return normally is recovered: it is logged with its stack, reported to Metrics.OnCallHandled as ErrHandlerPanic, the CALL is answered with InternalError, and the connection goes on.
+
+Ownership: payload is the dispatcher's, a copy made for this call that it may keep or change. The payload it returns is borrowed: it is copied into the response before the next message is dispatched, and not kept.
+
 ### type DispatcherFunc
 
 ```go
@@ -307,7 +319,7 @@ The CALLERROR error codes of OCPP-J 1.6 §4.2.3 and OCPP 2.0.1/2.1 Part 4 §4.3.
 type FrameObserver func(info ConnInfo, dir Direction, frame []byte)
 ```
 
-FrameObserver sees every OCPP-J frame sent or received, as raw JSON. It runs synchronously on the connection's reader or writer, so it must not block, and it must not retain or modify frame.
+FrameObserver sees every OCPP-J frame sent or received, as raw JSON. It runs synchronously on the connection's reader or writer, so it must not block, and it must not retain or modify frame, which is borrowed for the call. It must not call Close, and it must return normally: it is not recovered.
 
 ### type Interceptor
 
@@ -316,6 +328,8 @@ type Interceptor func(ctx context.Context, info CallInfo, next func(context.Cont
 ```
 
 Interceptor wraps an outgoing call (client and server option WithCallInterceptor) or the handling of an incoming one (WithHandlerInterceptor). It must call next exactly once, with ctx or a context derived from it, and return its error or an error of its own. This is where tracing spans start and end.
+
+A handler interceptor runs on the connection's dispatcher goroutine, around the handler of an incoming CALL or SEND. When it does not return normally it is recovered like a handler: logged with its stack, reported to Metrics.OnCallHandled as ErrHandlerPanic, a CALL is answered with InternalError, and the connection goes on. A call interceptor runs on the goroutine that calls Call or Send, and is not recovered: what it raises reaches that caller.
 
 ### type Metrics
 
@@ -331,8 +345,17 @@ type Metrics interface {
 	OnDisconnect(info ConnInfo, err error)
 	// OnReconnectAttempt is called before a client redials.
 	OnReconnectAttempt(info ConnInfo, attempt int)
-	// OnCallDone is called when an outgoing CALL ends, with its round trip
-	// time and nil, a *CallError, ErrTimeout or another error.
+	// OnCallDone is called once for every CALL handed to a connection, when
+	// it ends, with the error its Call returns: nil, a *CallError,
+	// ErrTimeout, ErrBusy, the error of the caller's context, a connection
+	// error, or, for a response that does not decode or fails validation,
+	// an error wrapping ErrProtocol. d is the round trip time, from when
+	// the CALL took the outgoing slot; for a CALL that ended before it had
+	// the slot, the time it waited. A Call that fails before it reaches a
+	// connection is not reported: on a client without a connection or
+	// after its Close, once Shutdown has begun, for a wrong direction or
+	// version, or with a request that cannot be marshalled. An outgoing
+	// SEND (OCPP 2.1) is reported when it is queued.
 	OnCallDone(info ConnInfo, action string, d time.Duration, err error)
 	// OnCallHandled is called when an incoming CALL has been answered, with
 	// the handler's duration and its error.
@@ -343,7 +366,7 @@ type Metrics interface {
 }
 ```
 
-Metrics receives events for metrics. Callbacks are synchronous and must be safe for concurrent use and must not block.
+Metrics receives events for metrics. Callbacks are synchronous and must be safe for concurrent use and must not block. They run on the goroutine where the event happens: the connection's reader or dispatcher, the goroutine of a Call, Send, Connect or Close, the client's supervisor, or the HTTP request of a station's handshake. They must not call Close, and must return normally: they are not recovered.
 
 Every callback gets the station identity in ConnInfo. Whether it becomes a metric label is the implementation's choice; labelling by station gives one series per station.
 
@@ -462,7 +485,7 @@ type SendDispatcher interface {
 }
 ```
 
-SendDispatcher is implemented by a Dispatcher that also handles incoming SEND messages (OCPP 2.1). They are never answered, so DispatchSend returns only an error, which is logged.
+SendDispatcher is implemented by a Dispatcher that also handles incoming SEND messages (OCPP 2.1). They are never answered, so DispatchSend returns only an error, which is logged. DispatchSend is called like Dispatch, on the same goroutine and in arrival order with the CALLs, and owns its payload; when it does not return normally it is recovered, logged and reported in the same way, and nothing is sent.
 
 ### type Sender
 
@@ -472,7 +495,7 @@ type Sender interface {
 }
 ```
 
-Sender sends a SEND (OCPP 2.1): a message that is never answered and may be sent while a CALL is outstanding (2.1 Part 4 §4.1.1, §4.2.4). The client and server sessions implement it.
+Sender sends a SEND (OCPP 2.1): a message that is never answered and may be sent while a CALL is outstanding (2.1 Part 4 §4.1.1, §4.2.4). The client and server sessions implement it. req is borrowed, as for Caller: it is read before Send returns and not kept.
 
 ### type State
 

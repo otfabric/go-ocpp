@@ -39,9 +39,7 @@ func (e *Endpoint) readLoop() {
 		case ocppj.Call, ocppj.Send:
 			// SENDs are handled in order with the CALLs, and never answered.
 			e.handling.Add(1)
-			select {
-			case e.incoming <- f:
-			case <-e.ctx.Done():
+			if !e.enqueue(f) {
 				e.handling.Add(-1)
 				return
 			}
@@ -55,6 +53,26 @@ func (e *Endpoint) readLoop() {
 			e.cfg.Metrics.OnProtocolError(e.cfg.Info, err)
 			e.log.Warn("response refused by the peer", "message_id", f.ID, "error_code", string(f.ErrorCode), "error", err)
 		}
+	}
+}
+
+// enqueue hands an incoming CALL or SEND to the dispatcher, and reports false
+// when the endpoint ended first. When the queue is full the reader waits
+// here for room and reads nothing meanwhile: no pong either, which
+// readerWaits tells pingLoop (odd while the reader waits).
+func (e *Endpoint) enqueue(f ocppj.Frame) bool {
+	select {
+	case e.incoming <- f:
+		return true
+	default:
+	}
+	e.readerWaits.Add(1)
+	defer e.readerWaits.Add(1)
+	select {
+	case e.incoming <- f:
+		return true
+	case <-e.ctx.Done():
+		return false
 	}
 }
 
@@ -108,6 +126,12 @@ func (e *Endpoint) malformed(err error) {
 // pingLoop sends a WebSocket ping every PingInterval. A pong that does not
 // arrive within the interval means the peer is unreachable (a half-open
 // TCP connection, say), and the connection is closed as lost.
+//
+// A pong is read by the reader only. A ping whose interval the reader spent,
+// in whole or in part, waiting for room in the incoming queue (enqueue) says
+// nothing about the peer: it is not counted, and the next ping goes out an
+// interval later. A peer that is unreachable is then noticed once the reader
+// reads again.
 func (e *Endpoint) pingLoop() {
 	t := time.NewTicker(e.cfg.PingInterval)
 	defer t.Stop()
@@ -117,10 +141,15 @@ func (e *Endpoint) pingLoop() {
 			return
 		case <-t.C:
 		}
+		before := e.readerWaits.Load()
 		ctx, cancel := context.WithTimeout(e.ctx, e.cfg.PingInterval)
 		err := e.conn.Ping(ctx)
 		cancel()
 		if err != nil && e.ctx.Err() == nil {
+			if errors.Is(err, context.DeadlineExceeded) && (before%2 == 1 || e.readerWaits.Load() != before) {
+				e.log.Debug("pong not awaited: reading waits for the incoming queue", "interval", e.cfg.PingInterval)
+				continue
+			}
 			e.log.Warn("no pong: closing", "error", err)
 			e.CloseWith(lost(fmt.Errorf("no pong within %s: %w", e.cfg.PingInterval, err)), 0, "")
 			return
@@ -270,7 +299,7 @@ func (e *Endpoint) handleSend(ctx context.Context, f ocppj.Frame) {
 	}
 	var err error
 	if e.cfg.HandlerInterceptor != nil {
-		err = e.cfg.HandlerInterceptor(ctx, info, run)
+		err = e.intercept(ctx, info, f, run)
 	} else {
 		err = run(ctx)
 	}
@@ -302,7 +331,7 @@ func (e *Endpoint) handle(f ocppj.Frame) {
 	}
 	var err error
 	if e.cfg.HandlerInterceptor != nil {
-		err = e.cfg.HandlerInterceptor(hctx, info, run)
+		err = e.intercept(hctx, info, f, run)
 	} else {
 		err = run(hctx)
 	}
@@ -311,11 +340,7 @@ func (e *Endpoint) handle(f ocppj.Frame) {
 	// they send goes out after the response.
 	defer func() {
 		if fs := afterList.Take(); len(fs) > 0 {
-			go func() {
-				for _, fn := range fs {
-					fn()
-				}
-			}()
+			go e.runAfter(f, fs)
 		}
 	}()
 	if err == nil && !isObject(result) {
@@ -342,10 +367,53 @@ func (e *Endpoint) details(err error) json.RawMessage {
 	return nil
 }
 
+// intercept runs the handler interceptor around run, for the incoming CALL
+// or SEND f. The interceptor is application code on the dispatcher
+// goroutine: when it does not return normally it is recovered here, logged
+// with its stack, and its error is that of a handler that did not return
+// (ocpp.ErrHandlerPanic): a CALL is answered with InternalError, and the
+// dispatcher goes on with the next message.
+func (e *Endpoint) intercept(ctx context.Context, info ocpp.CallInfo, f ocppj.Frame, run func(context.Context) error) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = e.recoveredFrom("handler interceptor did not return normally", f, r)
+		}
+	}()
+	return e.cfg.HandlerInterceptor(ctx, info, run)
+}
+
+// runAfter runs the functions that the handler of the CALL f registered with
+// ocpp.AfterResponse, in order, on the goroutine it is started on. Each is
+// application code: one that does not return normally is recovered, logged
+// with its stack, and the next one runs. Neither Done nor Close waits for
+// this goroutine (see Done).
+func (e *Endpoint) runAfter(f ocppj.Frame, fs []func()) {
+	for _, fn := range fs {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					_ = e.recoveredFrom("function registered with AfterResponse did not return normally", f, r)
+				}
+			}()
+			fn()
+		}()
+	}
+}
+
 // recovered logs a handler panic with its stack and returns the error that
 // reports it.
 func (e *Endpoint) recovered(f ocppj.Frame, r any) error {
 	e.log.Error("handler panic", "action", f.Action, "message_id", f.ID, "panic", fmt.Sprint(r), "stack", string(debug.Stack()))
+	return fmt.Errorf("%w: %v", ocpp.ErrHandlerPanic, r)
+}
+
+// recoveredFrom is recovered for the application code around a handler: it
+// logs, under msg, the value r that code called for the incoming message f
+// was recovered from, with the stack at the point of recovery and the
+// attributes of recovered, and returns the same error. No lock of the
+// endpoint is held where it is called.
+func (e *Endpoint) recoveredFrom(msg string, f ocppj.Frame, r any) error {
+	e.log.Error(msg, "action", f.Action, "message_id", f.ID, "panic", fmt.Sprint(r), "stack", string(debug.Stack()))
 	return fmt.Errorf("%w: %v", ocpp.ErrHandlerPanic, r)
 }
 

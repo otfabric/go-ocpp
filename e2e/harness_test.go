@@ -16,7 +16,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -24,6 +23,7 @@ import (
 
 	"github.com/otfabric/go-ocpp"
 	"github.com/otfabric/go-ocpp/client"
+	"github.com/otfabric/go-ocpp/internal/leakcheck"
 	"github.com/otfabric/go-ocpp/server"
 )
 
@@ -115,21 +115,11 @@ func eventually(t *testing.T, what string, cond func() bool) {
 	}
 }
 
-// noLeak fails the test if goroutines started during it are still running
-// after its cleanups.
+// noLeak fails the test for every goroutine started during it that is still
+// running after its cleanups (internal/leakcheck: stacks, not counts).
 func noLeak(t *testing.T) {
 	t.Helper()
-	before := runtime.NumGoroutine()
-	t.Cleanup(func() {
-		deadline := time.Now().Add(10 * time.Second)
-		for runtime.NumGoroutine() > before && time.Now().Before(deadline) {
-			time.Sleep(20 * time.Millisecond)
-		}
-		if n := runtime.NumGoroutine(); n > before {
-			buf := make([]byte, 1<<20)
-			t.Errorf("%d goroutines leaked:\n%s", n-before, buf[:runtime.Stack(buf, true)])
-		}
-	})
+	leakcheck.Check(t)
 }
 
 // stateLog records a client's state changes.

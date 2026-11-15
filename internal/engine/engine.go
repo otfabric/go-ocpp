@@ -6,9 +6,18 @@
 //
 // An Endpoint runs three goroutines: a reader, which decodes frames and
 // routes them; a writer, the only one that writes to the connection; and a
-// dispatcher, which handles incoming CALLs one at a time. Outgoing CALLs
-// take a single slot, because OCPP-J allows one outstanding CALL per
+// dispatcher, which handles incoming CALLs one at a time; with PingInterval
+// a fourth, the pinger. Done and Close wait for these (see each). Outgoing
+// CALLs take a single slot, because OCPP-J allows one outstanding CALL per
 // direction (SPECIFICATIONS.md T6); callers wait for it in a bounded queue.
+//
+// Application code runs on these goroutines: the dispatcher's handlers and
+// the handler interceptor on the dispatcher; and, on a goroutine of their
+// own per handled CALL, the functions a handler registered with
+// ocpp.AfterResponse. All of it is recovered where it is called when it does
+// not return normally, logged with its stack, and the endpoint goes on. The
+// frame observer and the metrics callbacks also run on them, and are not
+// recovered.
 package engine
 
 import (
@@ -53,7 +62,9 @@ type Config struct {
 	WriteTimeout    time.Duration
 	Limits          ocppj.Limits
 	// PingInterval is the time between WebSocket pings; a pong must arrive
-	// within it, or the connection is lost. Zero: no pings.
+	// within it, or the connection is lost. A ping sent while the reader
+	// waits for room in the incoming queue is not counted (pingLoop). Zero:
+	// no pings.
 	PingInterval time.Duration
 	// MaxBadMessages closes the connection (status 1008) once that many
 	// malformed frames have been received on it. Zero: no limit.
@@ -112,11 +123,14 @@ type Endpoint struct {
 	startOnce    sync.Once
 	shutdownOnce sync.Once
 	cause        error         // why the endpoint ended; set before ctx is cancelled
-	ioDone       chan struct{} // closed when the reader and the writer have exited
-	done         chan struct{} // closed when every goroutine has exited
+	ioDone       chan struct{} // closed when the reader, the writer and the pinger have exited
+	done         chan struct{} // closed when the dispatcher has exited too (see Done)
 	inHandler    atomic.Bool
 	badMessages  atomic.Int64
-	limiter      *limiter // nil without IncomingRate
+	// readerWaits is odd while the reader waits for room in the incoming
+	// queue, and changes each time that wait starts or ends (enqueue).
+	readerWaits atomic.Int64
+	limiter     *limiter // nil without IncomingRate
 }
 
 type pendingCall struct {
@@ -215,8 +229,16 @@ func (e *Endpoint) Start() {
 // Info returns the connection's ConnInfo (Config.Info).
 func (e *Endpoint) Info() ocpp.ConnInfo { return e.cfg.Info }
 
-// Done is closed when the endpoint has shut down and every goroutine it
-// started, including a running handler, has returned.
+// Done is closed when the endpoint has shut down and its goroutines have
+// returned: the reader, the writer, the pinger and the dispatcher, with the
+// handler the dispatcher is running and the SENDs it still delivers (Drain).
+//
+// It does not wait for the functions registered with ocpp.AfterResponse:
+// they are application code on goroutines of their own, and may close or
+// shut down the endpoint themselves, which a wait for them would never
+// survive. The calls they make on an ended endpoint fail at once. Nor does
+// it wait for the goroutine of a CloseWith, which only runs shutdown: that
+// has closed the connection before any of the four can return.
 func (e *Endpoint) Done() <-chan struct{} { return e.done }
 
 // Err returns why the endpoint shut down: ocpp.ErrClosed after Close,
@@ -233,9 +255,14 @@ func (e *Endpoint) Err() error {
 
 // Close closes the connection with a normal closure at once: frames still
 // queued or being written are dropped (Shutdown waits for them). It returns once the
-// connection is closed and the reader and writer have exited, and, unless a
-// handler is running, the dispatcher as well; Done reports when everything
-// has returned. Close must not be called from a FrameObserver.
+// connection is closed and the reader, the writer and the pinger have
+// returned, and, unless a handler is running, the dispatcher as well; Done
+// reports when the dispatcher has returned too. Like Done, it does not wait
+// for functions registered with ocpp.AfterResponse, which may call it.
+//
+// Close is safe to call more than once and from multiple goroutines: every
+// call returns nil, after the same wait. Close must not be called from a
+// FrameObserver.
 func (e *Endpoint) Close() error {
 	e.shutdown(ocpp.ErrClosed, transport.StatusNormal, "")
 	e.Start() // so that Done is closed for an endpoint that never started

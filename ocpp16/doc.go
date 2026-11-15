@@ -25,6 +25,14 @@
 // answered with the CALLERROR their violation calls for. Optional fields
 // are pointers (see ocpp.Ptr); required arrays must not be nil.
 //
+// Ownership: a message belongs to whoever holds it. A request a handler
+// receives and a response a call function returns are decoded for that
+// call, with their slices; the library keeps no reference to
+// them, so they may be kept and changed. A request given to a call function
+// and a response returned by a handler are encoded before the call
+// function, or the dispatch of that handler, returns, and are not kept
+// either.
+//
 // The types are generated from the schemas in schemas/ocpp16 (CC BY-ND 4.0,
 // unmodified); coverage.json lists every action. Do not edit the
 // zz_generated files: change internal/gen and run go generate.

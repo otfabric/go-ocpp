@@ -79,21 +79,32 @@ type SendDispatcher interface {
 ```
 
 - `req` is marshalled with `encoding/json`. A `json.RawMessage` is sent as
-  is, and nil as `{}`.
+  is, and nil as `{}`. It is borrowed: read before `Call` (or `Send`)
+  returns and not kept, so the caller may reuse it afterwards.
 - `resp` receives the CALLRESULT payload. It must be a pointer, a
   `*json.RawMessage` (to receive the payload unchanged), or nil (to discard
-  it).
+  it). It is the caller's: a `*json.RawMessage` gets a copy.
+- A `Dispatcher` owns the `payload` it is given, a copy made for that call,
+  and may keep it. The payload it returns is borrowed: copied into the
+  response before the next message is dispatched.
 - A `Dispatcher` returns the CALLRESULT payload, which must be a JSON
   object. Errors become a CALLERROR: a `*CallError` with a code the version
   defines is sent as is. Anything else is sent as `InternalError` without
   its text.
 - A handler's context ends when the connection closes. A handler may call
-  the peer (`p.Call`) while it handles a CALL.
+  the peer (`p.Call`) while it handles a CALL. A handler that does not
+  return normally is recovered: logged with its stack, reported as
+  `ErrHandlerPanic`, and answered with `InternalError`.
 - `AfterResponse(ctx, f)` runs `f` once the handler's response is on its
   way: what a handler sends there goes out after the response. Use it for
   the messages a use case sends after answering (NotifyReport after
   GetBaseReport, status notifications after UpdateFirmware or GetLog, the
-  triggered message after TriggerMessage, a reboot after Reset).
+  triggered message after TriggerMessage, a reboot after Reset). The
+  functions of one handler run in order on a goroutine of their own. The
+  connection does not wait for them: `Close` returns and a session's `Done`
+  is closed while they still run, and they may call `Close` or `Shutdown`
+  themselves. One that does not return normally is recovered and logged
+  with its stack; the next one runs.
 
 ```go
 func AfterResponse(ctx context.Context, f func()) bool // false outside a CALL handler
@@ -233,6 +244,19 @@ type CSMSHandler interface {
 - Optional fields are pointers (`ocpp.Ptr`); required arrays must not be
   nil (an empty array is `[]T{}`).
 - `CustomData{VendorID, Fields}` (2.x) keeps vendor properties as raw JSON.
+- A message belongs to whoever holds it: a request a handler receives and a
+  response a call function returns are decoded for that call, slices and
+  `CustomData.Fields` included, and the library keeps no reference; a
+  request given to a call function and a response returned by a handler
+  are encoded before that call returns, and not kept either.
+- Text: an incoming payload whose text is not well-formed (a byte sequence
+  that is not UTF-8, the `\u` escape of a surrogate without its pair) is
+  refused, as a frame by the connection and with the format code by
+  `ValidateRequest`, `ValidateResponse` and the dispatchers. Outgoing typed
+  messages are written by `encoding/json`, which writes U+FFFD for every
+  byte of a Go string that is not UTF-8, without an error: keep the strings
+  of a message valid UTF-8. A raw payload (`json.RawMessage`) is sent as it
+  is given.
 - `coverage.json` in each package lists every action with its schemas and
   their SHA-256.
 
@@ -259,6 +283,8 @@ const MaxMessageIDLength = 36
 
 func Decode(data []byte, v ocpp.Version, l Limits) (Frame, error) // errors are *DecodeError, wrapping ErrMalformed
 func Encode(f Frame) ([]byte, error)
+// Decode refuses text that is not well-formed (not UTF-8, a surrogate escape without its pair).
+// The Frame of Decode owns its memory; Encode copies what it writes.
 
 type DecodeError struct{ Type MessageType; ID string; IDKnown, UnknownType bool; Reason string }
 func (e *DecodeError) Error() string
@@ -336,6 +362,21 @@ fields into `ocpp201.CertificateHashDataType` and its siblings.
   concurrently.
 - Callbacks (metrics, frame observers, state handlers, session handlers)
   run synchronously. They must not block, and must not call `Close`.
+- What happens when application code does not return normally, by where it
+  runs. On a connection's goroutines, recovered and logged with its stack,
+  and the connection goes on: handlers and handler interceptors (the CALL
+  is answered with `InternalError`, `OnCallHandled` gets
+  `ErrHandlerPanic`), functions registered with `AfterResponse` (the next
+  one runs), and the server's onConnect. Not recovered by the library, so
+  they must return: metrics callbacks, frame observers and the client's
+  state handler. On the goroutine of a station's HTTP request, where the
+  HTTP server recovers it: an `Authenticator` (the station is not admitted)
+  and the server's onDisconnect. On the caller's own goroutine, where it
+  reaches the caller: a call interceptor.
+- `Close` of a `Client`, a `Server` and a `Session` is safe to call more
+  than once and from multiple goroutines; what each waits for is in
+  [API_CLIENT.md](API_CLIENT.md#methods) and
+  [API_SERVER.md](API_SERVER.md#sessions).
 
 ## Departures from other OT Fabric libraries
 

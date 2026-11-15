@@ -78,8 +78,10 @@ go-ocpp/
 │   ├── transport/     the WebSocket adapter (ADR 0002)
 │   ├── gen/           the schema-to-Go generator (go generate in each version package)
 │   ├── wire/          the runtime of the generated code
+│   ├── jsontext/      the text check of frames and payloads (UTF-8, surrogate escapes)
 │   ├── specsync/      refreshes schemas/ from the OCA download page (weekly check)
-│   └── schematest/    the schema conformance suite (tests only)
+│   ├── schematest/    the schema conformance suite (tests only)
+│   └── leakcheck/      the goroutine leak check of the tests (tests only)
 ├── e2e/               this module's client against this module's server
 ├── interop/           against otfabric/ocpp-interop images (build tag interop)
 ├── examples/          station16, csms16, station201, csms201, ...
@@ -89,11 +91,13 @@ go-ocpp/
 The import rules are checked by a test (`imports_test.go`):
 
 - The root package `ocpp` imports only the standard library.
-- `ocppj` imports only `ocpp` and the standard library.
+- `ocppj` imports only `ocpp`, `internal/jsontext` and the standard library.
 - `ocpp16`, `ocpp201` and `ocpp21` import `ocpp` and `internal/wire` (which
-  imports `ocppj`), and never `client`, `server` or each other.
+  imports `ocppj` and `internal/jsontext`), and never `client`, `server` or
+  each other.
+- `internal/jsontext` imports the standard library only.
 - `internal/schematest`, the only importer of the reference JSON Schema
-  validator, is imported by tests only.
+  validator, and `internal/leakcheck` are imported by tests only.
 - `client` and `server` import `ocpp`, `ocppj` and `internal/...`. They do not
   import any version package. A version is plugged in as an
   `ocpp.Dispatcher` (see below).
@@ -176,6 +180,18 @@ version defines, because 1.6 and 2.x differ: `FormationViolation` in 1.6 is
 The payload stays `json.RawMessage` at this layer. Typed decoding and
 validation belong to the version packages.
 
+`Decode` also checks the text of the whole frame, payload included
+(`internal/jsontext`): it must be valid UTF-8, and a `\u` escape of a
+surrogate must be half of a pair. `encoding/json` accepts both and decodes
+them to U+FFFD, so that the message ID, the action or a string of the
+payload would not be the text that was received; such a frame is malformed
+instead, and is answered or dropped like any other malformed frame
+([Implementation choices](#implementation-choices)). The transport refuses a
+text message that is not UTF-8 before that, with WebSocket status 1007, and
+`internal/wire` applies the same check to a payload that is validated on
+its own. A `Frame` owns its memory: `Decode` copies what it keeps, and
+`Encode` copies what it writes.
+
 ## The engine
 
 `internal/engine` implements one RPC endpoint over one WebSocket connection.
@@ -194,7 +210,14 @@ validation belong to the version packages.
 - **Reader.** One goroutine reads frames. It checks the size limit, decodes
   the frame, then routes it. Responses go to the pending call. Incoming CALLs
   and SENDs go to the dispatcher. Malformed frames get a CALLERROR or are
-  dropped, as the version requires.
+  dropped, as the version requires. When the dispatcher's queue is full (16
+  messages) the reader waits for room and reads nothing meanwhile: no
+  response to this end's own CALLs, and no pong.
+- **Pinger.** With `WithPingInterval`, one goroutine sends a WebSocket ping
+  every interval and gives the connection up when the pong does not arrive
+  within it. A pong is read by the reader only, so a ping whose interval the
+  reader spent, in whole or in part, waiting for room in the queue is not
+  counted: the next one goes out an interval later.
 - **Writer.** One goroutine writes, so the transport is never written
   concurrently. Its queue is bounded. Results of incoming CALLs take priority
   over new outgoing CALLs.
@@ -206,8 +229,9 @@ validation belong to the version packages.
   when the response arrives, the request times out, or the connection
   closes.
 - **Timeouts.** Each CALL has a response timeout (default 30 s, configurable
-  per client or server). A CALL that times out returns `ErrTimeout`, and the
-  slot is free again. A response that arrives later is dropped with a log
+  per client or server). A CALL that times out returns `ErrTimeout`, an
+  error that also matches `context.DeadlineExceeded`, and the slot is free
+  again. A response that arrives later is dropped with a log
   entry and a metric (R4.5). When the caller's context ends first, `Call`
   returns `ctx.Err()` at once, but the CALL already on the wire keeps the
   slot until its response or its response timeout, as T6 requires. A CALL
@@ -219,6 +243,15 @@ validation belong to the version packages.
   handler sends a CALL of its own: for example, a CSMS that sends
   GetConfiguration from inside its BootNotification handler. The handler
   context is cancelled when the connection closes.
+- **Application code on the engine's goroutines.** A handler, the handler
+  interceptor around it, and the functions a handler registers with
+  `ocpp.AfterResponse` (which run on a goroutine of their own per handled
+  CALL, after the response is queued) are recovered where the engine calls
+  them when they do not return normally, and logged with their stack. A
+  handler or interceptor is then reported as `ErrHandlerPanic` and its CALL
+  answered with `InternalError`; of the registered functions the next one
+  runs. The endpoint goes on in each case. The frame observer and the
+  metrics callbacks are not recovered: they must return.
 - **Incoming SENDs (2.1).** SENDs are dispatched in the same queue as CALLs,
   so a handler sees them in arrival order, to the dispatcher's
   `ocpp.SendDispatcher` method. Nothing is sent back (T5): an invalid SEND,
@@ -233,13 +266,18 @@ validation belong to the version packages.
   already completed.
 - **Lifecycle.** An endpoint is created, then started once its owner has
   made it reachable, so that a handler calling back during the first frame
-  finds it. `Close` is idempotent. It runs the WebSocket closing handshake,
-  bounded to 10 s after which the connection is closed, and returns after the reader and writer have exited, and after the
+  finds it. `Close` is safe to call more than once and from multiple
+  goroutines. It runs the WebSocket closing handshake,
+  bounded to 10 s after which the connection is closed, and returns after the reader, the writer and the pinger have returned, and after the
   dispatcher too unless a handler is running (a `Close` from inside a
-  handler must not wait for itself); `Done` reports when everything has
-  returned. Pending and queued calls fail with `ErrClosed` after `Close`, and
-  with `ErrConnectionLost` when the connection breaks. A frame observer or a
-  metrics callback must not call `Close`.
+  handler must not wait for itself); `Done` is closed when the dispatcher,
+  with its handler, has returned as well. Neither waits for the functions
+  registered with `ocpp.AfterResponse`: they may call `Close` or `Shutdown`
+  themselves, so a wait for them could not end, and what they call on an
+  ended endpoint fails at once. Pending and queued calls fail with
+  `ErrClosed` after `Close`, and with `ErrConnectionLost` when the
+  connection breaks. A frame observer or a metrics callback must not call
+  `Close`.
 
 The default 30 s timeout is an implementation choice. OCPP 2.x lets the
 CSMS configure the station's message timeout through the device model
@@ -423,8 +461,10 @@ if ok {
   last path segment, so it can be mounted under any prefix. `ListenAndServe`
   and `Serve(net.Listener)` are provided for applications without an HTTP
   server.
-- The versions offered are those that have a handler. A handshake without a
-  supported subprotocol is refused with an HTTP error before the upgrade.
+- The versions offered are those that have a handler. A station that offers
+  no supported subprotocol gets a completed handshake without one, and the
+  connection is closed at once with status 1008 (T1; see the refusals
+  below).
 - The authenticator receives the identity, the Basic credentials if present,
   and the TLS connection state. It decides before the upgrade. A server must
   be given an authenticator, or `WithoutAuthentication()` (which exists for
@@ -474,8 +514,9 @@ if ok {
 | 3 | `wss://` | client certificate (mutual TLS) | `WithTLS(cfg)` with certificates |
 
 - `ws://` URLs are refused unless `WithInsecureTransport()` is given.
-- The library never sets `InsecureSkipVerify`. A `tls.Config` supplied by the
-  application is used as given, with a minimum of TLS 1.2.
+- The library never sets `InsecureSkipVerify`, and has no option that turns
+  verification off. A `tls.Config` supplied by the application is used as
+  given, with a minimum of TLS 1.2: verification is what it says.
 - Basic credentials are not logged and do not appear in `error` strings. The
   type holding them has a redacting `String` method.
 - For certificate rotation, `WithTLS` accepts a `tls.Config` whose
@@ -506,7 +547,10 @@ if ok {
 
   A request refused by validation shows as `OnCallHandled` with the
   CALLERROR it was answered with; a response refused by validation as
-  `OnCallDone` with an error wrapping `ocpp.ErrInvalidMessage`.
+  `OnCallDone` with an error wrapping `ocpp.ErrInvalidMessage`. `OnCallDone`
+  reports what `Call` returns, once the response is decoded and validated,
+  and also a CALL that never had the outgoing slot (`ErrBusy`, the caller's
+  context, a connection that has ended).
 - **Interceptors.** `WithCallInterceptor` and `WithHandlerInterceptor` wrap
   outgoing and incoming calls with the call's metadata. This is where an
   application starts and ends OpenTelemetry spans, without the library
@@ -522,11 +566,12 @@ if ok {
 |---|---|
 | `ocppj` | table tests with byte-level vectors; fuzzing of `Decode` |
 | version packages | generated round-trip tests per message; valid and invalid payloads; fuzzing of each dispatcher |
-| `internal/engine` | in-memory transport; ordering, timeouts, late responses, cancellation, close during a call; goroutine-leak check |
+| `internal/engine` | in-memory transport; ordering, timeouts, late responses, cancellation, close during a call; goroutine-leak check by stack (`internal/leakcheck`, also in `internal/transport` and `e2e`); the lifecycle contract matrix of TESTING.md |
 | `client`, `server` | `httptest` servers; handshake, auth, TLS, reconnect, session replacement, limits |
 | `e2e` | every action of every version in both directions with full and minimal payloads (`TestMatrix`); the version-dependent protocol behaviours in every version, against go-ocpp and raw WebSocket peers (`TestProtocolPerVersion`: CALLERROR propagation with details in both directions, codes a version does not define, handler errors and panics, NotImplemented and NotSupported, the validation codes of each version, malformed and unknown frames, invalid and late responses with 2.1's CALLRESULTERROR, response timeouts, identity rules); custom authenticators and `StatusError` (`TestCustomAuthenticator`); `SetReconnect`; many concurrent stations; parallel calls, close and shutdown under load, replacement storms; resource exhaustion (slow handshakes, station floods, oversized messages, compression bombs, call floods, queue saturation, slow readers, half-open links); TLS and authentication refusals; all with `-race` |
 | chaos | a seeded TCP proxy that fragments, delays and cuts connections while stations of every version call and SEND (`TestChaos`; `make chaos`, `make soak`, nightly in `hardening.yml`) |
-| fuzzing | `ocppj.Decode`, the engine (`FuzzEndpoint`: frame sequences), the server handshake, and each version's dispatchers seeded with every action's payloads; 10 s per target in CI, 10 min nightly |
+| fuzzing | `ocppj.Decode`, the text check (`FuzzWellFormed`, against `encoding/json`), the engine (`FuzzEndpoint`: frame sequences), the server handshake, and each version's dispatchers seeded with every action's payloads; 10 s per target in CI, 10 min nightly; `make fuzz-check` compares the lists of targets with those found |
+| 32-bit | every test as `GOARCH=386`, nightly (`hardening.yml`, job `test-386`) |
 | API | `TestAPI` compares the exported API of `ocpp`, `ocppj`, `client` and `server` with `testdata/api` |
 | `interop` | build tag `interop`; images of `otfabric/ocpp-interop` pinned by digest; both roles |
 
@@ -596,4 +641,12 @@ Each choice can be revisited if an edition or erratum settles it.
 | A refused handshake is answered with `Connection: close`, also when the WebSocket upgrade itself refuses it (403, 426, 400, 405); `Serve`'s own `http.Server` closes idle keep-alive connections after the handshake timeout | Otherwise one refused request could hold a connection open indefinitely, past `WithMaxStations`, which counts sessions |
 | The WebSocket closing handshake is bounded to 10 s, then the connection is closed | A peer that never completes the closing handshake must not hold a goroutine or a connection; the bound does not depend on the WebSocket library's own timers |
 | `WithIncomingRateLimit` delays messages over the rate, never refuses them | OCPP has no CALLERROR for "too many"; delaying keeps backpressure on the connection without inventing protocol behaviour |
+| A WebSocket text message that is not valid UTF-8 closes the connection with status 1007 | RFC 6455 §8.1 requires an endpoint that finds such a message to fail the connection, and coder/websocket does not check it. OCPP-J messages are JSON, which is UTF-8 (RFC 8259 §8.1) |
+| A frame or payload with the `\u` escape of a surrogate that is not half of a pair is malformed: a CALL is answered with the CALLERROR of a malformed frame, a payload validated on its own with the format code | RFC 8259 §8.2 leaves such text to the receiver. `encoding/json` decodes it to U+FFFD, as it does bytes that are not UTF-8, so that different texts on the wire would become one string for a handler; refusing keeps what a handler receives equal to what was sent. The literal U+FFFD and its own escape are text like any other |
+| `server.CertificateAuth` admits a station whose verified client certificate has the station identity (the last path segment of the URL) as its subject CommonName | The specifications define security profile 3 (2.x Part 2 A00; 1.6 Security Whitepaper); which field of the certificate names the station is not traced to the OCA text here (SPECIFICATIONS.md T10 covers the Basic user name only), so this comparison is go-ocpp's choice. A CSMS whose certificates carry something else in the CommonName, a serial number for one, uses an `Authenticator` of its own |
+| A ping is not counted as lost while the connection's reader waits for room in the incoming queue | A pong is read only by the reader; while it waits, an unanswered ping says nothing about the peer. Counting it would end the session of a peer that answered at once, with the messages it had already sent. A connection that is half open is noticed when reading goes on |
+| A response that matches no pending CALL, and a CALLRESULTERROR, are logged and reported to `OnProtocolError` but not counted by `WithMaxBadMessages` | They are well-formed frames: a late response after a timeout is expected traffic. The bound is left to the application (LIMITATIONS.md) |
+| `Close` and `Done` do not wait for functions registered with `ocpp.AfterResponse` | They are application code that may itself call `Close` or `Shutdown` (a station that restarts after accepting a Reset); a wait for them from there could not end |
+| The response timeout's error matches `ocpp.ErrTimeout` and `context.DeadlineExceeded`; a `Call` that ends with its caller's deadline returns that context's error, which does not match `ErrTimeout` | Code that treats every passed deadline alike finds the response timeout too; code that asks which of the two it was still can |
+| The wait of `WithIncomingRateLimit` for the next message is taken in steps of at most one hour | The time until the next token is computed as a floating-point number, which for a very low rate is beyond what a duration holds; bounding each step keeps the conversion defined on every platform and does not change when the message is dispatched |
 | Without `WithOriginPatterns`, a request whose Origin names another host is refused (403), before the authenticator runs | Cross-site WebSocket hijacking by a browser; stations send no Origin |

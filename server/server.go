@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -89,6 +90,9 @@ func New(opts ...Option) (*Server, error) {
 	}
 	if o.pingInterval < 0 || o.maxBadMessages < 0 || o.incomingRate < 0 || o.incomingBurst < 0 {
 		return nil, fmt.Errorf("%w: ping interval, bad message limit and rate limit must not be negative", ocpp.ErrInvalidOption)
+	}
+	if math.IsNaN(o.incomingRate) || math.IsInf(o.incomingRate, 0) {
+		return nil, fmt.Errorf("%w: the incoming rate limit must be a finite number", ocpp.ErrInvalidOption)
 	}
 	if o.metrics == nil {
 		o.metrics = ocpp.NopMetrics{}
@@ -456,7 +460,14 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	}
 }
 
-// Close is Shutdown without waiting.
+// Close is Shutdown without waiting: it stops accepting connections and
+// starts closing every session with status 1001, and returns. The sessions
+// end, and their goroutines return, when their closing handshakes have
+// ended (within 10 s each); each session's Done says when, and Shutdown
+// waits for all of them.
+//
+// Close is safe to call more than once and from multiple goroutines: every
+// call returns nil.
 func (s *Server) Close() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -520,7 +531,15 @@ func (s *Session) Send(ctx context.Context, action string, req any) error {
 }
 
 // Close closes the connection to the station at once: frames still queued or
-// being written are dropped. Shutdown waits for them.
+// being written are dropped. Shutdown waits for them. Pending calls fail
+// with ocpp.ErrClosed, and so does every Call and Send after it.
+//
+// Close is safe to call more than once and from multiple goroutines: every
+// call returns nil, once the connection is closed and the session's reader,
+// writer and pinger have returned, and its dispatcher too unless a handler
+// is running: called from a handler, Close does not wait for that handler.
+// It does not wait for functions registered with ocpp.AfterResponse, which
+// may call it.
 func (s *Session) Close() error { return s.ep.Close() }
 
 // Shutdown drains the session (new CALLs and SENDs fail with
@@ -564,7 +583,11 @@ func drain(ctx context.Context, sessions []*Session) error {
 	}
 }
 
-// Done is closed when the session has ended.
+// Done is closed when the session has ended: the connection is closed, and
+// the session's reader, writer, pinger and dispatcher have returned, the
+// dispatcher with the handler it was running. Functions registered with
+// ocpp.AfterResponse are not waited for: they may still run when Done is
+// closed, and what they call on the session then fails.
 func (s *Session) Done() <-chan struct{} { return s.ep.Done() }
 
 // Err returns why the session ended: ocpp.ErrClosed after Close or

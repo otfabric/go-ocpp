@@ -6,12 +6,16 @@ import (
 	"bytes"
 	"encoding/json"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/otfabric/go-ocpp"
+	"github.com/otfabric/go-ocpp/internal/schematest"
 )
 
-// FuzzDecode checks that Decode never panics, that what it accepts encodes
-// again, and that the re-encoded frame decodes to the same frame.
+// FuzzDecode checks that Decode always returns, that what it accepts is
+// valid UTF-8 which encoding/json decodes without replacing any of its text
+// (schematest.TextReplaced), that it encodes again, and that the re-encoded
+// frame decodes to the same frame.
 func FuzzDecode(f *testing.F) {
 	for _, s := range []string{
 		`[2,"1","Heartbeat",{}]`,
@@ -22,6 +26,9 @@ func FuzzDecode(f *testing.F) {
 		`[2,"1","Heartbeat",{"a":{"b":[null,true,1.5e3,"é"]}}]`,
 		`[2, "1" , "Heartbeat", { "a" : [ 1 , 2 ] } ]`,
 		`[2.0,"1","x",{}]`, `[]`, `[2]`, `{}`, `"x"`, `[2,"1","x",{}] trailing`,
+		`[2,"\ud83d\ude00","Heartbeat",{"a":"\ufffd` + "\uFFFD" + `"}]`,
+		`[2,"1","Heartbeat",{"a":"\ud83d"}]`, `[2,"\ude00","Heartbeat",{}]`, `[4,"1","GenericError","\ud83d\u0041",{}]`,
+		"[2,\"1\",\"Heartbeat\",{\"a\":\"\xff\"}]", "[3,\"\xed\xa0\x80\",{}]",
 	} {
 		for _, v := range ocpp.Versions() {
 			f.Add([]byte(s), uint8(v))
@@ -32,6 +39,12 @@ func FuzzDecode(f *testing.F) {
 		fr, err := Decode(data, v, Limits{})
 		if err != nil {
 			return
+		}
+		if !utf8.Valid(data) {
+			t.Fatalf("decoded %q, which is not valid UTF-8", data)
+		}
+		if schematest.TextReplaced(data) {
+			t.Fatalf("decoded %q, of which encoding/json replaces text", data)
 		}
 		out, err := Encode(fr)
 		if err != nil {

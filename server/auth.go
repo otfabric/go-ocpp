@@ -45,6 +45,11 @@ func (Secret) GoString() string { return "[redacted]" }
 // Authenticator decides whether a station may connect. It runs before the
 // WebSocket upgrade. A nil error accepts; any error refuses with HTTP 401,
 // and the error is logged but not sent.
+//
+// Authenticate is called on the goroutine of the station's HTTP request,
+// for several stations at once; it may block, within the request's context.
+// The server does not recover it: when it does not return normally, the
+// HTTP server that runs the request does, and the station is not admitted.
 type Authenticator interface {
 	Authenticate(ctx context.Context, r ConnectRequest) error
 }
@@ -107,8 +112,16 @@ func BasicAuth(lookup func(ctx context.Context, stationID string) (password stri
 // CertificateAuth returns an Authenticator for security profile 3: the
 // station must present a client certificate, which the TLS handshake has
 // already verified against the server's ClientCAs, whose subject
-// CommonName is its identity (2.x Part 2 A00; 1.6 Security Whitepaper).
-// Otherwise it returns ErrUnauthorized.
+// CommonName is its identity, the last path segment of the URL. Otherwise
+// it returns ErrUnauthorized.
+//
+// Comparing the CommonName with the identity is an implementation choice
+// of go-ocpp (ARCHITECTURE.md, "Implementation choices"), not a rule
+// traced to the OCA text: the specifications define the profile (2.x Part
+// 2 A00; 1.6 Security Whitepaper), and SPECIFICATIONS.md T10 traces the
+// Basic authentication rule only. A CSMS whose station certificates carry
+// something else in the CommonName, a serial number for one, checks
+// ConnectRequest.TLS.PeerCertificates in an Authenticator of its own.
 func CertificateAuth() Authenticator {
 	return AuthenticatorFunc(func(ctx context.Context, r ConnectRequest) error {
 		if r.TLS == nil || len(r.TLS.VerifiedChains) == 0 || len(r.TLS.PeerCertificates) == 0 ||

@@ -1,9 +1,10 @@
 name: Hardening
 run-name: "Hardening (${{ github.event_name }}) on ${{ github.ref_name }}"
 
-# Long fuzzing, chaos and soak runs: too slow for every push, so nightly and
-# on demand. A fuzz input that fails is uploaded; commit it under the
-# target's testdata/fuzz directory so that every test run checks it.
+# Long fuzzing, chaos and soak runs, and the tests on a 32-bit architecture:
+# too slow for every push, so nightly and on demand. A fuzz input that fails
+# is uploaded; commit it under the target's testdata/fuzz directory so that
+# every test run checks it.
 on:
   schedule:
     - cron: "23 2 * * *"
@@ -31,6 +32,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Every fuzz target of the module: 'make fuzz-check', in CI, fails
+        # when this list or FUZZ_TARGETS in the Makefile differs from what
+        # 'go test -list' finds.
         target:
           - ocppj:FuzzDecode
           - internal/engine:FuzzEndpoint
@@ -41,6 +45,7 @@ jobs:
           - internal/wire:FuzzIntegralNumbers
           - client:FuzzNew
           - ocppcert:FuzzHash
+          - internal/jsontext:FuzzWellFormed
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -58,6 +63,23 @@ jobs:
           name: fuzz-${{ strategy.job-index }}
           path: "**/testdata/fuzz/**"
           if-no-files-found: ignore
+
+  # Platform width (otfabric/engineering standards/testing.md#platform-width):
+  # the generated types decode JSON integers into int, and the codec, the
+  # limiter and the back-off convert sizes and durations, so the tests also
+  # run where int has 32 bits. ubuntu runners execute 386 binaries; the race
+  # detector does not exist for 386.
+  test-386:
+    name: Tests on a 32-bit architecture
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Tests on a 32-bit architecture
+        run: GOARCH=386 go test -count=1 ./...
 
   soak:
     name: Chaos and soak

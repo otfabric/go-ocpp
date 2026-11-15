@@ -23,15 +23,19 @@ jobs:
       go-versions: '["1.26", "1.27"]'
       golangci-lint-version: v2.15.0
       run-govulncheck: true
-      # Measured 99.0 % with the coverpkg below (go-ci method).
+      # Measured 98.2 % with the coverpkg below (make coverage).
       coverage-min: "98"
       fuzz-time: 10s
-      # Match the Makefile's COVER_PKGS: the e2e tests drive client and server.
-      coverpkg: github.com/otfabric/go-ocpp,github.com/otfabric/go-ocpp/ocppj,github.com/otfabric/go-ocpp/client,github.com/otfabric/go-ocpp/server,github.com/otfabric/go-ocpp/internal/engine,github.com/otfabric/go-ocpp/internal/transport,github.com/otfabric/go-ocpp/ocpptest,github.com/otfabric/go-ocpp/ocppcert
+      # The packages of the Makefile's COVER_PKGS, all of them: the e2e tests
+      # drive client and server. 'make coverpkg-check' (job checks) fails
+      # when the two lists differ.
+      coverpkg: github.com/otfabric/go-ocpp,github.com/otfabric/go-ocpp/client,github.com/otfabric/go-ocpp/internal/after,github.com/otfabric/go-ocpp/internal/engine,github.com/otfabric/go-ocpp/internal/jsontext,github.com/otfabric/go-ocpp/internal/transport,github.com/otfabric/go-ocpp/internal/wire,github.com/otfabric/go-ocpp/ocpp16,github.com/otfabric/go-ocpp/ocpp201,github.com/otfabric/go-ocpp/ocpp21,github.com/otfabric/go-ocpp/ocppcert,github.com/otfabric/go-ocpp/ocppj,github.com/otfabric/go-ocpp/ocpptest,github.com/otfabric/go-ocpp/server
     secrets: inherit
 
   # Formatting with the gofmt of the go.mod version and the latest one, the
-  # dependency allow-list (ADR 0002) and staticcheck: what the reusable
+  # dependency allow-list (ADR 0002), the hand-written lists (the fuzz
+  # targets of the Makefile and of hardening.yml against the targets found,
+  # coverpkg above against COVER_PKGS) and staticcheck: what the reusable
   # workflow does not run.
   checks:
     name: Format, dependencies, staticcheck
@@ -42,7 +46,7 @@ jobs:
         with:
           go-version: "1.27.x"
       - run: go install honnef.co/go/tools/cmd/staticcheck@2026.2.2
-      - run: make fmt-check deps lint
+      - run: make fmt-check deps fuzz-check coverpkg-check lint
 
   # The generated version packages must match the generator and the schemas
   # (ADR 0003, ADR 0007).

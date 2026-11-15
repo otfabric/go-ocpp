@@ -56,6 +56,8 @@ type Authenticator interface {
 
 Authenticator decides whether a station may connect. It runs before the WebSocket upgrade. A nil error accepts; any error refuses with HTTP 401, and the error is logged but not sent.
 
+Authenticate is called on the goroutine of the station's HTTP request, for several stations at once; it may block, within the request's context. The server does not recover it: when it does not return normally, the HTTP server that runs the request does, and the station is not admitted.
+
 #### func AnyOf
 
 ```go
@@ -78,7 +80,9 @@ BasicAuth returns an Authenticator for security profiles 1 and 2: the station mu
 func CertificateAuth() Authenticator
 ```
 
-CertificateAuth returns an Authenticator for security profile 3: the station must present a client certificate, which the TLS handshake has already verified against the server's ClientCAs, whose subject CommonName is its identity (2.x Part 2 A00; 1.6 Security Whitepaper). Otherwise it returns ErrUnauthorized.
+CertificateAuth returns an Authenticator for security profile 3: the station must present a client certificate, which the TLS handshake has already verified against the server's ClientCAs, whose subject CommonName is its identity, the last path segment of the URL. Otherwise it returns ErrUnauthorized.
+
+Comparing the CommonName with the identity is an implementation choice of go-ocpp (ARCHITECTURE.md, "Implementation choices"), not a rule traced to the OCA text: the specifications define the profile (2.x Part 2 A00; 1.6 Security Whitepaper), and SPECIFICATIONS.md T10 traces the Basic authentication rule only. A CSMS whose station certificates carry something else in the CommonName, a serial number for one, checks ConnectRequest.TLS.PeerCertificates in an Authenticator of its own.
 
 ### type AuthenticatorFunc
 
@@ -182,7 +186,7 @@ WithHandshakeTimeout bounds reading the HTTP request headers when the server lis
 func WithIncomingRateLimit(perSecond float64, burst int) Option
 ```
 
-WithIncomingRateLimit dispatches at most perSecond of a station's incoming CALLs and SENDs a second, in bursts of up to burst. Messages over the rate wait: none is refused, since OCPP has no error for "too many"; once the bounded incoming queue is full, reading from the connection waits too. Zero (the default) sets no limit.
+WithIncomingRateLimit dispatches at most perSecond of a station's incoming CALLs and SENDs a second, in bursts of up to burst. Messages over the rate wait: none is refused, since OCPP has no error for "too many"; once the bounded incoming queue is full, reading from the connection waits too, and with it the answers to this end's own CALLs and the pongs (see WithPingInterval). Zero (the default) sets no limit. perSecond must be a finite number and not negative, or New returns ErrInvalidOption; a rate may be as low as one message in many hours.
 
 #### func WithLogger
 
@@ -248,6 +252,8 @@ func WithPingInterval(d time.Duration) Option
 
 WithPingInterval makes the server send a WebSocket ping to every station every d, and treat a connection as lost when the pong does not arrive within d. Stations usually ping (WebSocketPingInterval); a CSMS that pings too notices half-open connections from its side. Zero (the default) sends no pings.
 
+A pong is read only while the connection is read. Reading waits while the queue of a station's incoming CALLs and SENDs is full (16 messages, behind a handler that is slower than the station sends, as a burst of OCPP 2.1 SENDs can be, or behind WithIncomingRateLimit): a ping sent in that time is not counted, and the next one goes out d later. A connection that is half open is then noticed once reading goes on.
+
 #### func WithReplacePolicy
 
 ```go
@@ -270,7 +276,7 @@ WithResponseTimeout sets how long a CALL to a station waits for its response.
 func WithSessionHandler(onConnect func(*Session), onDisconnect func(*Session, error)) Option
 ```
 
-WithSessionHandler sets functions called when a session starts and when it ends (with nil after a local Close or Shutdown, ErrReplaced when a new connection of the station replaced it, or the cause). onConnect runs after the connection is registered, while the station may already be sending; onDisconnect runs after the session is removed. Either may be nil. They must not block for long.
+WithSessionHandler sets functions called when a session starts and when it ends (with nil after a local Close or Shutdown, ErrReplaced when a new connection of the station replaced it, or the cause). onConnect runs after the connection is registered, while the station may already be sending; onDisconnect runs after the session is removed. Either may be nil. They must not block for long. Both run on the goroutine of the HTTP request that carried the station's handshake. An onConnect that does not return normally is recovered and logged with its stack, and the session goes on; onDisconnect is not recovered by the server: the HTTP server that runs the request does that, when the session is already removed.
 
 #### func WithTLS
 
@@ -368,7 +374,9 @@ New returns a Server.
 func (s *Server) Close() error
 ```
 
-Close is Shutdown without waiting.
+Close is Shutdown without waiting: it stops accepting connections and starts closing every session with status 1001, and returns. The sessions end, and their goroutines return, when their closing handshakes have ended (within 10 s each); each session's Done says when, and Shutdown waits for all of them.
+
+Close is safe to call more than once and from multiple goroutines: every call returns nil.
 
 #### func (Server) ListenAndServe
 
@@ -450,7 +458,9 @@ Call sends a CALL to the station and waits for its result (see ocpp.Caller).
 func (s *Session) Close() error
 ```
 
-Close closes the connection to the station at once: frames still queued or being written are dropped. Shutdown waits for them.
+Close closes the connection to the station at once: frames still queued or being written are dropped. Shutdown waits for them. Pending calls fail with ocpp.ErrClosed, and so does every Call and Send after it.
+
+Close is safe to call more than once and from multiple goroutines: every call returns nil, once the connection is closed and the session's reader, writer and pinger have returned, and its dispatcher too unless a handler is running: called from a handler, Close does not wait for that handler. It does not wait for functions registered with ocpp.AfterResponse, which may call it.
 
 #### func (Session) Compression
 
@@ -474,7 +484,7 @@ ConnectedAt returns when the connection was accepted.
 func (s *Session) Done() <-chan struct{}
 ```
 
-Done is closed when the session has ended.
+Done is closed when the session has ended: the connection is closed, and the session's reader, writer, pinger and dispatcher have returned, the dispatcher with the handler it was running. Functions registered with ocpp.AfterResponse are not waited for: they may still run when Done is closed, and what they call on the session then fails.
 
 #### func (Session) Err
 

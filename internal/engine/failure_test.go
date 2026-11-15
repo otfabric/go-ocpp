@@ -34,6 +34,12 @@ type fakeConn struct {
 	written   [][]byte
 	noPong    bool // Ping waits for a pong that never comes
 	pings     atomic.Int64
+	// pongWhileReading makes Ping wait for a pong that arrives only while
+	// ReadMessage is being called, as on a WebSocket; reading counts those
+	// calls.
+	pongWhileReading bool
+	reading          atomic.Int64
+	writes           atomic.Int64 // WriteMessage calls that have started
 }
 
 func newFakeConn() *fakeConn {
@@ -41,6 +47,8 @@ func newFakeConn() *fakeConn {
 }
 
 func (c *fakeConn) ReadMessage(ctx context.Context) ([]byte, error) {
+	c.reading.Add(1)
+	defer c.reading.Add(-1)
 	select {
 	case m, ok := <-c.reads:
 		if !ok {
@@ -55,6 +63,7 @@ func (c *fakeConn) ReadMessage(ctx context.Context) ([]byte, error) {
 }
 
 func (c *fakeConn) WriteMessage(ctx context.Context, p []byte) error {
+	c.writes.Add(1)
 	if c.writeErr != nil {
 		return c.writeErr
 	}
@@ -86,6 +95,23 @@ func (c *fakeConn) Abort() { _ = c.Close(0, "") }
 
 func (c *fakeConn) Ping(ctx context.Context) error {
 	c.pings.Add(1)
+	if c.pongWhileReading {
+		poll := time.NewTicker(100 * time.Microsecond)
+		defer poll.Stop()
+		for c.reading.Load() == 0 {
+			select {
+			case <-poll.C:
+			case <-c.closed:
+				return transport.ErrClosed
+			case <-ctx.Done():
+				if c.reading.Load() > 0 {
+					return nil // read by now: the pong was waiting
+				}
+				return ctx.Err()
+			}
+		}
+		return nil
+	}
 	if !c.noPong {
 		return nil
 	}
@@ -94,6 +120,19 @@ func (c *fakeConn) Ping(ctx context.Context) error {
 		return transport.ErrClosed
 	case <-ctx.Done():
 		return ctx.Err()
+	}
+}
+
+// eventually waits until cond holds, and fails the test with what when it
+// does not within 5 s.
+func eventually(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s", what)
+		}
+		time.Sleep(time.Millisecond)
 	}
 }
 
@@ -200,24 +239,28 @@ func TestStuckWriter(t *testing.T) {
 	conn.blockW = make(chan struct{})
 	e := fakeEndpoint(t, conn, func(c *Config) { c.ResponseTimeout = 20 * time.Millisecond; c.WriteTimeout = time.Minute })
 	ctx := context.Background()
-	// The first CALL is taken by the writer, which blocks; it times out.
-	if err := e.Call(ctx, "Heartbeat", nil, nil); !errors.Is(err, ocpp.ErrTimeout) {
-		t.Fatalf("first: %v", err)
+	// The first CALL is taken by the writer, which blocks; it times out. The
+	// response timeout matches the library's sentinel and the context's.
+	if err := e.Call(ctx, "Heartbeat", nil, nil); !errors.Is(err, ocpp.ErrTimeout) || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("first: %v, want ErrTimeout and context.DeadlineExceeded", err)
 	}
 	// The second is queued for the writer and times out too.
-	if err := e.Call(ctx, "Heartbeat", nil, nil); !errors.Is(err, ocpp.ErrTimeout) {
-		t.Fatalf("second: %v", err)
+	if err := e.Call(ctx, "Heartbeat", nil, nil); !errors.Is(err, ocpp.ErrTimeout) || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("second: %v, want ErrTimeout and context.DeadlineExceeded", err)
 	}
-	// The third cannot be queued: its context ends first.
+	// The third cannot be queued: its context ends first. That deadline is
+	// the caller's, not the response timeout: it does not match ErrTimeout.
 	short, cancel := context.WithTimeout(ctx, 20*time.Millisecond)
 	defer cancel()
-	if err := e.Call(short, "Heartbeat", nil, nil); !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("third: %v", err)
+	if err := e.Call(short, "Heartbeat", nil, nil); !errors.Is(err, context.DeadlineExceeded) || errors.Is(err, ocpp.ErrTimeout) {
+		t.Fatalf("third: %v, want context.DeadlineExceeded and not ErrTimeout", err)
 	}
 	// The fourth cannot be queued either; the endpoint closes meanwhile.
+	// Unwritten: the first CALL, which the writer holds, the second, still
+	// in the writer's queue, and the fourth, which waits for room in it.
 	fourth := make(chan error, 1)
 	go func() { fourth <- e.Call(ctx, "Heartbeat", nil, nil) }()
-	time.Sleep(20 * time.Millisecond)
+	eventually(t, "the fourth CALL to wait for the writer", func() bool { return e.unwritten.Load() == 3 })
 	_ = e.Close()
 	if err := <-fourth; !errors.Is(err, ocpp.ErrClosed) {
 		t.Fatalf("fourth: %v", err)
@@ -521,7 +564,7 @@ func TestMaxBadMessages(t *testing.T) {
 	e := fakeEndpoint(t, conn, func(c *Config) { c.MaxBadMessages = 3 })
 	conn.reads <- []byte(`not json`)
 	conn.reads <- []byte(`[9,"x"]`)
-	time.Sleep(20 * time.Millisecond)
+	eventually(t, "2 bad messages to be counted", func() bool { return e.badMessages.Load() == 2 })
 	if e.Err() != nil {
 		t.Fatalf("closed after 2 bad messages: %v", e.Err())
 	}
@@ -533,6 +576,10 @@ func TestMaxBadMessages(t *testing.T) {
 	}
 	if !errors.Is(e.Err(), ocpp.ErrConnectionLost) || !errors.Is(e.Err(), ocpp.ErrProtocol) {
 		t.Fatalf("err %v", e.Err())
+	}
+	// The cause counts the frames: it was the third that closed it.
+	if !strings.Contains(e.Err().Error(), "3 malformed frames") {
+		t.Fatalf("err %v, want it to count 3 frames", e.Err())
 	}
 }
 
@@ -704,7 +751,8 @@ func TestDrainRefusesNewMessages(t *testing.T) {
 		handled.Add(1)
 		return json.RawMessage(`{}`), nil
 	})
-	e, raw := rawPeer(t, ocpp.V21, d, nil)
+	m := &handledMetrics{}
+	e, raw := rawPeer(t, ocpp.V21, d, func(c *Config) { c.Metrics = m })
 	e.Drain()
 	if err := e.Call(context.Background(), "Heartbeat", nil, nil); !errors.Is(err, ocpp.ErrClosed) {
 		t.Fatalf("Call while draining: %v", err)
@@ -713,14 +761,18 @@ func TestDrainRefusesNewMessages(t *testing.T) {
 		t.Fatalf("Send while draining: %v", err)
 	}
 	writeRaw(t, raw, `[2,"x","Heartbeat",{}]`)
-	deadline := time.Now().Add(5 * time.Second)
-	for !e.Idle() {
-		if time.Now().After(deadline) {
-			t.Fatal("not idle while draining with a CALL that has not started")
-		}
-		time.Sleep(time.Millisecond)
+	// A SEND behind the CALL: it is still dispatched while draining (to a
+	// dispatcher without a SEND handler, which is reported), and by then
+	// the dispatcher has been past the CALL before it.
+	writeRaw(t, raw, sendFrame("after-x"))
+	eventually(t, "the SEND behind the CALL to be dispatched", func() bool {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		return len(m.errs) == 1
+	})
+	if !e.Idle() {
+		t.Fatal("not idle while draining with a CALL that has not started")
 	}
-	time.Sleep(20 * time.Millisecond)
 	if n := handled.Load(); n != 0 {
 		t.Fatalf("%d CALLs dispatched while draining", n)
 	}

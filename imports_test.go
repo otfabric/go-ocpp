@@ -21,7 +21,8 @@ const module = "github.com/otfabric/go-ocpp"
 var allowedImports = map[string][]string{
 	".":                  {module + "/internal/after"},
 	"internal/after":     {},
-	"ocppj":              {module},
+	"internal/jsontext":  {},
+	"ocppj":              {module, module + "/internal/jsontext"},
 	"internal/transport": {"github.com/coder/websocket"},
 	"internal/engine":    {module, module + "/ocppj", module + "/internal/transport", module + "/internal/after"},
 	"client":             {module, module + "/ocppj", module + "/internal/engine", module + "/internal/transport"},
@@ -32,10 +33,12 @@ var allowedImports = map[string][]string{
 	"ocpp16":        {module, module + "/internal/wire"},
 	"ocpp201":       {module, module + "/internal/wire"},
 	"ocpp21":        {module, module + "/internal/wire"},
-	"internal/wire": {module, module + "/ocppj"},
+	"internal/wire": {module, module + "/ocppj", module + "/internal/jsontext"},
 	// The schema conformance suite, imported by the version packages' tests
 	// only: a reference JSON Schema validator (ADR 0003).
 	"internal/schematest": {module, "github.com/santhosh-tekuri/jsonschema/v6"},
+	// The goroutine leak check of the tests: the standard library only.
+	"internal/leakcheck": {},
 }
 
 func TestImportRules(t *testing.T) {

@@ -126,6 +126,9 @@ func New(rawURL string, opts ...Option) (*Client, error) {
 	if o.pingInterval < 0 || o.maxBadMessages < 0 || o.incomingRate < 0 || o.incomingBurst < 0 {
 		return nil, fmt.Errorf("%w: ping interval, bad message limit and rate limit must not be negative", ocpp.ErrInvalidOption)
 	}
+	if math.IsNaN(o.incomingRate) || math.IsInf(o.incomingRate, 0) {
+		return nil, fmt.Errorf("%w: the incoming rate limit must be a finite number", ocpp.ErrInvalidOption)
+	}
 	if o.metrics == nil {
 		o.metrics = ocpp.NopMetrics{}
 	}
@@ -574,8 +577,17 @@ func (c *Client) Send(ctx context.Context, action string, req any) error {
 }
 
 // Close closes the connection and stops reconnecting. Pending calls fail
-// with ocpp.ErrClosed. Close is idempotent. Called from a handler, it
-// returns without waiting for that handler.
+// with ocpp.ErrClosed, and so does every Connect, Call and Send after it.
+//
+// Close is safe to call more than once and from multiple goroutines. The
+// call that closes returns once the connection is closed and its reader,
+// writer, pinger and dispatcher have returned, and the supervisor that
+// redials. Called while a handler runs, and so from a handler, it returns
+// without waiting for that handler, for the dispatcher that runs it, and
+// for the supervisor, which ends after them. It does not wait for
+// functions registered with ocpp.AfterResponse, which may call it. Every
+// other call, during or after that one, returns nil at once and does
+// nothing.
 func (c *Client) Close() error {
 	c.mu.Lock()
 	if c.closed {

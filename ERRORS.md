@@ -27,7 +27,7 @@ is listed per role in [API_CLIENT.md](API_CLIENT.md#errors-by-method) and
 | You want to know | Test |
 |---|---|
 | The peer answered with a CALLERROR | `errors.As(err, &ce)` with `ce *ocpp.CallError` |
-| No response in time | `errors.Is(err, ocpp.ErrTimeout)` |
+| No response in time | `errors.Is(err, ocpp.ErrTimeout)` (the error also matches `context.DeadlineExceeded`) |
 | The connection broke | `errors.Is(err, ocpp.ErrConnectionLost)` |
 | It was closed locally | `errors.Is(err, ocpp.ErrClosed)` |
 | A client could not connect | `errors.Is(err, ocpp.ErrConnectFailed)` |
@@ -48,15 +48,15 @@ is listed per role in [API_CLIENT.md](API_CLIENT.md#errors-by-method) and
 | `ErrNotConnected` | A client without an open connection is asked to call, including while it reconnects. Nothing is queued |
 | `ErrConnectFailed` | `Client.Connect` failed: dial, TLS, HTTP status (in the message), WebSocket handshake, or no common subprotocol (then it also wraps `ErrUnsupportedVersion`) |
 | `ErrConnectionLost` | A call was pending or queued when the connection broke; `Session.Err` after the station went away |
-| `ErrTimeout` | No response to a CALL arrived within the response timeout |
+| `ErrTimeout` | No response to a CALL arrived within the response timeout. The error also matches `context.DeadlineExceeded`; the error of a `Call` that ended with its caller's own deadline does not match `ErrTimeout` |
 | `ErrBusy` | The queue of calls waiting for the single outgoing slot is full |
 | `ErrWrongDirection` | A call function is used for an action the connection's role does not send |
 | `ErrUnsupportedVersion` | No common version could be negotiated; a call function of another version's package was used on the connection; `Send` on a connection that is not OCPP 2.1 |
 | `ErrProtocol` | A response could not be decoded into `resp`; also reported through metrics for frames that violate OCPP-J |
 | `ErrUnexpectedResponse` | Reported through `Metrics.OnProtocolError` for late, duplicate or unknown responses; never returned by a call |
 | `ErrInvalidMessage` | A request (before sending) or a response (on arrival) does not conform to its schema; wrapped by every `*ValidationError`. A response failing validation is also wrapped in `ErrProtocol`; on OCPP 2.1 it is also answered with a CALLRESULTERROR |
-| `ErrInvalidOption` | A constructor was given an invalid option |
-| `ErrHandlerPanic` | Reported through `Metrics.OnCallHandled` when a handler panicked; the CALL is answered with `InternalError`. Never returned by a call |
+| `ErrInvalidOption` | A constructor was given an invalid option, for example a rate for `WithIncomingRateLimit` that is negative or not a finite number |
+| `ErrHandlerPanic` | Reported through `Metrics.OnCallHandled` when a handler, or the handler interceptor around it, did not return normally: it is recovered, and the CALL is answered with `InternalError`. Never returned by a call |
 
 Package `server` adds:
 
@@ -98,7 +98,7 @@ as `InternalError`.
 | `InternalError` | yes | yes | A handler error that is not a `*ocpp.CallError`, a panic, a nil or non-object response, a code the version does not define |
 | `ProtocolError` | yes | yes | Only when a handler returns it |
 | `SecurityError` | yes | yes | Only when a handler returns it |
-| `FormationViolation` | yes | — | 1.6: a payload that is not valid JSON, has an unknown property where the schema closes the object, or names a property twice in one object; a malformed CALL |
+| `FormationViolation` | yes | — | 1.6: a payload that is not valid JSON, has an unknown property where the schema closes the object, names a property twice in one object, or whose text is not well-formed (below); a malformed CALL |
 | `FormatViolation` | — | yes | 2.x: the same as `FormationViolation` in 1.6 |
 | `PropertyConstraintViolation` | yes | yes | A value out of its enumeration, too long, out of range, not a multiple, not a URI |
 | `OccurenceConstraintViolation` (1.6 spelling) | yes | — | A required property missing; an array too short or too long |
@@ -129,6 +129,11 @@ error itself is logged locally, because it may contain internal details. A
 code the connection's version does not define is also replaced with
 `InternalError`.
 
+The same answer is given when the handler interceptor
+(`WithHandlerInterceptor`) around a handler does not return normally: it is
+recovered, logged with its stack, and reported to `Metrics.OnCallHandled`
+as `ErrHandlerPanic`.
+
 ## Validation errors
 
 `*ocpp.ValidationError` says what is wrong with a payload: `Code` (the
@@ -153,6 +158,18 @@ at Warn, and then:
 With `WithMaxBadMessages(n)` the connection is closed with 1008 after the
 n-th malformed frame; its error wraps `ocpp.ErrConnectionLost` and
 `ocpp.ErrProtocol`.
+
+A frame whose text is not well-formed is malformed, whatever its JSON:
+text with a byte sequence that is not UTF-8, or with the `\u` escape of a
+surrogate that is not half of a pair (a high one, `\uD800` to `\uDBFF`,
+followed at once by a low one, `\uDC00` to `\uDFFF`). `encoding/json`
+would decode either to U+FFFD. The message ID of such a frame counts as
+readable when the text is elsewhere in the frame. Over a WebSocket only the
+escapes get this far: a text message that is not valid UTF-8 closes the
+connection with status 1007 ([WebSocket close codes](#websocket-close-codes)).
+A payload that is validated on its own (`ValidateRequest`,
+`ValidateResponse`, a dispatcher called directly) is refused with
+`FormatViolation` (`FormationViolation` in 1.6) for the same text.
 
 ## CALLRESULTERROR (OCPP 2.1)
 
@@ -192,6 +209,7 @@ Every refusal is reported to `Metrics.OnConnectFailed` and logged at Warn.
 | 1000 | `Close` | `ocpp.ErrConnectionLost` with an `*ocpp.CloseError`, `Normal()` |
 | 1001 | Server `Shutdown` or `Close` | `ocpp.ErrConnectionLost` with an `*ocpp.CloseError`, `Normal()` |
 | 1003 | A binary message arrived: OCPP-J uses text only | `ocpp.ErrConnectionLost` |
+| 1007 | A text message that is not valid UTF-8 arrived (RFC 6455 §8.1) | `ocpp.ErrConnectionLost` |
 | 1008 | No subprotocol in common; a session replaced; `WithMaxBadMessages` reached | `ocpp.ErrConnectionLost` |
 | 1009 | A message over `WithMaxMessageSize`, after decompression | `ocpp.ErrConnectionLost` |
 | 1011 | A read error the library cannot attribute | `ocpp.ErrConnectionLost` |
@@ -210,8 +228,12 @@ BootNotification answered with `Rejected` and an Authorize answered with
 ## Context and timeouts
 
 - Every `Call` has a response timeout (default 30 s). When it expires,
-  `Call` returns `ErrTimeout` and the next CALL may be sent.
-- When `ctx` ends first, `Call` returns `ctx.Err()` at once. If the CALL was
+  `Call` returns `ErrTimeout` and the next CALL may be sent. That error
+  matches `context.DeadlineExceeded` too, so code that treats every passed
+  deadline alike sees it.
+- When `ctx` ends first, `Call` returns `ctx.Err()` at once: for a deadline
+  of the caller's, `context.DeadlineExceeded`, which does not match
+  `ErrTimeout`. If the CALL was
   already sent, it keeps the outgoing slot until its response arrives or its
   response timeout expires. OCPP allows one outstanding CALL per direction,
   so the next CALL waits for that.

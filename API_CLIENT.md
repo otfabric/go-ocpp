@@ -86,7 +86,7 @@ const (
 | `Connect` | Dials once: TCP, TLS, the WebSocket handshake with the offered subprotocols. Returns nil when the connection is open. It does not retry; `WithReconnect` redials only after an open connection is lost. On a connected client it does nothing; while another `Connect` or a redial is in progress it waits for that one (until ctx ends) and returns its outcome. `Close` ends a `Connect` in progress with `ErrClosed`. A redirect from `wss://` to `ws://` is refused (the `*HandshakeError` carries the redirect's status); other redirects are followed as the HTTP client's policy allows. |
 | `Call` | Sends a CALL and waits for its result. Calls from many goroutines are sent one at a time (one outstanding CALL per direction); up to `WithMaxQueuedCalls` wait, more get `ErrBusy`. Fails at once with `ErrNotConnected` while disconnected: nothing is queued. The typed call functions (`ocpp201.BootNotification(ctx, c, …)`) use it. |
 | `Send` | OCPP 2.1 SEND: queued and returned at once, never answered, does not wait for the CALL slot. `ErrUnsupportedVersion` on other versions. |
-| `Close` | Closes now: pending calls fail with `ErrClosed`, frames still queued or being written are dropped, reconnection stops. Idempotent and final: a closed client does not connect again (make a new one, as a restarting station would); from a handler it does not wait for that handler. |
+| `Close` | Closes now: pending calls fail with `ErrClosed`, frames still queued or being written are dropped, reconnection stops. Final: a closed client does not connect again (make a new one, as a restarting station would). Safe to call more than once and from multiple goroutines: every call returns nil, and the one that closes returns once the connection's reader, writer, pinger and dispatcher and the redialling supervisor have returned. From a handler it does not wait for that handler (nor for the dispatcher and the supervisor behind it); it never waits for functions registered with `ocpp.AfterResponse`. |
 | `Shutdown` | Graceful close: new calls fail with `ErrClosed` and CALLs from the CSMS that have not started are no longer dispatched; it waits until what is in flight is done (calls already made have their answers, handlers that have started have answered, every queued frame, SENDs and answers included, is written), then `Close`. Returns `ctx.Err()` if ctx ends first (closed anyway). Called from a handler it waits for that handler, so until ctx ends: from a handler, use `Close`, or `Shutdown` in `ocpp.AfterResponse` (a station that accepts a Reset and restarts). |
 | `SetReconnect` | Changes the back-off from the next attempt on, for a CSMS that sets the RetryBackOff variables (2.x OCPPCommCtrlr); nil stops reconnecting after the next loss. |
 
@@ -103,20 +103,20 @@ const (
 | `WithInsecureTransport()` | off | Allow `ws://` |
 | `WithCompression()` | off | Offer RFC 7692 compression (2.x CSMSs must support it); `ConnInfo.Compression` says whether the CSMS accepted it |
 | `WithReconnect(Reconnect{…})` | off | Redial after a lost connection with the back-off of 2.x Part 4 §5.4; see `DefaultReconnect()` |
-| `WithStateHandler(f)` | none | Called on every state change with its cause; may read `State`, `Version` and `ID`; must not block or call `Close`, `Connect` or `Call` |
+| `WithStateHandler(f)` | none | Called on every state change with its cause, with the client's lock held; may read `State`, `Version` and `ID`; must not block or call `Close`, `Connect` or `Call`, and must return normally (it is not recovered) |
 | `WithHandshakeTimeout(d)` | 30 s | Dial, TLS and WebSocket handshakes |
 | `WithResponseTimeout(d)` | 30 s | Wait for a CALL's response (2.x: MessageTimeout of OCPPCommCtrlr) |
 | `WithWriteTimeout(d)` | 10 s | Writing one message; then the connection is lost |
-| `WithPingInterval(d)` | off | WebSocket ping every `d`; no pong within `d` loses the connection (WebSocketPingInterval) |
+| `WithPingInterval(d)` | off | WebSocket ping every `d`; no pong within `d` loses the connection (WebSocketPingInterval). A ping is not counted while reading waits for room in the incoming queue (16 messages behind a slow handler or the rate limit) |
 | `WithMaxQueuedCalls(n)` | 64 | Calls waiting for the outgoing slot before `ErrBusy` |
 | `WithMaxMessageSize(n)` | 64 KiB | Largest message accepted, after decompression; larger closes with 1009 |
 | `WithMaxBadMessages(n)` | off | Close with 1008 after `n` malformed frames |
-| `WithIncomingRateLimit(perSecond, burst)` | off | Dispatch at most this many of the CSMS's CALLs a second; the rest wait |
+| `WithIncomingRateLimit(perSecond, burst)` | off | Dispatch at most this many of the CSMS's CALLs and SENDs a second; the rest wait, and once 16 are queued reading waits too. `perSecond` must be finite and not negative, or `New` returns `ErrInvalidOption` |
 | `WithLogger(l)` | silent | `*slog.Logger`; entries carry `component=ocpp.client` |
 | `WithMetrics(m)` | none | `ocpp.Metrics` |
 | `WithCallInterceptor(i)` | none | Wraps every outgoing CALL and SEND (tracing) |
-| `WithHandlerInterceptor(i)` | none | Wraps every incoming CALL and SEND |
-| `WithFrameObserver(f)` | none | Sees every frame, raw |
+| `WithHandlerInterceptor(i)` | none | Wraps every incoming CALL and SEND, on the connection's dispatcher goroutine; recovered like a handler when it does not return normally (`InternalError`, `ErrHandlerPanic`) |
+| `WithFrameObserver(f)` | none | Sees every frame, raw and borrowed; must not block or keep the slice, and must return normally (it is not recovered) |
 
 ## States and reconnection
 
@@ -146,7 +146,9 @@ any ──Close / Shutdown──▶ Closed
 | 2: TLS + Basic | `WithBasicAuth(id, password)`, `WithTLS(&tls.Config{RootCAs: …})` when the CSMS's CA is not in the system roots |
 | 3: mutual TLS | `WithTLS(&tls.Config{RootCAs: …, Certificates: […]})` or `GetClientCertificate` |
 
-TLS verification cannot be turned off. See
+The client has no option that turns TLS verification off; the
+`tls.Config` given to `WithTLS` is used as given, so verification is what
+that configuration says. See
 [examples/security-profiles](examples/security-profiles) and
 [SECURITY.md](SECURITY.md).
 
@@ -162,7 +164,7 @@ func (e *HandshakeError) Error() string // "HTTP 401 Unauthorized"
 |---|---|
 | `New` | `ocpp.ErrInvalidOption` |
 | `Connect` | `ocpp.ErrConnectFailed`, with a `*HandshakeError` (`StatusCode`) when the CSMS refused the handshake with an HTTP status other than 101 (a 101 whose upgrade is broken has none), and `ocpp.ErrUnsupportedVersion` when no subprotocol was agreed; `ocpp.ErrClosed` |
-| `Call` | `*ocpp.CallError` (the CSMS answered with a CALLERROR), `ocpp.ErrTimeout`, `ocpp.ErrNotConnected`, `ocpp.ErrConnectionLost`, `ocpp.ErrClosed`, `ocpp.ErrBusy`, `ctx.Err()`, `ocpp.ErrProtocol` (a response that does not decode) |
+| `Call` | `*ocpp.CallError` (the CSMS answered with a CALLERROR), `ocpp.ErrTimeout` (no response within the response timeout; it also matches `context.DeadlineExceeded`), `ocpp.ErrNotConnected`, `ocpp.ErrConnectionLost`, `ocpp.ErrClosed`, `ocpp.ErrBusy`, `ctx.Err()` (the caller's own deadline does not match `ocpp.ErrTimeout`), `ocpp.ErrProtocol` (a response that does not decode) |
 | typed call functions | as `Call`, and `*ocpp.ValidationError` (wraps `ocpp.ErrInvalidMessage`; a response failing validation also wraps `ocpp.ErrProtocol`), `ocpp.ErrWrongDirection`, `ocpp.ErrUnsupportedVersion` |
 | `Send` | `ocpp.ErrUnsupportedVersion` (not 2.1), `ocpp.ErrNotConnected`, `ocpp.ErrClosed`, `ctx.Err()` |
 | `Shutdown` | `ctx.Err()` |

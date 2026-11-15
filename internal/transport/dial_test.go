@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+
+	"github.com/otfabric/go-ocpp/internal/leakcheck"
 )
 
 // brokenUpgrade starts a server that answers every handshake with a 101
@@ -54,6 +56,7 @@ func brokenUpgrade(t *testing.T, tlsOn bool) (string, *tls.Config) {
 // such a response under a 3 s timer of its own, which Dial's context must
 // cut short.
 func TestDialBrokenUpgradeBoundByContext(t *testing.T) {
+	leakcheck.Check(t)
 	plain, _ := brokenUpgrade(t, false)
 	secure, trust := brokenUpgrade(t, true)
 	var nd net.Dialer
@@ -87,6 +90,7 @@ func TestDialBrokenUpgradeBoundByContext(t *testing.T) {
 // A transport Dial cannot copy is used as it is: a RoundTripper of the
 // application's, or an *http.Transport with the deprecated dial functions.
 func TestDialUnboundTransports(t *testing.T) {
+	leakcheck.Check(t)
 	url := serve(t, "ocpp1.6", 0, func(c Conn) { _, _ = c.ReadMessage(context.Background()) })
 	var nd net.Dialer
 	dial := func(n, a string) (net.Conn, error) { return nd.Dial(n, a) }
@@ -120,6 +124,7 @@ type roundTripper struct{ http.RoundTripper }
 // afterwards; when the context ended as the handshake completed, the
 // connection is closed and Dial fails.
 func TestDialContextEnd(t *testing.T) {
+	leakcheck.Check(t)
 	url := serve(t, "ocpp1.6", 0, func(c Conn) {
 		for {
 			m, err := c.ReadMessage(context.Background())

@@ -3,7 +3,8 @@
 // Package schematest checks a generated version package against the OCA
 // JSON schemas and an independent JSON Schema validator
 // (github.com/santhosh-tekuri/jsonschema), as ADR 0003 requires. It is
-// imported by the version packages' tests only.
+// imported by tests only: those of the version packages, and for
+// TextReplaced those of ocppj and internal/jsontext.
 //
 // For every action, request and response, it builds instances from the
 // schema (with every property, and with the required ones only), checks

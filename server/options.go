@@ -91,7 +91,11 @@ func WithoutAuthentication() Option { return func(o *options) { o.noAuth = true 
 // connection of the station replaced it, or the cause). onConnect runs
 // after the connection is registered, while the station may already be
 // sending; onDisconnect runs after the session is removed. Either may be
-// nil. They must not block for long.
+// nil. They must not block for long. Both run on the goroutine of the HTTP
+// request that carried the station's handshake. An onConnect that does not
+// return normally is recovered and logged with its stack, and the session
+// goes on; onDisconnect is not recovered by the server: the HTTP server
+// that runs the request does that, when the session is already removed.
 func WithSessionHandler(onConnect func(*Session), onDisconnect func(*Session, error)) Option {
 	return func(o *options) { o.onConnect, o.onDisconnect = onConnect, onDisconnect }
 }
@@ -146,6 +150,13 @@ func WithWriteTimeout(d time.Duration) Option { return func(o *options) { o.writ
 // within d. Stations usually ping (WebSocketPingInterval); a CSMS that
 // pings too notices half-open connections from its side. Zero (the
 // default) sends no pings.
+//
+// A pong is read only while the connection is read. Reading waits while
+// the queue of a station's incoming CALLs and SENDs is full (16 messages,
+// behind a handler that is slower than the station sends, as a burst of
+// OCPP 2.1 SENDs can be, or behind WithIncomingRateLimit): a ping sent in
+// that time is not counted, and the next one goes out d later. A
+// connection that is half open is then noticed once reading goes on.
 func WithPingInterval(d time.Duration) Option { return func(o *options) { o.pingInterval = d } }
 
 // WithMaxBadMessages closes a station's connection with status 1008 once n
@@ -166,7 +177,10 @@ func WithOriginPatterns(patterns ...string) Option {
 // CALLs and SENDs a second, in bursts of up to burst. Messages over the
 // rate wait: none is refused, since OCPP has no error for "too many";
 // once the bounded incoming queue is full, reading from the connection
-// waits too. Zero (the default) sets no limit.
+// waits too, and with it the answers to this end's own CALLs and the pongs
+// (see WithPingInterval). Zero (the default) sets no limit. perSecond must
+// be a finite number and not negative, or New returns ErrInvalidOption; a
+// rate may be as low as one message in many hours.
 func WithIncomingRateLimit(perSecond float64, burst int) Option {
 	return func(o *options) { o.incomingRate, o.incomingBurst = perSecond, burst }
 }
