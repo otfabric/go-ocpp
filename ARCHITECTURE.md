@@ -325,10 +325,12 @@ Each version package is generated from the OCA schemas in `schemas/` by
    enumeration they use. Required fields are values; optional ones are
    pointers (`ocpp.Ptr` helps), or slices with `omitempty`. Enumerations are
    named string types with constants and a `Valid` method. Date-times are
-   `time.Time`. `customData` (2.x) is a `CustomData` that keeps the
-   vendor's properties as raw JSON. OCPP 1.6 defines its objects and
-   enumerations inline; the generator names them after chapter 7 of the
-   1.6 specification (`IDTagInfo`, `ChargePointStatus`, `Measurand`, …).
+   `time.Time`. Integers are `int`, with the range of the platform's `int`
+   ([Implementation choices](#implementation-choices)). `customData` (2.x)
+   is a `CustomData` that keeps the vendor's properties as raw JSON. OCPP
+   1.6 defines its objects and enumerations inline; the generator names
+   them after chapter 7 of the 1.6 specification (`IDTagInfo`,
+   `ChargePointStatus`, `Measurand`, …).
 2. Strict decoding and validation. `UnmarshalJSON` refuses a missing
    required property and, where the schema says `additionalProperties:
    false`, an unknown one. `Validate` checks every constraint the schemas
@@ -572,7 +574,7 @@ if ok {
 | `e2e` | every action of every version in both directions with full and minimal payloads (`TestMatrix`); the version-dependent protocol behaviours in every version, against go-ocpp and raw WebSocket peers (`TestProtocolPerVersion`: CALLERROR propagation with details in both directions, codes a version does not define, handler errors and panics, NotImplemented and NotSupported, the validation codes of each version, malformed and unknown frames, invalid and late responses with 2.1's CALLRESULTERROR, response timeouts, identity rules); custom authenticators and `StatusError` (`TestCustomAuthenticator`); `SetReconnect`; many concurrent stations; parallel calls, close and shutdown under load, replacement storms; resource exhaustion (slow handshakes, station floods, oversized messages, compression bombs, call floods, queue saturation, slow readers, half-open links); TLS and authentication refusals; all with `-race` |
 | chaos | a seeded TCP proxy that fragments, delays and cuts connections while stations of every version call and SEND (`TestChaos`; `make chaos`, `make soak`, nightly in `hardening.yml`) |
 | fuzzing | `ocppj.Decode`, the text check (`FuzzWellFormed`, against `encoding/json`), the engine (`FuzzEndpoint`: frame sequences), the server handshake, and each version's dispatchers seeded with every action's payloads; 10 s per target in CI, 10 min nightly; `make fuzz-check` compares the lists of targets with those found |
-| 32-bit | every test as `GOARCH=386`, nightly (`hardening.yml`, job `test-386`) |
+| 32-bit | every test as `GOARCH=386`, nightly (`hardening.yml`, job `test-386`), among them the integer boundary table of each version package (`TestIntegerRange`), which expects the result of the `int` it runs with |
 | API | `TestAPI` compares the exported API of `ocpp`, `ocppj`, `client` and `server` with `testdata/api` |
 | `interop` | build tag `interop`; images of `otfabric/ocpp-interop` pinned by digest; both roles |
 
@@ -639,6 +641,7 @@ Each choice can be revisited if an edition or erratum settles it.
 | While a session drains (`Shutdown`), a malformed CALL is dropped instead of answered with a CALLERROR | A valid CALL that has not started gets no answer while draining either; answering malformed ones would let a peer that does not read keep the drain from ever ending |
 | While a session drains, SENDs are still delivered, but those dispatched after the drain began do not count as in flight | A peer that keeps sending must not keep `Shutdown` from ending; no SEND that arrived is lost |
 | Whether a number is integral is decided on its decimal text, and only integers up to ±2^53 are rewritten | `0.99999999999999999999` and `1e-400` round to an integer in a float64 but are not integers, which the schema validator (`santhosh-tekuri/jsonschema`, arbitrary precision) agrees with; beyond 2^53 a float64 would change the value |
+| A schema `integer` is a Go `int`, so its range is the platform's: −2^63 … 2^63−1 on 64-bit builds, −2^31 … 2^31−1 on 32-bit builds. A number outside it is refused with `TypeConstraintViolation`, naming the field; inside it, only the schema's `minimum` or `maximum` limits a value, where the field has one. A value beyond 32 bits therefore decodes on a 64-bit build and is refused on a 32-bit build. Outgoing values are not checked against a range | The OCA JSON schemas in `schemas/` give `integer` no range, and JSON Schema sets none. What the specification text defines for the integer data type is to be checked: the OCA documents are not in the repository. One range on every platform would either refuse on 64-bit builds values that decode there now (32 bits), or change the type of every integer field (`int64`). `TestIntegerRange` of each version package pins the boundaries of both widths; the nightly `test-386` job runs it with a 32-bit `int` ([LIMITATIONS.md](LIMITATIONS.md#platform-differences)) |
 | A refused handshake is answered with `Connection: close`, also when the WebSocket upgrade itself refuses it (403, 426, 400, 405); `Serve`'s own `http.Server` closes idle keep-alive connections after the handshake timeout | Otherwise one refused request could hold a connection open indefinitely, past `WithMaxStations`, which counts sessions |
 | The WebSocket closing handshake is bounded to 10 s, then the connection is closed | A peer that never completes the closing handshake must not hold a goroutine or a connection; the bound does not depend on the WebSocket library's own timers |
 | `WithIncomingRateLimit` delays messages over the rate, never refuses them | OCPP has no CALLERROR for "too many"; delaying keeps backpressure on the connection without inventing protocol behaviour |

@@ -103,6 +103,25 @@ application can bound it itself.
   that connection, and a CSMS that stops in the middle of the closing
   handshake can hold `Close`.
 
+## Platform differences
+
+- **The range of an integer field is that of the platform's `int`.** The
+  generated types hold every schema `integer` in a Go `int`: 64 bits on
+  64-bit builds, 32 bits on 32-bit builds (`386`, `arm`, `mips`, `mipsle`).
+  A number above 2,147,483,647 or below −2,147,483,648 decodes on a 64-bit
+  build and is refused with `TypeConstraintViolation` on a 32-bit build, so
+  a 64-bit and a 32-bit build can answer the same message differently. A
+  number beyond 64 bits is refused on every build, and so is one beyond
+  ±2^53 written with a zero fractional part (`9223372036854775807.0`).
+  Outgoing values are not checked against a range: an application on a
+  64-bit build can send a value that a peer holding integers in 32 bits
+  refuses. What the OCA specification text defines for integers is to be
+  checked ([ARCHITECTURE.md](ARCHITECTURE.md#implementation-choices)). An
+  application that wants 32 bits on every build checks its integer fields
+  in its handlers and before it sends them. The tests run with a 32-bit
+  `int` as `386` only (nightly, `TestIntegerRange` pins the boundaries);
+  the other 32-bit architectures are not tested.
+
 ## Verification
 
 - Independently tested against the reference builds of
