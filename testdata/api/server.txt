@@ -6,6 +6,9 @@ const DefaultResponseTimeout = 30 * time.Second
 const RejectNew
 const ReplaceExisting ReplacePolicy = iota
 func (Secret) GoString() string
+func (Secret) LogValue() slog.Value
+func (Secret) MarshalJSON() ([]byte, error)
+func (Secret) MarshalText() ([]byte, error)
 func (Secret) String() string
 func (e *StatusError) Error() string
 func (e *StatusError) Unwrap() error

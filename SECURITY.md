@@ -46,7 +46,10 @@ Implemented in the client and server (Phase 2); see
 - A server needs an authenticator, or an explicitly named option that turns
   authentication off. Authentication runs before the WebSocket upgrade.
 - Credentials and authorization tokens are never logged, and never appear in
-  error strings or metric labels.
+  error strings or metric labels. The password an `Authenticator` is given
+  is a `server.Secret`: `fmt`, `encoding/json`, `encoding/xml` and the text
+  and JSON handlers of `log/slog` write `[redacted]` for it, also inside a
+  `ConnectRequest`; `string(r.Password)` gives the value.
 - Frame size, station count, queue lengths and handshake time are bounded by
   default. With compression, the size limit applies after decompression, so
   a small compressed message cannot inflate past it.

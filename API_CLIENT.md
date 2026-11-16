@@ -69,6 +69,8 @@ func (c *Client) ID() string            // the identity from the URL
 func (c *Client) Role() ocpp.Role       // ocpp.ChargingStation
 func (c *Client) Version() ocpp.Version // negotiated; zero before the first connection
 func (c *Client) State() ocpp.State
+func (c *Client) Done() <-chan struct{} // closed once the client is closed and its goroutines have returned
+func (c *Client) Err() error            // the error of the last state change; ocpp.ErrClosed once closed
 
 func DefaultReconnect() Reconnect // 5 s + up to 10 s, doubled up to 5 times
 type Reconnect struct{ WaitMinimum, RandomRange time.Duration; RepeatTimes int }
@@ -89,6 +91,8 @@ const (
 | `Close` | Closes now: pending calls fail with `ErrClosed`, frames still queued or being written are dropped, reconnection stops. Final: a closed client does not connect again (make a new one, as a restarting station would). Safe to call more than once and from multiple goroutines: every call returns nil, and the one that closes returns once the connection's reader, writer, pinger and dispatcher and the redialling supervisor have returned. From a handler it does not wait for that handler (nor for the dispatcher and the supervisor behind it); it never waits for functions registered with `ocpp.AfterResponse`. |
 | `Shutdown` | Graceful close: new calls fail with `ErrClosed` and CALLs from the CSMS that have not started are no longer dispatched; it waits until what is in flight is done (calls already made have their answers, handlers that have started have answered, every queued frame, SENDs and answers included, is written), then `Close`. Returns `ctx.Err()` if ctx ends first (closed anyway). Called from a handler it waits for that handler, so until ctx ends: from a handler, use `Close`, or `Shutdown` in `ocpp.AfterResponse` (a station that accepts a Reset and restarts). |
 | `SetReconnect` | Changes the back-off from the next attempt on, for a CSMS that sets the RetryBackOff variables (2.x OCPPCommCtrlr); nil stops reconnecting after the next loss. |
+| `Done` | Closed when the client has ended: `Close` or `Shutdown` has closed it and the connection's reader, writer, pinger and dispatcher and the redialling supervisor have returned. It is closed when the `Close` that closes returns; when that `Close` ran while a handler was running (from a handler, for one), once that handler and the goroutines behind it have returned. Not for functions registered with `ocpp.AfterResponse`. A lost connection does not close it: the client can connect again. |
+| `Err` | The error of the last state change, the one the state handler is given: nil before the first `Connect` and while connecting or connected; while `Disconnected`, an error wrapping `ocpp.ErrConnectionLost` (and an `*ocpp.CloseError` when the CSMS sent a close frame) or the failed `Connect`'s error (wrapping `ocpp.ErrConnectFailed`); `ocpp.ErrClosed` from the moment `Close` sets `Closed`, and so after `Done` is closed. It does not take the client's lock: the state handler may call it. |
 
 ## Options
 
@@ -103,7 +107,7 @@ const (
 | `WithInsecureTransport()` | off | Allow `ws://` |
 | `WithCompression()` | off | Offer RFC 7692 compression (2.x CSMSs must support it); `ConnInfo.Compression` says whether the CSMS accepted it |
 | `WithReconnect(Reconnect{…})` | off | Redial after a lost connection with the back-off of 2.x Part 4 §5.4; see `DefaultReconnect()` |
-| `WithStateHandler(f)` | none | Called on every state change with its cause, with the client's lock held; may read `State`, `Version` and `ID`; must not block or call `Close`, `Connect` or `Call`, and must return normally (it is not recovered) |
+| `WithStateHandler(f)` | none | Called on every state change with its cause, with the client's lock held; may read `State`, `Version`, `ID` and `Err`; must not block or call `Close`, `Connect` or `Call`, and must return normally (it is not recovered) |
 | `WithHandshakeTimeout(d)` | 30 s | Dial, TLS and WebSocket handshakes |
 | `WithResponseTimeout(d)` | 30 s | Wait for a CALL's response (2.x: MessageTimeout of OCPPCommCtrlr) |
 | `WithWriteTimeout(d)` | 10 s | Writing one message; then the connection is lost |
@@ -137,6 +141,8 @@ any ──Close / Shutdown──▶ Closed
   (2.x Part 4 §5.4).
 - While reconnecting, `Call` fails with `ErrNotConnected`; the state
   handler and `Metrics.OnReconnectAttempt` report each attempt.
+- `State` and `Err` can be read at any time, the state handler included;
+  `Done` is closed only in `Closed`, the final state.
 
 ## Security profiles
 
@@ -169,3 +175,4 @@ func (e *HandshakeError) Error() string // "HTTP 401 Unauthorized"
 | `Send` | `ocpp.ErrUnsupportedVersion` (not 2.1), `ocpp.ErrNotConnected`, `ocpp.ErrClosed`, `ctx.Err()` |
 | `Shutdown` | `ctx.Err()` |
 | `SetReconnect` | `ocpp.ErrInvalidOption` |
+| `Err` | nil while connecting or connected; while disconnected, an error wrapping `ocpp.ErrConnectionLost` (and an `*ocpp.CloseError` when the CSMS sent a close frame) or `ocpp.ErrConnectFailed`; `ocpp.ErrClosed` once closed |

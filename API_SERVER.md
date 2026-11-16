@@ -150,15 +150,18 @@ type AuthenticatorFunc func(ctx context.Context, r ConnectRequest) error
 type ConnectRequest struct {
     StationID    string
     Username     string
-    Password     Secret // prints as [redacted]; string(p) for the value
+    Password     Secret // prints, marshals and logs as [redacted]; string(p) for the value
     HasBasicAuth bool
     TLS          *tls.ConnectionState // client certificates: profile 3
     RemoteAddr   string
     Request      *http.Request // headers, e.g. from client.WithHeader
 }
-type Secret string // String and GoString return "[redacted]"
+type Secret string // fmt, encoding/json, encoding/xml and log/slog write "[redacted]"
 func (s Secret) String() string
 func (s Secret) GoString() string
+func (s Secret) MarshalJSON() ([]byte, error) // the JSON string "[redacted]"
+func (s Secret) MarshalText() ([]byte, error) // "[redacted]"
+func (s Secret) LogValue() slog.Value          // "[redacted]"
 
 func BasicAuth(lookup func(ctx context.Context, stationID string) (password string, ok bool)) Authenticator
 

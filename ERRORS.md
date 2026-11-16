@@ -44,10 +44,10 @@ is listed per role in [API_CLIENT.md](API_CLIENT.md#errors-by-method) and
 
 | Error | Returned when |
 |---|---|
-| `ErrClosed` | An operation is made on a client, server or session after `Close`; pending calls when `Close` is called; `Serve` after `Shutdown` |
+| `ErrClosed` | An operation is made on a client, server or session after `Close`; pending calls when `Close` is called; `Serve` after `Shutdown`; `Client.Err` and `Session.Err` after `Close` |
 | `ErrNotConnected` | A client without an open connection is asked to call, including while it reconnects. Nothing is queued |
-| `ErrConnectFailed` | `Client.Connect` failed: dial, TLS, HTTP status (in the message), WebSocket handshake, or no common subprotocol (then it also wraps `ErrUnsupportedVersion`) |
-| `ErrConnectionLost` | A call was pending or queued when the connection broke; `Session.Err` after the station went away |
+| `ErrConnectFailed` | `Client.Connect` failed: dial, TLS, HTTP status (in the message), WebSocket handshake, or no common subprotocol (then it also wraps `ErrUnsupportedVersion`); `Client.Err` after it |
+| `ErrConnectionLost` | A call was pending or queued when the connection broke; `Session.Err` after the station went away; `Client.Err` while the client is disconnected after a lost connection |
 | `ErrTimeout` | No response to a CALL arrived within the response timeout. The error also matches `context.DeadlineExceeded`; the error of a `Call` that ended with its caller's own deadline does not match `ErrTimeout` |
 | `ErrBusy` | The queue of calls waiting for the single outgoing slot is full |
 | `ErrWrongDirection` | A call function is used for an action the connection's role does not send |

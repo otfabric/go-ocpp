@@ -329,7 +329,7 @@ const (
 type Secret string
 ```
 
-Secret is a string that does not print: String and GoString return "\[redacted]", so fmt's %v, %s, %q and %#v show that instead of the value. Convert it with string(s) to use the value.
+Secret is a string that does not print: fmt, encoding/json, encodings that use encoding.TextMarshaler (encoding/xml) and log/slog's text and JSON handlers write "\[redacted]" instead of the value, for a Secret on its own and inside a struct such as ConnectRequest. String and GoString give it to fmt's %v, %s, %q and %#v, MarshalJSON and MarshalText to the encodings, LogValue to slog. Decoding is unchanged: json.Unmarshal into a Secret stores the value. Convert it with string(s) to use the value.
 
 #### func (Secret) GoString
 
@@ -338,6 +338,30 @@ func (Secret) GoString() string
 ```
 
 GoString returns "\[redacted]".
+
+#### func (Secret) LogValue
+
+```go
+func (Secret) LogValue() slog.Value
+```
+
+LogValue returns "\[redacted]" as a string value, for log/slog.
+
+#### func (Secret) MarshalJSON
+
+```go
+func (Secret) MarshalJSON() ([]byte, error)
+```
+
+MarshalJSON returns the JSON string "\[redacted]".
+
+#### func (Secret) MarshalText
+
+```go
+func (Secret) MarshalText() ([]byte, error)
+```
+
+MarshalText returns "\[redacted]".
 
 #### func (Secret) String
 

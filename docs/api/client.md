@@ -37,6 +37,12 @@ type Client struct {
 	// stateErr is the error of the last state change; changed is closed
 	// and replaced on every state change, for Connect to wait on.
 
+	// lastErr is what Err returns: stateErr, or ocpp.ErrClosed once
+	// closed. It is written under mu and read without it, like state.
+
+	// doneCh is closed once the client is closed and its goroutines have
+	// returned (Done).
+
 	// redial is the back-off a redial loop finishes with after
 	// SetReconnect(nil); nil until then.
 
@@ -71,7 +77,7 @@ func (c *Client) Close() error
 
 Close closes the connection and stops reconnecting. Pending calls fail with ocpp.ErrClosed, and so does every Connect, Call and Send after it.
 
-Close is safe to call more than once and from multiple goroutines. The call that closes returns once the connection is closed and its reader, writer, pinger and dispatcher have returned, and the supervisor that redials. Called while a handler runs, and so from a handler, it returns without waiting for that handler, for the dispatcher that runs it, and for the supervisor, which ends after them. It does not wait for functions registered with ocpp.AfterResponse, which may call it. Every other call, during or after that one, returns nil at once and does nothing.
+Close is safe to call more than once and from multiple goroutines. The call that closes returns once the connection is closed and its reader, writer, pinger and dispatcher have returned, and the supervisor that redials. Called while a handler runs, and so from a handler, it returns without waiting for that handler, for the dispatcher that runs it, and for the supervisor, which ends after them. It does not wait for functions registered with ocpp.AfterResponse, which may call it. Every other call, during or after that one, returns nil at once and does nothing. Done is closed once everything the closing call waits for, or would wait for outside a handler, has returned.
 
 #### func (Client) Connect
 
@@ -80,6 +86,22 @@ func (c *Client) Connect(ctx context.Context) error
 ```
 
 Connect opens the connection and returns once it is open, or with an error wrapping ocpp.ErrConnectFailed. It does not retry: with WithReconnect, redialling starts only after an open connection is lost. Connect on a connected client does nothing. While another Connect, or a redial of WithReconnect, is in progress, Connect waits for it, until ctx ends: it returns nil once the connection is open, or the other Connect's error. Close ends a Connect in progress with ocpp.ErrClosed.
+
+#### func (Client) Done
+
+```go
+func (c *Client) Done() <-chan struct{}
+```
+
+Done returns a channel that is closed when the client has ended: Close or Shutdown has closed it, and the connection's reader, writer, pinger and dispatcher have returned, and the supervisor that redials. It is closed when the call of Close that closes returns, or, when that call ran while a handler was running (from a handler, for one), once that handler and the goroutines behind it have returned. Functions registered with ocpp.AfterResponse are not waited for. A lost connection does not close it: the client can connect again, by itself with WithReconnect; State and Err say how it stands.
+
+#### func (Client) Err
+
+```go
+func (c *Client) Err() error
+```
+
+Err returns the error of the client's last state change, as WithStateHandler is given it, except in state Closed: from the moment Close sets that state, Err returns ocpp.ErrClosed, and so it does once Done is closed. It is nil before the first Connect and while the client connects or is connected. While the client is Disconnected, it says why: an error wrapping ocpp.ErrConnectionLost after a lost connection (with an \*ocpp.CloseError when the CSMS sent a close frame), or the error of the Connect that failed, wrapping ocpp.ErrConnectFailed. Err does not take the client's lock, so the state handler may call it.
 
 #### func (Client) ID
 

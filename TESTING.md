@@ -56,7 +56,7 @@ only, never for a fixed time.
 
 | Row | Scenario | Applies to | Tests | Notes |
 |---|---|---|---|---|
-| L1 | Close twice | all five | `TestClientCloseTwiceAndConcurrently`, `TestClientCloseBeforeConnect`, `TestSessionCloseTwiceAndConcurrently`, `TestServerCloseTwiceAndConcurrently`; `internal/engine` `TestCloseTwice`; `internal/transport` `TestAcceptCloseBounded/Close_twice` | every Close returns nil; the connection is closed once, the state handler sees Closed once, the session handler is called once |
+| L1 | Close twice | all five | `TestClientCloseTwiceAndConcurrently`, `TestClientCloseBeforeConnect`, `TestSessionCloseTwiceAndConcurrently`, `TestServerCloseTwiceAndConcurrently`; `internal/engine` `TestCloseTwice`; `internal/transport` `TestAcceptCloseBounded/Close_twice` | every Close returns nil; the connection is closed once, the state handler sees Closed once, the session handler is called once; `Done` is closed and `Err` is `ErrClosed` (client, session) |
 | L2 | Close from several goroutines | all five | the three `…CloseTwiceAndConcurrently` tests (8 goroutines behind a barrier); `internal/engine` `TestCloseFromSeveralGoroutines`; `internal/transport` `TestAcceptCloseBounded/Close_twice` (a second Close while the first waits) | every call returns nil |
 | L3 | Close during a blocked read | Client, Session, Endpoint, Conn | `TestCloseDuringCall`; `internal/engine` `TestCloseFailsPendingCall`, `TestCallRacingClose`; `internal/transport` `TestPipeContexts` | the pending CALL fails with `ErrClosed` |
 | L4 | Close during a write | Client, Session, Endpoint | `TestSlowReader`, `TestCloseUnderLoad`; `internal/engine` `TestStuckWriter`, `TestWriteErrorLosesConnection` | |
@@ -73,9 +73,14 @@ only, never for a fixed time.
 | L15 | `Shutdown(ctx)` | Client, Server, Session | `TestShutdown`, `TestClientShutdown`, `TestSessionShutdownTimeout`, `TestShutdownUnderLoad`, `TestShutdownWhileStationKeepsSending`, `TestServerShutdownAnswersCallInHandler` | `Server.Close` is `Shutdown` without waiting: it returns before the sessions have ended. n/a for Endpoint and Conn, which have no Shutdown (the roles drain an Endpoint with `Drain` and `Idle`) |
 | L16 | Close racing reconnect | Client | `TestCloseDuringBackoff`, `TestCloseDuringRedial`, `TestReconnectStopsOnClose`, `TestHostileCloseInEveryState`, `TestHostileSetReconnectNilWhileRedialling` | n/a for the others: only the client reconnects |
 
-`Done` and `Err` exist on `server.Session` and on the Endpoint;
-`client.Client` reports its end through the state handler (`Closed`), and
-`server.Server` through `Serve`'s return and the session handler.
+`Done` and `Err` exist on `client.Client`, `server.Session` and the
+Endpoint; `server.Server` reports its end through `Serve`'s return and the
+session handler. For the client, `TestClientDoneAndErr` and
+`TestClientDoneWhileReconnecting` check that `Done` stays open across a
+lost connection, a failed `Connect` and a reconnect, and that `Err` is the
+error of the last state change, also when the state handler reads it;
+`TestClientCloseFromHandler` that `Done` is closed only once the handler
+that called `Close` has returned.
 
 ## Ownership
 
