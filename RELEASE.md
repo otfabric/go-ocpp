@@ -5,6 +5,76 @@ tag, GitHub release); the section of the version below is the release's
 notes. Before v1.0.0 a minor release may change the API: every change is
 listed here, and COMPATIBILITY.md has the stability rules.
 
+## v0.5.0
+
+**Date:** 2026-11-16
+**Previous release:** v0.4.1
+
+## Summary
+
+A minor release with additions to the API. `client.Client` gains `Done`
+and `Err`, as `server.Session` has them: an application can wait for the
+end of a client and read why it is not connected without a state handler.
+`server.Secret` writes `[redacted]` through `encoding/json`,
+`encoding.TextMarshaler` and `log/slog`, as it does through `fmt`. No
+dependency changes.
+
+## Changes
+
+### Breaking
+
+- `server.Secret` marshals and logs as `[redacted]`: `json.Marshal` and
+  `xml.Marshal` of a `Secret`, or of a struct that holds one such as
+  `server.ConnectRequest`, write `"[redacted]"` for it, and so do the text
+  and JSON handlers of `log/slog`, as `fmt` already did. Who notices: an
+  application that encodes a `ConnectRequest` or a `Secret` and uses the
+  password from that output, for example a JSON copy of the request handed
+  to another process. To keep the value, convert it where it is needed:
+  `string(r.Password)`, in a field of type `string` of the application's
+  own struct. Decoding into a `Secret` is unchanged.
+
+### Added
+
+- `client.Client.Done()`: a channel that is closed when the client has
+  ended, once `Close` or `Shutdown` has closed it and the connection's
+  reader, writer, pinger and dispatcher and the redialling supervisor have
+  returned; for a `Close` from a handler, once that handler has returned.
+  A lost connection does not close it: the client can connect again.
+- `client.Client.Err()`: the error of the last state change, as the state
+  handler is given it: nil before the first `Connect` and while connecting
+  or connected; while disconnected, an error wrapping
+  `ocpp.ErrConnectionLost` (with an `*ocpp.CloseError` when the CSMS sent
+  a close frame) or the error of the failed `Connect`, wrapping
+  `ocpp.ErrConnectFailed`; `ocpp.ErrClosed` once closed. It does not take
+  the client's lock, so the state handler may call it.
+- `server.Secret.MarshalJSON`, `MarshalText` and `LogValue`, each giving
+  `[redacted]`.
+
+### Documentation
+
+- `Done` and `Err` of the client: API_CLIENT.md, ERRORS.md,
+  OBSERVABILITY.md, and TESTING.md (the lifecycle contract matrix).
+- What `server.Secret` writes, and how to get its value: API_SERVER.md,
+  SECURITY.md, ARCHITECTURE.md, examples/security-profiles.
+
+## Verification
+
+- `make check` (Go 1.27.4): lint, vet, govulncheck, race tests, coverage,
+  docsync.
+- New tests: `server` `TestSecretIsRedacted` (`fmt`, `encoding/json`,
+  `encoding/xml`, `MarshalText`, both `slog` handlers; the value, a
+  pointer, a `ConnectRequest`, a group; decoding unchanged); `e2e`
+  `TestClientDoneAndErr` and `TestClientDoneWhileReconnecting` (`Done`
+  stays open across a lost connection, a failed `Connect` and a reconnect;
+  `Err` in every state, also read from the state handler). `Done` and `Err`
+  are also checked by `TestClientCloseTwiceAndConcurrently`,
+  `TestClientCloseBeforeConnect`, `TestClientCloseFromHandler` (`Done` is
+  closed only after the handler that called `Close` has returned) and
+  `TestClientShutdown`.
+- ocppctl builds and passes its tests against this release.
+
+---
+
 ## v0.4.1
 
 **Date:** 2026-11-15

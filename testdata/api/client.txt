@@ -5,6 +5,8 @@ const DefaultResponseTimeout = 30 * time.Second
 func (c *Client) Call(ctx context.Context, action string, req, resp any) error
 func (c *Client) Close() error
 func (c *Client) Connect(ctx context.Context) error
+func (c *Client) Done() <-chan struct{}
+func (c *Client) Err() error
 func (c *Client) ID() string
 func (c *Client) Role() ocpp.Role
 func (c *Client) Send(ctx context.Context, action string, req any) error

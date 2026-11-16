@@ -102,7 +102,9 @@ not recovered.
 `client.WithStateHandler(func(state, err))` reports Connecting, Connected,
 Disconnected (with the cause) and Closed. It is called with the client's
 lock held, on the goroutine that changes the state, and must return
-normally. `server.WithSessionHandler` reports
+normally. Without a handler, `Client.State` and `Client.Err` give the
+current state and the error of the last change, and `Client.Done` is
+closed once the client is closed. `server.WithSessionHandler` reports
 sessions starting and ending, on the goroutine of the station's HTTP
 request; an onConnect that does not return normally is recovered and
 logged.

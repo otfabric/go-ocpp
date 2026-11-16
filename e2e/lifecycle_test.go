@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -114,6 +115,7 @@ func TestClientCloseTwiceAndConcurrently(t *testing.T) {
 		if s := c.State(); s != ocpp.Closed {
 			t.Fatalf("round %d: state %s after every Close returned", round, s)
 		}
+		ended(t, c)
 		for i := range 2 {
 			if err := c.Close(); err != nil {
 				t.Fatalf("round %d: Close %d after the others: %v", round, i, err)
@@ -154,6 +156,178 @@ func TestClientCloseBeforeConnect(t *testing.T) {
 	if got := states.String(); got != "[Closed]" || c.State() != ocpp.Closed {
 		t.Fatalf("states %s, state %s", got, c.State())
 	}
+	ended(t, c)
+}
+
+// ended fails the test unless the client's Done is closed and its Err is
+// ocpp.ErrClosed. It is for a client whose closing Close has returned
+// outside a handler, so it does not wait.
+func ended(t *testing.T, c *client.Client) {
+	t.Helper()
+	select {
+	case <-c.Done():
+	default:
+		t.Fatal("Done is not closed after Close returned")
+	}
+	if err := c.Err(); err != ocpp.ErrClosed {
+		t.Fatalf("Err = %v, want ErrClosed", err)
+	}
+}
+
+// change is one call of a client's state handler: the state and error it
+// was given, and what Err returned from inside it.
+type change struct {
+	state      ocpp.State
+	err, inErr error
+}
+
+// changes returns a state handler that sends each change on the channel,
+// calling c.Err from inside it, which must not take the client's lock.
+func changes(c **client.Client) (func(ocpp.State, error), <-chan change) {
+	ch := make(chan change, 64)
+	return func(s ocpp.State, err error) { ch <- change{s, err, (*c).Err()} }, ch
+}
+
+// next waits for the next state change, and fails the test unless it is to
+// want.
+func next(t *testing.T, ch <-chan change, want ocpp.State) change {
+	t.Helper()
+	select {
+	case got := <-ch:
+		if got.state != want {
+			t.Fatalf("state %s (%v), want %s", got.state, got.err, want)
+		}
+		if got.state != ocpp.Closed && got.inErr != got.err {
+			t.Fatalf("%s: Err in the state handler = %v, want its error %v", got.state, got.inErr, got.err)
+		}
+		return got
+	case <-time.After(10 * time.Second):
+		t.Fatalf("timed out waiting for state %s", want)
+		return change{}
+	}
+}
+
+// notDone fails the test when the client's Done is closed.
+func notDone(t *testing.T, c *client.Client, when string) {
+	t.Helper()
+	select {
+	case <-c.Done():
+		t.Fatalf("%s: Done is closed, Err %v, state %s", when, c.Err(), c.State())
+	default:
+	}
+}
+
+// A client's Done is closed only once it is closed, and Err is the error of
+// its last state change: nil before Connect and while connected, why it is
+// disconnected after a lost connection and after a failed Connect, and
+// ErrClosed once closed. Done stays open across a lost connection and a
+// failed Connect, after which the client connects again. The state handler
+// reads the same Err.
+func TestClientDoneAndErr(t *testing.T) {
+	noLeak(t)
+	var refuse atomic.Bool
+	auth := server.AuthenticatorFunc(func(context.Context, server.ConnectRequest) error {
+		if refuse.Load() {
+			return server.ErrUnauthorized
+		}
+		return nil
+	})
+	srv, base := csms(t, nil, server.WithHandler(ocpp.V201, ocpp.DispatcherFunc(echo)), server.WithAuthenticator(auth))
+	var c *client.Client
+	handler, ch := changes(&c)
+	c = station(t, base+"DONE", client.WithInsecureTransport(), client.WithVersions(ocpp.V201), client.WithStateHandler(handler))
+
+	if err := c.Err(); err != nil {
+		t.Fatalf("before Connect: Err = %v, want nil", err)
+	}
+	notDone(t, c, "before Connect")
+
+	connect(t, c)
+	next(t, ch, ocpp.Connecting)
+	next(t, ch, ocpp.Connected)
+	if err := c.Err(); err != nil {
+		t.Fatalf("connected: Err = %v, want nil", err)
+	}
+	notDone(t, c, "connected")
+
+	// The CSMS closes the session: the connection is lost, normally.
+	if err := waitStation(t, srv, "DONE").Close(); err != nil {
+		t.Fatal(err)
+	}
+	lost := next(t, ch, ocpp.Disconnected)
+	var ce *ocpp.CloseError
+	if err := c.Err(); err != lost.err || !errors.Is(err, ocpp.ErrConnectionLost) || !errors.As(err, &ce) || !ce.Normal() {
+		t.Fatalf("lost: Err = %v, want the state's error %v, a lost connection the CSMS closed normally", err, lost.err)
+	}
+	notDone(t, c, "after the connection was lost")
+
+	// A Connect that fails.
+	refuse.Store(true)
+	var he *client.HandshakeError
+	if err := c.Connect(context.Background()); !errors.As(err, &he) || he.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("Connect: %v, want a refused handshake", err)
+	}
+	next(t, ch, ocpp.Connecting)
+	failed := next(t, ch, ocpp.Disconnected)
+	if err := c.Err(); err != failed.err || !errors.Is(err, ocpp.ErrConnectFailed) || !errors.As(err, &he) {
+		t.Fatalf("after a failed Connect: Err = %v, want the state's error %v, wrapping ErrConnectFailed", err, failed.err)
+	}
+	notDone(t, c, "after a failed Connect")
+
+	// The client connects again.
+	refuse.Store(false)
+	connect(t, c)
+	next(t, ch, ocpp.Connecting)
+	next(t, ch, ocpp.Connected)
+	if err := c.Err(); err != nil {
+		t.Fatalf("connected again: Err = %v, want nil", err)
+	}
+	notDone(t, c, "connected again")
+
+	if err := c.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if got := next(t, ch, ocpp.Closed); got.err != nil || got.inErr != ocpp.ErrClosed {
+		t.Fatalf("Closed: the state handler got %v and read Err %v, want nil and ErrClosed", got.err, got.inErr)
+	}
+	ended(t, c)
+}
+
+// With WithReconnect, a lost connection does not close Done either: Err is
+// the cause while Disconnected and nil while the client redials, and the
+// client connects again by itself. Shutdown then closes Done.
+func TestClientDoneWhileReconnecting(t *testing.T) {
+	noLeak(t)
+	srv, base := csms(t, nil, server.WithHandler(ocpp.V201, ocpp.DispatcherFunc(echo)), server.WithoutAuthentication())
+	var c *client.Client
+	handler, ch := changes(&c)
+	c = station(t, base+"REDIAL", client.WithInsecureTransport(), client.WithVersions(ocpp.V201), client.WithStateHandler(handler),
+		client.WithReconnect(client.Reconnect{WaitMinimum: time.Millisecond}))
+	connect(t, c)
+	next(t, ch, ocpp.Connecting)
+	next(t, ch, ocpp.Connected)
+	first := waitStation(t, srv, "REDIAL")
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if lost := next(t, ch, ocpp.Disconnected); !errors.Is(lost.err, ocpp.ErrConnectionLost) {
+		t.Fatalf("lost: %v, want ErrConnectionLost", lost.err)
+	}
+	if redial := next(t, ch, ocpp.Connecting); redial.err != nil {
+		t.Fatalf("redialling: %v, want nil", redial.err)
+	}
+	next(t, ch, ocpp.Connected)
+	notDone(t, c, "reconnected")
+	if err := c.Err(); err != nil {
+		t.Fatalf("reconnected: Err = %v, want nil", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := c.Shutdown(ctx); err != nil {
+		t.Fatalf("Shutdown: %v", err)
+	}
+	next(t, ch, ocpp.Closed)
+	ended(t, c)
 }
 
 // L1 and L2 for server.Session: Close from several goroutines at once, and
@@ -294,7 +468,18 @@ func TestClientCloseFromHandler(t *testing.T) {
 	closed := make(chan error, 1)
 	c = station(t, base+"L10C", client.WithInsecureTransport(),
 		client.WithHandler(ocpp.V16, ocpp.DispatcherFunc(func(context.Context, ocpp.Peer, string, json.RawMessage) (json.RawMessage, error) {
-			closed <- c.Close()
+			err := c.Close()
+			// This handler is still running: the client is closed, but
+			// Done waits for the handler, its dispatcher and the supervisor.
+			select {
+			case <-c.Done():
+				err = errors.New("Done is closed while the handler that closed runs")
+			default:
+			}
+			if err == nil && c.Err() != ocpp.ErrClosed {
+				err = fmt.Errorf("Err = %v after Close, want ErrClosed", c.Err())
+			}
+			closed <- err
 			return json.RawMessage(`{}`), nil
 		})))
 	connect(t, c)
@@ -310,6 +495,14 @@ func TestClientCloseFromHandler(t *testing.T) {
 		t.Fatalf("the CSMS's CALL: %v, want a lost connection that the station closed normally", err)
 	}
 	eventually(t, "the client to be closed", func() bool { return c.State() == ocpp.Closed })
+	select {
+	case <-c.Done():
+	case <-time.After(10 * time.Second):
+		t.Fatal("Done not closed after the handler returned")
+	}
+	if err := c.Err(); err != ocpp.ErrClosed {
+		t.Fatalf("Err = %v, want ErrClosed", err)
+	}
 	if err := c.Close(); err != nil {
 		t.Fatalf("Close again: %v", err)
 	}

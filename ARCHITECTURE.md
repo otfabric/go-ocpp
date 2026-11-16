@@ -518,7 +518,8 @@ if ok {
   verification off. A `tls.Config` supplied by the application is used as
   given, with a minimum of TLS 1.2: verification is what it says.
 - Basic credentials are not logged and do not appear in `error` strings. The
-  type holding them has a redacting `String` method.
+  type holding the password, `server.Secret`, writes `[redacted]` through
+  `fmt`, `encoding/json`, `encoding.TextMarshaler` and `log/slog`.
 - For certificate rotation, `WithTLS` accepts a `tls.Config` whose
   `GetCertificate`, `GetClientCertificate` and `VerifyPeerCertificate`
   callbacks can change at runtime. The library holds no certificate store.

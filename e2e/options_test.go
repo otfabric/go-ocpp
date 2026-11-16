@@ -104,6 +104,7 @@ func TestClientShutdown(t *testing.T) {
 	if c.State() != ocpp.Closed {
 		t.Fatalf("state %v", c.State())
 	}
+	ended(t, c)
 
 	// A context that ends first: Shutdown returns its error and closes.
 	release2 := make(chan struct{})

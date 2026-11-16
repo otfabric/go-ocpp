@@ -39,7 +39,7 @@ certificate rotated while the CSMS runs.
   certificate on every handshake, so storing a new one takes effect for
   the next connection without a restart.
 - Passwords never print: `server.ConnectRequest.Password` is a
-  `server.Secret`, which formats as `[redacted]`.
+  `server.Secret`, which formats, marshals and logs as `[redacted]`.
 
 ## OCPP requirements
 
